@@ -118,18 +118,46 @@ const THEMES = {
     danger: "#8C332C", muted: "#5C5546", border: "#D2C4A6",
   },
   white: {
-    id: "white", label: "흰색", swatch: "#E4E4DE", mode: "light",
-    bg: "#F3F3F0", bg2: "#FAFAF8", navBg: "rgba(243,243,240,0.95)",
-    paper: "#F7F5EF", paperLine: "#DDDAD0", ink: "#242320", cream: "#242320",
-    gold: "#5B5B54", goldSoft: "#43423C", good: "#3A6640", warn: "#9A5320",
-    danger: "#8C332C", muted: "#615C50", border: "#DAD7CC",
+    id: "white", label: "흰색", swatch: "#F5F5F1", mode: "light",
+    bg: "#FAFAF8", bg2: "#FFFFFF", navBg: "rgba(250,250,248,0.95)",
+    paper: "#FBFBF8", paperLine: "#E6E4DC", ink: "#242320", cream: "#242320",
+    gold: "#6B6B63", goldSoft: "#4A4A44", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#6E6A5F", border: "#E8E6DE",
   },
   gray: {
-    id: "gray", label: "회색", swatch: "#9C9C94", mode: "light",
-    bg: "#E7E7E4", bg2: "#F1F1EE", navBg: "rgba(231,231,228,0.95)",
-    paper: "#EEEEEA", paperLine: "#CFCFC8", ink: "#221F1B", cream: "#221F1B",
-    gold: "#5B5B54", goldSoft: "#3F3F39", good: "#3A6640", warn: "#9A5320",
-    danger: "#8C332C", muted: "#5E5C56", border: "#CFCFC8",
+    id: "gray", label: "회색", swatch: "#84847C", mode: "light",
+    bg: "#CFCFC8", bg2: "#DADAD3", paper: "#DEDED7", navBg: "rgba(207,207,200,0.95)",
+    paperLine: "#B7B7AC", ink: "#1D1C18", cream: "#1D1C18",
+    gold: "#4C4C45", goldSoft: "#35352F", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#46453F", border: "#B7B7AC",
+  },
+  teal: {
+    id: "teal", label: "청록", swatch: "#2E7D6E", mode: "light",
+    bg: "#DCEEEA", bg2: "#E9F5F2", navBg: "rgba(220,238,234,0.95)",
+    paper: "#E6F2EE", paperLine: "#A9D6CB", ink: "#122824", cream: "#122824",
+    gold: "#2E7D6E", goldSoft: "#1F5A4E", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#3E5F58", border: "#A9D6CB",
+  },
+  brown: {
+    id: "brown", label: "갈색", swatch: "#7A4E28", mode: "light",
+    bg: "#EDE3D6", bg2: "#F5EEE3", navBg: "rgba(237,227,214,0.95)",
+    paper: "#F2E9DA", paperLine: "#D8C1A1", ink: "#2A1E14", cream: "#2A1E14",
+    gold: "#7A4E28", goldSoft: "#54371C", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#5E4C3B", border: "#D8C1A1",
+  },
+  indigo: {
+    id: "indigo", label: "남색", swatch: "#3F4A9E", mode: "light",
+    bg: "#E1E3F2", bg2: "#EBEDF8", navBg: "rgba(225,227,242,0.95)",
+    paper: "#E8EAF6", paperLine: "#B8BEE3", ink: "#181B33", cream: "#181B33",
+    gold: "#3F4A9E", goldSoft: "#2C356F", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#454B70", border: "#B8BEE3",
+  },
+  olive: {
+    id: "olive", label: "카키", swatch: "#767A2E", mode: "light",
+    bg: "#EAEAD4", bg2: "#F2F2E1", navBg: "rgba(234,234,212,0.95)",
+    paper: "#EFEFD8", paperLine: "#D2D19E", ink: "#25260F", cream: "#25260F",
+    gold: "#767A2E", goldSoft: "#54561F", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#5C5D3E", border: "#D2D19E",
   },
   red: {
     id: "red", label: "빨강", swatch: "#B33B2E", mode: "light",
@@ -181,7 +209,7 @@ const THEMES = {
     danger: "#8C332C", muted: "#6B4557", border: "#E5B9CE",
   },
 };
-const THEME_ORDER = ["dark", "beige", "white", "gray", "red", "orange", "yellow", "green", "blue", "purple", "pink"];
+const THEME_ORDER = ["dark", "beige", "white", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink", "brown", "olive"];
 const DARK = THEMES.dark;
 const ThemeContext = createContext(DARK);
 const useTheme = () => useContext(ThemeContext);
@@ -196,6 +224,22 @@ function paperCard(T) {
 }
 function inputSty(T) { return { width: "100%", background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px", color: T.cream, fontSize: 15.5, outline: "none" }; }
 function primaryBtn(T) { return { width: "100%", background: T.gold, color: "#23190C", border: "none", borderRadius: 10, padding: "10px 0", fontWeight: 700, fontSize: 15.5, cursor: "pointer" }; }
+
+function MoneyInput({ value, onChange, placeholder, big, autoFocus }) {
+  const T = useTheme();
+  const display = value !== "" && value != null && !Number.isNaN(Number(value)) ? Number(value).toLocaleString("ko-KR") : "";
+  const handleChange = (e) => {
+    const raw = e.target.value.replace(/[^0-9]/g, "");
+    onChange(raw);
+  };
+  return (
+    <div style={{ position: "relative" }}>
+      <input type="text" inputMode="numeric" autoFocus={autoFocus} value={display} onChange={handleChange} placeholder={placeholder || "0"}
+        style={{ ...inputSty(T), fontFamily: F.mono, paddingRight: 36, ...(big ? { fontSize: 21.5, fontWeight: 600 } : {}) }} />
+      <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: T.muted, fontSize: big ? 14 : 12.5, pointerEvents: "none" }}>원</span>
+    </div>
+  );
+}
 
 function QuickAmountButtons({ amount, setAmount }) {
   const T = useTheme();
@@ -558,7 +602,7 @@ function ReceivablesCard({ ctx, receivables, catMap }) {
           {settlingId === r.id && (
             <div style={{ marginTop: 4, marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
               <div style={{ color: T.muted, fontSize: 12, marginBottom: 5 }}>실제 상환받은 금액 (부족분→카드값, 초과분→통장)</div>
-              <input type="number" inputMode="numeric" autoFocus value={repaidInput} onChange={(e) => setRepaidInput(e.target.value)} style={{ ...inputSty(T), fontFamily: F.mono, fontSize: 14.5 }} />
+              <MoneyInput value={repaidInput} onChange={setRepaidInput} autoFocus />
               <QuickAmountButtons amount={repaidInput} setAmount={setRepaidInput} />
               <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                 <button onClick={() => setSettlingId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13, cursor: "pointer" }}>취소</button>
@@ -739,7 +783,7 @@ function BalanceCard({ ctx, accountBalance }) {
               ))}
             </div>
           )}
-          <input type="number" inputMode="numeric" autoFocus value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="금액" style={{ ...inputSty(T), fontFamily: F.mono }} />
+          <MoneyInput value={amount} onChange={setAmount} placeholder="금액" autoFocus />
           <QuickAmountButtons amount={amount} setAmount={setAmount} />
           <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" style={{ ...inputSty(T), marginTop: 4 }} />
           <button onClick={submit} style={{ ...primaryBtn(T), background: mode === "in" ? T.good : T.danger, color: "#fff", marginTop: 4 }}>
@@ -863,11 +907,7 @@ function AddView({ ctx }) {
       ) : (
         <>
           <Field label="금액">
-            <div style={{ position: "relative" }}>
-              <input type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0"
-                style={{ ...inputSty(T), fontFamily: F.mono, fontSize: 21.5, fontWeight: 600, paddingRight: 36 }} />
-              <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: T.muted }}>원</span>
-            </div>
+            <MoneyInput value={amount} onChange={setAmount} big />
             <QuickAmountButtons amount={amount} setAmount={setAmount} />
           </Field>
 
@@ -934,7 +974,7 @@ function AddView({ ctx }) {
             {catBudgetEditing && (
               <div style={{ marginTop: 8 }}>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <input type="number" value={catBudgetInput} onChange={(e) => setCatBudgetInput(e.target.value)} placeholder="이번 달 예산 (0=해제)" style={{ ...inputSty(T), fontFamily: F.mono }} />
+                  <MoneyInput value={catBudgetInput} onChange={setCatBudgetInput} placeholder="이번 달 예산 (0=해제)" />
                   <button onClick={saveCatBudget} style={{ ...primaryBtn(T), width: 60 }}>확인</button>
                 </div>
                 <QuickAmountButtons amount={catBudgetInput} setAmount={setCatBudgetInput} />
@@ -1054,7 +1094,7 @@ function InstallmentForm({ ctx }) {
               </div>
               {overrideEditId === f.id && (
                 <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
-                  <input type="number" value={overrideInput} onChange={(e) => setOverrideInput(e.target.value)} style={{ ...inputSty(T), fontFamily: F.mono }} />
+                  <MoneyInput value={overrideInput} onChange={setOverrideInput} />
                   <button onClick={() => saveOverride(f)} style={{ ...primaryBtn(T), width: 60 }}>확인</button>
                 </div>
               )}
@@ -1070,7 +1110,7 @@ function InstallmentForm({ ctx }) {
         <input value={fixedName} onChange={(e) => setFixedName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
       </Field>
       <Field label="월 납입 금액">
-        <input type="number" value={fixedAmount} onChange={(e) => setFixedAmount(e.target.value)} placeholder="0" style={{ ...inputSty(T), fontFamily: F.mono }} />
+        <MoneyInput value={fixedAmount} onChange={setFixedAmount} />
         <QuickAmountButtons amount={fixedAmount} setAmount={setFixedAmount} />
       </Field>
       <Field label="반복 유형">
@@ -1472,20 +1512,20 @@ function SettingsView({ ctx }) {
 
       <SectionLabel>화면</SectionLabel>
       <Field label="화면 테마">
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", rowGap: 16, columnGap: 4 }}>
           {THEME_ORDER.map((id) => {
             const th = THEMES[id];
             const active = data.theme === id;
             return (
               <button key={id} onClick={() => setTheme(id)}
-                style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, width: 52 }}>
+                style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                 <span style={{
-                  width: 36, height: 36, borderRadius: "50%", background: th.swatch,
+                  width: 34, height: 34, borderRadius: "50%", background: th.swatch,
                   border: active ? `3px solid ${T.gold}` : `1px solid ${T.border}`,
                   boxShadow: active ? `0 0 0 2px ${T.bg2}` : "none",
                   display: "block",
                 }} />
-                <span style={{ color: active ? T.gold : T.muted, fontSize: 11, fontWeight: active ? 700 : 500 }}>{th.label}</span>
+                <span style={{ color: active ? T.gold : T.muted, fontSize: 10.5, fontWeight: active ? 700 : 500 }}>{th.label}</span>
               </button>
             );
           })}
@@ -1496,7 +1536,7 @@ function SettingsView({ ctx }) {
       <SectionLabel>예산</SectionLabel>
       <Field label="이번 달 목표 지출액">
         <div style={{ display: "flex", gap: 8 }}>
-          <input type="number" value={spendingGoalInput} onChange={(e) => setSpendingGoalInput(e.target.value)} placeholder="표기내역" style={{ ...inputSty(T), fontFamily: F.mono }} />
+          <MoneyInput value={spendingGoalInput} onChange={setSpendingGoalInput} />
           <button onClick={saveSpendingGoal} style={{ ...primaryBtn(T), width: 72 }}>저장</button>
         </div>
         <QuickAmountButtons amount={spendingGoalInput} setAmount={setSpendingGoalInput} />
@@ -1542,7 +1582,7 @@ function SettingsView({ ctx }) {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <input value={newAccountName} onChange={(e) => setNewAccountName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
-          <input type="number" value={newAccountBalance} onChange={(e) => setNewAccountBalance(e.target.value)} placeholder="시작 잔액 (선택)" style={{ ...inputSty(T), fontFamily: F.mono }} />
+          <MoneyInput value={newAccountBalance} onChange={setNewAccountBalance} placeholder="시작 잔액 (선택)" />
           <QuickAmountButtons amount={newAccountBalance} setAmount={setNewAccountBalance} />
           <button onClick={addAccount} style={primaryBtn(T)}>통장 추가</button>
         </div>
@@ -1575,7 +1615,7 @@ function SettingsView({ ctx }) {
           ))}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <input type="number" value={cardAddInput} onChange={(e) => setCardAddInput(e.target.value)} placeholder="새로 결제한 금액" style={{ ...inputSty(T), fontFamily: F.mono }} />
+          <MoneyInput value={cardAddInput} onChange={setCardAddInput} placeholder="새로 결제한 금액" />
           <button onClick={addCardBill} style={{ ...primaryBtn(T), width: 72 }}>추가</button>
         </div>
         <QuickAmountButtons amount={cardAddInput} setAmount={setCardAddInput} />
