@@ -273,7 +273,7 @@ function HomeView({ ctx }) {
       <BalanceCard ctx={ctx} accountBalance={accountBalance} />
 
       <div style={{ textAlign: "center", marginBottom: 6, marginTop: 18 }}>
-        <div style={{ color: T.muted, fontSize: 12, letterSpacing: 1 }}>급여 패스북</div>
+        <div style={{ color: T.muted, fontSize: 12, letterSpacing: 1 }}>내 돈 챙겨줘</div>
         <div style={{ color: T.cream, fontFamily: F.display, fontSize: 20, fontWeight: 700, marginTop: 2 }}>
           {monthLabel(curKey)} · {dayIntoCycle}일차
         </div>
