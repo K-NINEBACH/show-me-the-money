@@ -111,11 +111,12 @@ const FIXED_SORTS = [
 ];
 function sortFixedList(list, sortKey) {
   const arr = [...list];
-  if (sortKey === "amountDesc") arr.sort((a, b) => Number(b.info.amount) - Number(a.info.amount));
+  const byAmountDesc = (a, b) => Number(b.info.amount) - Number(a.info.amount);
+  if (sortKey === "amountDesc") arr.sort(byAmountDesc);
   else if (sortKey === "amountAsc") arr.sort((a, b) => Number(a.info.amount) - Number(b.info.amount));
-  else if (sortKey === "installment") arr.sort((a, b) => (a.totalMonths > 0 ? 0 : 1) - (b.totalMonths > 0 ? 0 : 1));
-  else if (sortKey === "card") arr.sort((a, b) => ((a.paymentMethod || "cash") === "card" ? 0 : 1) - ((b.paymentMethod || "cash") === "card" ? 0 : 1));
-  else if (sortKey === "cash") arr.sort((a, b) => ((a.paymentMethod || "cash") === "cash" ? 0 : 1) - ((b.paymentMethod || "cash") === "cash" ? 0 : 1));
+  else if (sortKey === "installment") arr.sort((a, b) => ((a.totalMonths > 0 ? 0 : 1) - (b.totalMonths > 0 ? 0 : 1)) || byAmountDesc(a, b));
+  else if (sortKey === "card") arr.sort((a, b) => (((a.paymentMethod || "cash") === "card" ? 0 : 1) - ((b.paymentMethod || "cash") === "card" ? 0 : 1)) || byAmountDesc(a, b));
+  else if (sortKey === "cash") arr.sort((a, b) => (((a.paymentMethod || "cash") === "cash" ? 0 : 1) - ((b.paymentMethod || "cash") === "cash" ? 0 : 1)) || byAmountDesc(a, b));
   return arr;
 }
 function FixedSortTabs({ sortKey, setSortKey }) {
@@ -1084,6 +1085,15 @@ function InstallmentForm({ ctx }) {
   const [overrideEditId, setOverrideEditId] = useState(null);
   const [overrideInput, setOverrideInput] = useState("");
   const [sortKey, setSortKey] = useState("default");
+  const [reassignEditId, setReassignEditId] = useState(null);
+
+  const reassignFixed = (f, newId) => {
+    const field = (f.paymentMethod || "cash") === "card" ? "cardId" : "accountId";
+    const updated = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, [field]: newId } : x));
+    persist({ ...data, fixedExpenses: updated });
+    setReassignEditId(null);
+    showToast("변경했어요");
+  };
 
   const removeFixed = (id) => {
     const f = data.fixedExpenses.find((x) => x.id === id);
@@ -1139,12 +1149,35 @@ function InstallmentForm({ ctx }) {
                 {info.active && (
                   <button onClick={() => { setOverrideEditId(f.id); setOverrideInput(String(info.amount)); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold }}><Pencil size={14} /></button>
                 )}
+                <button onClick={() => setReassignEditId(reassignEditId === f.id ? null : f.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.good }}>
+                  {(f.paymentMethod || "cash") === "card" ? <CreditCard size={14} /> : <Wallet size={14} />}
+                </button>
                 <button onClick={() => removeFixed(f.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={15} /></button>
               </div>
               {overrideEditId === f.id && (
                 <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
                   <MoneyInput value={overrideInput} onChange={setOverrideInput} />
                   <button onClick={() => saveOverride(f)} style={{ ...primaryBtn(T), width: 60 }}>확인</button>
+                </div>
+              )}
+              {reassignEditId === f.id && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ color: T.muted, fontSize: 11.5, marginBottom: 4 }}>
+                    {(f.paymentMethod || "cash") === "card" ? "다른 카드로 변경" : "다른 통장으로 변경"}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {((f.paymentMethod || "cash") === "card" ? data.cards : data.accounts).map((opt) => {
+                      const curId = (f.paymentMethod || "cash") === "card" ? f.cardId : f.accountId;
+                      const active = curId === opt.id;
+                      return (
+                        <button key={opt.id} onClick={() => reassignFixed(f, opt.id)}
+                          style={{ padding: "6px 10px", borderRadius: 16, border: active ? `2px solid ${T.good}` : `1px solid ${T.border}`,
+                            background: active ? T.good + "22" : "transparent", color: active ? T.cream : T.muted, fontSize: 13, cursor: "pointer" }}>
+                          {opt.name}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
