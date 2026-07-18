@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, createContext, useContext } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { Plus, Trash2, Settings, Home as HomeIcon, BookOpen, BarChart3, X, Check, CreditCard, HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Sun, Moon, Pencil, Repeat } from "lucide-react";
+import { Plus, Trash2, Settings, Home as HomeIcon, BookOpen, X, Check, CreditCard, HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Sun, Moon, Pencil, Repeat } from "lucide-react";
 
 // NOTE: storage key kept stable across revisions on purpose so existing user data
 // (expenses, categories, balance entries) survives future updates via migrate().
@@ -257,14 +256,12 @@ export default function App() {
           {tab === "home" && <HomeView ctx={ctx} />}
           {tab === "add" && <AddView ctx={ctx} />}
           {tab === "ledger" && <LedgerView ctx={ctx} />}
-          {tab === "analysis" && <AnalysisView ctx={ctx} />}
           {tab === "settings" && <SettingsView ctx={ctx} />}
         </div>
         <nav style={S.nav}>
           <NavBtn icon={HomeIcon} label="홈" active={tab === "home"} onClick={() => setTab("home")} />
           <NavBtn icon={Plus} label="기록" active={tab === "add"} onClick={() => setTab("add")} />
           <NavBtn icon={BookOpen} label="내역" active={tab === "ledger"} onClick={() => setTab("ledger")} />
-          <NavBtn icon={BarChart3} label="분석" active={tab === "analysis"} onClick={() => setTab("analysis")} />
           <NavBtn icon={Settings} label="설정" active={tab === "settings"} onClick={() => setTab("settings")} />
         </nav>
         {toast && <div style={S.toast}>{toast}</div>}
@@ -728,6 +725,17 @@ function AddView({ ctx }) {
   const [newCatMode, setNewCatMode] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
+  const [catBudgetEditing, setCatBudgetEditing] = useState(false);
+  const [catBudgetInput, setCatBudgetInput] = useState("");
+
+  const selectedCategory = data.categories.find((c) => c.id === categoryId);
+  const saveCatBudget = () => {
+    const n = Number(catBudgetInput);
+    if (Number.isNaN(n) || n < 0) return showToast("올바른 금액을 입력해주세요");
+    persist({ ...data, categories: data.categories.map((c) => (c.id === categoryId ? { ...c, budget: n } : c)) });
+    setCatBudgetEditing(false); setCatBudgetInput("");
+    showToast(n > 0 ? "카테고리 예산을 저장했어요" : "카테고리 예산을 해제했어요");
+  };
 
   const addCategory = () => {
     if (!newCatName.trim()) return;
@@ -840,6 +848,26 @@ function AddView({ ctx }) {
                 + 새 카테고리
               </button>
             </div>
+            {selectedCategory && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                <span style={{ color: T.muted, fontSize: 12 }}>
+                  {selectedCategory.name} 예산: {selectedCategory.budget > 0 ? fmtWon(selectedCategory.budget) : "없음"}
+                </span>
+                <button onClick={() => { setCatBudgetEditing(!catBudgetEditing); setCatBudgetInput(String(selectedCategory.budget || "")); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: T.gold }}>
+                  <Pencil size={13} />
+                </button>
+              </div>
+            )}
+            {catBudgetEditing && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input type="number" value={catBudgetInput} onChange={(e) => setCatBudgetInput(e.target.value)} placeholder="이번 달 예산 (0=해제)" style={{ ...inputSty(T), fontFamily: F.mono }} />
+                  <button onClick={saveCatBudget} style={{ ...primaryBtn(T), width: 60 }}>확인</button>
+                </div>
+                <QuickAmountButtons amount={catBudgetInput} setAmount={setCatBudgetInput} />
+              </div>
+            )}
             {newCatMode && (
               <div style={{ marginTop: 10, background: T.bg2, borderRadius: 10, padding: 12 }}>
                 <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="표기내역" style={{ ...inputSty(T), marginBottom: 8 }} />
@@ -1284,111 +1312,6 @@ function LedgerView({ ctx }) {
 }
 
 /* ---------- Analysis ---------- */
-function AnalysisView({ ctx }) {
-  const T = useTheme();
-  const { data, curKey, todayStr } = ctx;
-  const [compareKey, setCompareKey] = useState(monthKeyOffset(curKey, -1));
-  const [viewKey, setViewKey] = useState(curKey);
-  const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
-
-  const byCategory = useMemo(() => {
-    const map = {};
-    data.expenses.filter((e) => !e.isReceivable && e.date.slice(0, 7) === viewKey).forEach((e) => { map[e.categoryId] = (map[e.categoryId] || 0) + Number(e.amount); });
-    return Object.entries(map).map(([id, val]) => ({ id, name: catMap[id]?.name || "미분류", value: val, color: catMap[id]?.color || T.muted })).sort((a, b) => b.value - a.value);
-  }, [data.expenses, viewKey]);
-  const totalSpent = byCategory.reduce((s, c) => s + c.value, 0);
-
-  const curveData = useMemo(() => {
-    const maxDays = Math.max(daysInMonthKey(curKey), daysInMonthKey(compareKey));
-    let cumCur = 0, cumCmp = 0;
-    const arr = [];
-    for (let d = 1; d <= maxDays; d++) {
-      const curOk = d <= daysInMonthKey(curKey);
-      const cmpOk = d <= daysInMonthKey(compareKey);
-      const curDateStr = curOk ? dateStrFor(curKey, d) : null;
-      const cmpDateStr = cmpOk ? dateStrFor(compareKey, d) : null;
-      if (curDateStr) cumCur += data.expenses.filter((e) => !e.isReceivable && e.date === curDateStr).reduce((s, e) => s + Number(e.amount), 0);
-      if (cmpDateStr) cumCmp += data.expenses.filter((e) => !e.isReceivable && e.date === cmpDateStr).reduce((s, e) => s + Number(e.amount), 0);
-      arr.push({
-        day: `${d}일`,
-        이번달: curDateStr && curDateStr <= todayStr ? cumCur : null,
-        비교달: cmpDateStr && cmpDateStr <= todayStr ? cumCmp : (cmpDateStr && compareKey !== curKey ? cumCmp : null),
-      });
-    }
-    return arr;
-  }, [data.expenses, curKey, compareKey, todayStr]);
-
-  return (
-    <div>
-      <div style={{ color: T.cream, fontFamily: F.display, fontSize: 20.5, fontWeight: 700, marginBottom: 4 }}>분석</div>
-      <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 14, lineHeight: 1.5 }}>
-        이번 달 지출이 다른 달보다 빠르게 늘고 있는지, 어디에 많이 썼는지 확인하는 탭이에요.
-      </div>
-
-      <div style={{ ...paperCard(T), marginBottom: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-          <div style={{ fontFamily: F.display, color: T.ink, fontWeight: 700, fontSize: 15.5 }}>누적 지출 비교</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 12.5, color: T.goldSoft }}>비교할 달</span>
-            <input type="month" value={compareKey} onChange={(e) => setCompareKey(e.target.value)}
-              style={{ border: `1px solid ${T.paperLine}`, borderRadius: 6, padding: "3px 6px", fontSize: 12.5, background: "#fff", color: T.ink }} />
-          </div>
-        </div>
-        <div style={{ height: 180 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={curveData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid stroke={T.paperLine + "66"} vertical={false} />
-              <XAxis dataKey="day" tick={{ fontSize: 10.5, fill: T.mode === "dark" ? "#7A6E52" : "#9A8E6E" }} interval={4} />
-              <YAxis tick={{ fontSize: 10.5, fill: T.mode === "dark" ? "#7A6E52" : "#9A8E6E" }} tickFormatter={(v) => (v >= 10000 ? `${Math.round(v / 10000)}만` : v)} />
-              <Tooltip formatter={(v) => fmtWon(v)} contentStyle={{ fontSize: 13.5, fontFamily: F.body }} />
-              <Line type="monotone" dataKey="비교달" stroke="#B0A480" strokeWidth={2} dot={false} strokeDasharray="4 3" connectNulls />
-              <Line type="monotone" dataKey="이번달" stroke={T.danger} strokeWidth={2.5} dot={false} connectNulls />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-        <div style={{ fontSize: 12, color: T.goldSoft, marginTop: 4 }}>빨강 = {monthLabel(curKey)} · 점선 = {monthLabel(compareKey)}</div>
-      </div>
-
-      <div style={paperCard(T)}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-          <div style={{ fontFamily: F.display, color: T.ink, fontWeight: 700, fontSize: 15.5 }}>카테고리별 지출 비중</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 12.5, color: T.goldSoft }}>조회할 달</span>
-            <input type="month" value={viewKey} onChange={(e) => setViewKey(e.target.value)}
-              style={{ border: `1px solid ${T.paperLine}`, borderRadius: 6, padding: "3px 6px", fontSize: 12.5, background: "#fff", color: T.ink }} />
-          </div>
-        </div>
-        {byCategory.length === 0 ? (
-          <div style={{ color: T.muted, fontSize: 14.5, textAlign: "center", padding: "16px 0" }}>{monthLabel(viewKey)} 기록이 없어요.</div>
-        ) : (
-          <>
-            <div style={{ height: 160, display: "flex", justifyContent: "center" }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={byCategory} dataKey="value" nameKey="name" innerRadius={40} outerRadius={65} paddingAngle={2}>
-                    {byCategory.map((c, i) => <Cell key={i} fill={c.color} />)}
-                  </Pie>
-                  <Tooltip formatter={(v) => fmtWon(v)} contentStyle={{ fontSize: 13.5 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div style={{ marginTop: 4 }}>
-              {byCategory.map((c) => (
-                <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: c.color }} />
-                  <span style={{ flex: 1, color: T.ink, fontSize: 13.5 }}>{c.name}</span>
-                  <span style={{ color: T.mode === "dark" ? "#7A6E52" : "#9A8E6E", fontSize: 12.5 }}>{totalSpent ? Math.round((c.value / totalSpent) * 100) : 0}%</span>
-                  <span style={{ color: T.ink, fontFamily: F.mono, fontSize: 13.5, fontWeight: 600, minWidth: 70, textAlign: "right" }}>{fmtWon(c.value)}</span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* ---------- Settings ---------- */
 function SettingsView({ ctx }) {
   const T = useTheme();
