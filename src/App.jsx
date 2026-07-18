@@ -522,14 +522,16 @@ function HomeView({ ctx }) {
     <div>
       <BalanceCard ctx={ctx} accountBalance={accountBalance} />
 
-      <div style={{ textAlign: "center", marginBottom: 6, marginTop: 18 }}>
+      <div style={{ height: 1, background: `linear-gradient(90deg, transparent, ${T.border}, transparent)`, margin: "26px 0 0" }} />
+
+      <div style={{ textAlign: "center", marginBottom: 6, marginTop: 20 }}>
         <div style={{ color: T.muted, fontSize: 13.5, letterSpacing: 1 }}>내 돈 챙겨줘</div>
         <div style={{ color: T.cream, fontFamily: F.display, fontSize: 21.5, fontWeight: 700, marginTop: 2 }}>
           {monthLabel(curKey)} · {dayIntoCycle}일차
         </div>
       </div>
 
-      <SectionLabel>이번 달 목표</SectionLabel>
+      <SectionLabel>이번 달 목표 (계획)</SectionLabel>
       <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 8px" }}>
         <div style={{ position: "relative", width: 176, height: 176 }}>
           <svg width="176" height="176" viewBox="0 0 120 120">
@@ -550,10 +552,13 @@ function HomeView({ ctx }) {
         </div>
       </div>
       {!hasGoal && (
-        <div style={{ textAlign: "center", color: T.warn, fontSize: 12.5, marginTop: -4, marginBottom: 14 }}>
+        <div style={{ textAlign: "center", color: T.warn, fontSize: 12.5, marginTop: -4, marginBottom: 6 }}>
           설정에서 이번 달 목표 지출액을 정해주세요
         </div>
       )}
+      <div style={{ textAlign: "center", color: T.muted, fontSize: 11, marginTop: -4, marginBottom: 14, padding: "0 24px" }}>
+        목표 지출액 기준 계획상 금액이에요 · 카드값은 결제 전까지 통장 잔액에 반영 안 돼요
+      </div>
 
       <SummaryCard ctx={ctx} />
 
@@ -788,13 +793,14 @@ function BalanceCard({ ctx, accountBalance }) {
   };
 
   return (
-    <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}55`, borderRadius: 14, padding: "14px 16px" }}>
+    <div style={{ background: T.bg2, border: `1.5px solid ${T.good}77`, borderRadius: 14, padding: "14px 16px" }}>
       <button onClick={() => setExpanded(!expanded)} style={{ background: "none", border: "none", padding: 0, cursor: accountTotals.length > 1 ? "pointer" : "default", width: "100%", textAlign: "left" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-          <Wallet size={14} color={T.gold} />
-          <span style={{ color: T.muted, fontSize: 12.5 }}>통장 잔액 (총합){accountTotals.length > 1 ? (expanded ? " ▲" : " ▼") : ""}</span>
+          <Wallet size={14} color={T.good} />
+          <span style={{ color: T.good, fontSize: 12.5, fontWeight: 700 }}>통장 잔액 (총합){accountTotals.length > 1 ? (expanded ? " ▲" : " ▼") : ""}</span>
         </div>
-        <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 26, fontWeight: 700, marginBottom: 10 }}>{fmtWon(accountBalance)}</div>
+        <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 26, fontWeight: 700, marginBottom: 2 }}>{fmtWon(accountBalance)}</div>
+        <div style={{ color: T.good, fontSize: 10.5, marginBottom: 10 }}>실제로 계좌에 있는 돈 · 입출금·현금결제만 실시간 반영</div>
       </button>
       {expanded && accountTotals.length > 1 && (
         <div style={{ marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
