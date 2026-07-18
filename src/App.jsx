@@ -21,6 +21,7 @@ const defaultData = () => ({
   account: { initialBalance: 0 },
   cardBill: 0,
   savingsGoal: 0,
+  pinLock: { enabled: false, pin: "" },
   categories: [
     { id: "c1", name: "식비", color: PALETTE[0], budget: 0 },
     { id: "c2", name: "교통", color: PALETTE[3], budget: 0 },
@@ -29,6 +30,7 @@ const defaultData = () => ({
   expenses: [],
   fixedExpenses: [],
   balanceEntries: [],
+  trash: [],
 });
 
 function migrate(raw) {
@@ -52,7 +54,22 @@ function migrate(raw) {
   d.expenses = raw.expenses || [];
   d.balanceEntries = raw.balanceEntries || [];
   d.savingsGoal = Number(raw.savingsGoal) || 0;
+  d.pinLock = raw.pinLock && typeof raw.pinLock === "object" ? { enabled: false, pin: "", ...raw.pinLock } : { enabled: false, pin: "" };
+  d.trash = Array.isArray(raw.trash) ? raw.trash : [];
   return d;
+}
+
+function trashLabel(t, catMap) {
+  if (t.type === "expense") return (catMap[t.expense.categoryId]?.name || "미분류") + (t.expense.isReceivable ? " · 채권" : "");
+  if (t.type === "balance") return t.payload.type === "in" ? "입금" : "출금";
+  if (t.type === "fixed") return "고정지출 · " + t.payload.name;
+  return "삭제된 항목";
+}
+function trashAmount(t) {
+  if (t.type === "expense") return Number(t.expense.amount);
+  if (t.type === "balance") return Number(t.payload.amount);
+  if (t.type === "fixed") return Number(t.payload.baseAmount);
+  return 0;
 }
 
 
@@ -121,6 +138,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState("home");
   const [toast, setToast] = useState("");
+  const [unlocked, setUnlocked] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -149,6 +167,14 @@ export default function App() {
         <div style={{ background: DARK.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ color: DARK.cream, fontFamily: F.body }}>불러오는 중…</div>
         </div>
+      </ThemeContext.Provider>
+    );
+  }
+
+  if (data.pinLock?.enabled && !unlocked) {
+    return (
+      <ThemeContext.Provider value={T}>
+        <LockScreen data={data} onUnlock={() => setUnlocked(true)} />
       </ThemeContext.Provider>
     );
   }
@@ -222,6 +248,58 @@ export default function App() {
         {toast && <div style={S.toast}>{toast}</div>}
       </div>
     </ThemeContext.Provider>
+  );
+}
+
+function LockScreen({ data, onUnlock }) {
+  const T = useTheme();
+  const [entered, setEntered] = useState("");
+  const [error, setError] = useState(false);
+
+  const press = (d) => {
+    if (entered.length >= 4) return;
+    const next = entered + d;
+    setEntered(next);
+    if (next.length === 4) {
+      if (next === data.pinLock.pin) {
+        setTimeout(() => onUnlock(), 120);
+      } else {
+        setError(true);
+        setTimeout(() => { setEntered(""); setError(false); }, 500);
+      }
+    }
+  };
+  const backspace = () => setEntered((s) => s.slice(0, -1));
+
+  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"];
+
+  return (
+    <div style={{ background: T.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: F.body }}>
+      <GoogleFonts />
+      <div style={{ color: T.gold, fontFamily: F.display, fontSize: 18, fontWeight: 700, marginBottom: 24 }}>내 돈 챙겨줘</div>
+      <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} style={{
+            width: 14, height: 14, borderRadius: "50%",
+            background: i < entered.length ? (error ? T.danger : T.gold) : "transparent",
+            border: `2px solid ${error ? T.danger : T.goldSoft}`,
+          }} />
+        ))}
+      </div>
+      <div style={{ height: 16, color: T.danger, fontSize: 12, marginBottom: 10 }}>{error ? "PIN이 올바르지 않아요" : ""}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 68px)", gap: 16 }}>
+        {keys.map((k, i) =>
+          k === "" ? (
+            <div key={i} />
+          ) : (
+            <button key={i} onClick={() => (k === "⌫" ? backspace() : press(k))}
+              style={{ width: 68, height: 68, borderRadius: "50%", border: `1px solid ${T.border}`, background: T.bg2, color: T.cream, fontSize: 20, fontWeight: 600, cursor: "pointer" }}>
+              {k}
+            </button>
+          )
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -696,17 +774,51 @@ function LedgerView({ ctx }) {
 
   const remove = (id) => {
     const exp = data.expenses.find((e) => e.id === id);
+    if (!exp) return;
     let next = { ...data, expenses: data.expenses.filter((e) => e.id !== id) };
-    if (exp && !exp.isReceivable) {
+    let linkedBalanceEntry = null;
+    let cardBillDelta = 0;
+    if (!exp.isReceivable) {
       if ((exp.paymentMethod || "cash") === "card") {
-        next.cardBill = Math.max(0, (data.cardBill || 0) - Number(exp.amount));
+        cardBillDelta = Number(exp.amount);
+        next.cardBill = Math.max(0, (data.cardBill || 0) - cardBillDelta);
       } else if (exp.linkedBalanceId) {
+        linkedBalanceEntry = (data.balanceEntries || []).find((b) => b.id === exp.linkedBalanceId) || null;
         next.balanceEntries = (next.balanceEntries || data.balanceEntries || []).filter((b) => b.id !== exp.linkedBalanceId);
       }
     }
+    const trashItem = { id: "t" + Date.now(), type: "expense", deletedAt: todayISO(), expense: exp, linkedBalanceEntry, cardBillDelta };
+    next.trash = [...(data.trash || []), trashItem];
     persist(next);
+    showToast("휴지통으로 이동했어요");
   };
-  const removeBalance = (id) => persist({ ...data, balanceEntries: data.balanceEntries.filter((b) => b.id !== id) });
+  const removeBalance = (id) => {
+    const b = data.balanceEntries.find((x) => x.id === id);
+    if (!b) return;
+    const trashItem = { id: "t" + Date.now(), type: "balance", deletedAt: todayISO(), payload: b };
+    persist({ ...data, balanceEntries: data.balanceEntries.filter((x) => x.id !== id), trash: [...(data.trash || []), trashItem] });
+    showToast("휴지통으로 이동했어요");
+  };
+  const restoreTrash = (t) => {
+    let next = { ...data, trash: (data.trash || []).filter((x) => x.id !== t.id) };
+    if (t.type === "expense") {
+      next.expenses = [...data.expenses, t.expense];
+      if (t.linkedBalanceEntry) next.balanceEntries = [...(next.balanceEntries || data.balanceEntries || []), t.linkedBalanceEntry];
+      if (t.cardBillDelta) next.cardBill = (next.cardBill ?? data.cardBill ?? 0) + t.cardBillDelta;
+    } else if (t.type === "balance") {
+      next.balanceEntries = [...(next.balanceEntries || data.balanceEntries || []), t.payload];
+    } else if (t.type === "fixed") {
+      next.fixedExpenses = [...(data.fixedExpenses || []), t.payload];
+    }
+    persist(next);
+    showToast("복원했어요");
+  };
+  const purgeTrash = (id) => persist({ ...data, trash: (data.trash || []).filter((x) => x.id !== id) });
+  const emptyTrash = () => {
+    if (!data.trash?.length) return showToast("휴지통이 비어있어요");
+    persist({ ...data, trash: [] });
+    showToast("휴지통을 비웠어요");
+  };
 
   const openSettle = (e) => { setSettlingId(e.id); setRepaidInput(String(e.amount)); };
   const cancelSettle = () => { setSettlingId(null); setRepaidInput(""); };
@@ -739,7 +851,7 @@ function LedgerView({ ctx }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <div style={{ color: T.cream, fontFamily: F.display, fontSize: 19, fontWeight: 700 }}>전체 내역</div>
         <div style={{ display: "flex", background: T.bg2, borderRadius: 8, padding: 3, flexWrap: "wrap" }}>
-          {[["cycle", "이번달"], ["all", "전체"], ["card", "카드"], ["receivable", "채권"], ["balance", "입출금"]].map(([k, l]) => (
+          {[["cycle", "이번달"], ["all", "전체"], ["card", "카드"], ["receivable", "채권"], ["balance", "입출금"], ["trash", "휴지통"]].map(([k, l]) => (
             <button key={k} onClick={() => setFilter(k)}
               style={{ border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 11, fontWeight: 600,
                 background: filter === k ? T.gold : "transparent", color: filter === k ? "#23190C" : T.muted, cursor: "pointer" }}>
@@ -752,7 +864,32 @@ function LedgerView({ ctx }) {
       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="메모나 카테고리로 검색"
         style={{ ...inputSty(T), marginBottom: 14, fontSize: 13 }} />
 
-      {filter === "card" ? (
+      {filter === "trash" ? (
+        <>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <button onClick={emptyTrash} style={{ background: "transparent", border: `1px solid ${T.danger}`, color: T.danger, borderRadius: 8, padding: "6px 10px", fontSize: 11.5, cursor: "pointer" }}>
+              휴지통 비우기
+            </button>
+          </div>
+          {(!data.trash || data.trash.length === 0) ? (
+            <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>휴지통이 비어있어요.</div>
+          ) : (
+            <div style={paperCard(T)}>
+              {[...data.trash].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)).map((t) => (
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: T.ink, fontSize: 13, fontWeight: 600 }}>{trashLabel(t, catMap)}</div>
+                    <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 11 }}>{t.deletedAt} 삭제됨</div>
+                  </div>
+                  <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 13 }}>{fmtWon(trashAmount(t))}</div>
+                  <button onClick={() => restoreTrash(t)} style={{ background: T.good, border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", color: "#fff", fontSize: 11, fontWeight: 700 }}>복원</button>
+                  <button onClick={() => purgeTrash(t.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : filter === "card" ? (
         <>
           <div style={{ ...paperCard(T), marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
@@ -1002,6 +1139,8 @@ function SettingsView({ ctx }) {
   const [showExport, setShowExport] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
+  const [pin1, setPin1] = useState("");
+  const [pin2, setPin2] = useState("");
   const exportJson = JSON.stringify(data, null, 2);
   const doExport = () => {
     setShowExport(true); setShowImport(false);
@@ -1018,6 +1157,20 @@ function SettingsView({ ctx }) {
     } catch {
       showToast("올바른 JSON 형식이 아니에요");
     }
+  };
+  const savePin = () => {
+    if (!/^\d{4}$/.test(pin1)) return showToast("4자리 숫자를 입력하세요");
+    if (pin1 !== pin2) return showToast("PIN이 서로 달라요");
+    persist({ ...data, pinLock: { enabled: true, pin: pin1 } });
+    setPin1(""); setPin2("");
+    showToast("잠금을 설정했어요");
+  };
+  const disableLock = () => { persist({ ...data, pinLock: { enabled: false, pin: "" } }); showToast("잠금을 해제했어요"); };
+  const removeFixed = (id) => {
+    const f = data.fixedExpenses.find((x) => x.id === id);
+    if (!f) return;
+    const trashItem = { id: "t" + Date.now(), type: "fixed", deletedAt: todayISO(), payload: f };
+    persist({ ...data, fixedExpenses: data.fixedExpenses.filter((x) => x.id !== id), trash: [...(data.trash || []), trashItem] });
   };
 
   const addCardBill = () => { const n = Number(cardAddInput); if (!n || n <= 0) return showToast("금액을 입력해주세요"); persist({ ...data, cardBill: (data.cardBill || 0) + n }); setCardAddInput(""); showToast("카드값에 더했어요"); };
@@ -1051,7 +1204,6 @@ function SettingsView({ ctx }) {
     setFixedName(""); setFixedAmount(""); setTotalMonths(""); setStartInstallment("1"); setIsInstallment(false);
     showToast("고정지출을 추가했어요");
   };
-  const removeFixed = (id) => persist({ ...data, fixedExpenses: data.fixedExpenses.filter((f) => f.id !== id) });
   const saveOverride = (f) => {
     const n = Number(overrideInput);
     if (!n || n <= 0) return showToast("금액을 입력해주세요");
@@ -1076,6 +1228,32 @@ function SettingsView({ ctx }) {
             <Sun size={15} /> 라이트
           </button>
         </div>
+      </Field>
+
+      <Field label="화면 잠금 (PIN)">
+        {data.pinLock?.enabled ? (
+          <div>
+            <div style={{ color: T.good, fontSize: 12, marginBottom: 8, fontWeight: 700 }}>잠금 사용 중</div>
+            <button onClick={disableLock} style={{ width: "100%", padding: "9px 0", borderRadius: 8, border: `1px solid ${T.danger}`, background: "transparent", color: T.danger, fontSize: 12.5, cursor: "pointer", marginBottom: 10 }}>
+              잠금 끄기
+            </button>
+            <div style={{ color: T.muted, fontSize: 11, marginBottom: 6 }}>PIN 변경</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+              <input type="password" inputMode="numeric" maxLength={4} value={pin1} onChange={(e) => setPin1(e.target.value.replace(/\D/g, ""))} placeholder="새 PIN 4자리" style={{ ...inputSty(T), fontFamily: F.mono, letterSpacing: 4 }} />
+              <input type="password" inputMode="numeric" maxLength={4} value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, ""))} placeholder="확인" style={{ ...inputSty(T), fontFamily: F.mono, letterSpacing: 4 }} />
+            </div>
+            <button onClick={savePin} style={primaryBtn(T)}>PIN 변경</button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ color: T.muted, fontSize: 11, marginBottom: 8 }}>켜두면 앱을 열 때마다 4자리 PIN을 입력해야 해요.</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <input type="password" inputMode="numeric" maxLength={4} value={pin1} onChange={(e) => setPin1(e.target.value.replace(/\D/g, ""))} placeholder="PIN 4자리" style={{ ...inputSty(T), fontFamily: F.mono, letterSpacing: 4 }} />
+              <input type="password" inputMode="numeric" maxLength={4} value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, ""))} placeholder="PIN 확인" style={{ ...inputSty(T), fontFamily: F.mono, letterSpacing: 4 }} />
+            </div>
+            <button onClick={savePin} style={primaryBtn(T)}>잠금 켜기</button>
+          </div>
+        )}
       </Field>
 
       <Field label={`카드값 (현재 누적 ${fmtWon(cardBill)})`}>
