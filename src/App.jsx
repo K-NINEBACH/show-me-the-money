@@ -101,6 +101,34 @@ function fixedInfo(f, curKey) {
   return { active: true, label: `${cur}/${f.totalMonths}개월`, amount: amt, installment: cur };
 }
 
+const FIXED_SORTS = [
+  { key: "default", label: "입력순" },
+  { key: "amount", label: "고액순" },
+  { key: "installment", label: "할부 우선" },
+  { key: "cash", label: "통장 우선" },
+];
+function sortFixedList(list, sortKey) {
+  const arr = [...list];
+  if (sortKey === "amount") arr.sort((a, b) => Number(b.info.amount) - Number(a.info.amount));
+  else if (sortKey === "installment") arr.sort((a, b) => (a.totalMonths > 0 ? 0 : 1) - (b.totalMonths > 0 ? 0 : 1));
+  else if (sortKey === "cash") arr.sort((a, b) => ((a.paymentMethod || "cash") === "cash" ? 0 : 1) - ((b.paymentMethod || "cash") === "cash" ? 0 : 1));
+  return arr;
+}
+function FixedSortTabs({ sortKey, setSortKey }) {
+  const T = useTheme();
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+      {FIXED_SORTS.map((s) => (
+        <button key={s.key} onClick={() => setSortKey(s.key)}
+          style={{ border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10.5, fontWeight: 600, cursor: "pointer",
+            background: sortKey === s.key ? T.gold : "transparent", color: sortKey === s.key ? "#23190C" : T.muted }}>
+          {s.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /* ---------- Theme ---------- */
 const THEMES = {
   dark: {
@@ -538,21 +566,7 @@ function HomeView({ ctx }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
             <CategoryBudgetCard ctx={ctx} />
             {(fixedActive.length > 0 || fixedCardActive.length > 0) && (
-              <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px" }}>
-                <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 6 }}>이번달 고정지출 상세내역</div>
-                {fixedActive.map((f) => (
-                  <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, color: T.cream, padding: "3px 0" }}>
-                    <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""}<span style={{ color: T.muted, fontSize: 11.5 }}> · 통장</span></span>
-                    <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
-                  </div>
-                ))}
-                {fixedCardActive.map((f) => (
-                  <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, color: T.cream, padding: "3px 0" }}>
-                    <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""}<span style={{ color: T.gold, fontSize: 11.5 }}> · {data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드"}</span></span>
-                    <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
-                  </div>
-                ))}
-              </div>
+              <FixedDetailCard ctx={ctx} fixedActive={fixedActive} fixedCardActive={fixedCardActive} />
             )}
             {receivables.length > 0 && <ReceivablesCard ctx={ctx} receivables={receivables} catMap={catMap} />}
           </div>
@@ -640,6 +654,33 @@ function SummaryCard({ ctx }) {
   );
 }
 
+
+function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
+  const T = useTheme();
+  const { data } = ctx;
+  const [sortKey, setSortKey] = useState("default");
+  const combined = [...fixedActive, ...fixedCardActive];
+  const sorted = sortFixedList(combined, sortKey);
+  return (
+    <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px" }}>
+      <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 6 }}>이번달 고정지출 상세내역</div>
+      <FixedSortTabs sortKey={sortKey} setSortKey={setSortKey} />
+      {sorted.map((f) => {
+        const isCard = (f.paymentMethod || "cash") === "card";
+        return (
+          <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, color: T.cream, padding: "3px 0" }}>
+            <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""}
+              <span style={{ color: isCard ? T.gold : T.muted, fontSize: 11.5 }}>
+                {" · "}{isCard ? (data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드") : "통장"}
+              </span>
+            </span>
+            <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function CategoryBudgetCard({ ctx }) {
   const T = useTheme();
@@ -897,7 +938,7 @@ function AddView({ ctx }) {
           </button>
           <button onClick={() => setPayMethod("installment")}
             style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "installment" ? `2px solid ${T.warn}` : `1px solid ${T.border}`, background: payMethod === "installment" ? T.warn + "22" : "transparent", color: T.cream, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-            <Repeat size={14} /> 할부(대출)
+            <Repeat size={14} /> 할부(고정지출)
           </button>
         </div>
       </Field>
@@ -1037,6 +1078,7 @@ function InstallmentForm({ ctx }) {
   const [fixedCardId, setFixedCardId] = useState(data.cards?.[0]?.id || "");
   const [overrideEditId, setOverrideEditId] = useState(null);
   const [overrideInput, setOverrideInput] = useState("");
+  const [sortKey, setSortKey] = useState("default");
 
   const removeFixed = (id) => {
     const f = data.fixedExpenses.find((x) => x.id === id);
@@ -1074,8 +1116,9 @@ function InstallmentForm({ ctx }) {
   return (
     <div>
       <div style={{ background: T.bg2, borderRadius: 10, padding: 10, marginBottom: 16 }}>
-        {(data.fixedExpenses || []).map((f) => {
-          const info = fixedInfo(f, curKey);
+        <FixedSortTabs sortKey={sortKey} setSortKey={setSortKey} />
+        {sortFixedList((data.fixedExpenses || []).map((f) => ({ ...f, info: fixedInfo(f, curKey) })), sortKey).map((f) => {
+          const info = f.info;
           return (
             <div key={f.id} style={{ padding: "8px 4px", borderBottom: `1px solid ${T.border}` }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
