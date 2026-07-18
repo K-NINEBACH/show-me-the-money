@@ -1,0 +1,15 @@
+{
+  "name": "급여 패스북",
+  "short_name": "패스북",
+  "description": "급여일 기준으로 지출을 관리하는 개인 가계부",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#161B2E",
+  "theme_color": "#161B2E",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
