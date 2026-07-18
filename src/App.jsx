@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, createContext, useContext } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { Plus, Trash2, Settings, Home as HomeIcon, BookOpen, BarChart3, X, Check, CreditCard, HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Sun, Moon, Pencil } from "lucide-react";
+import { Plus, Trash2, Settings, Home as HomeIcon, BookOpen, BarChart3, X, Check, CreditCard, HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Sun, Moon, Pencil, Repeat } from "lucide-react";
 
 // NOTE: storage key kept stable across revisions on purpose so existing user data
 // (expenses, categories, balance entries) survives future updates via migrate().
@@ -16,11 +16,10 @@ const QUICK_AMOUNTS = [
 ];
 
 const defaultData = () => ({
-  salary: 1500000,
   theme: "dark",
-  account: { initialBalance: 0 },
+  spendingGoal: 0,
+  accounts: [{ id: "acc1", name: "통장", initialBalance: 0 }],
   cards: [{ id: "card1", name: "카드", bill: 0 }],
-  savingsGoal: 0,
   pinLock: { enabled: false, pin: "" },
   categories: [
     { id: "c1", name: "식비", color: PALETTE[0], budget: 0 },
@@ -35,7 +34,6 @@ const defaultData = () => ({
 
 function migrate(raw) {
   const d = { ...defaultData(), ...raw };
-  if (raw.budget != null && raw.salary == null) d.salary = raw.budget;
   if (Array.isArray(raw.cards) && raw.cards.length) {
     d.cards = raw.cards.map((c) => ({ bill: 0, ...c }));
   } else {
@@ -48,6 +46,11 @@ function migrate(raw) {
     }
     d.cards = [{ id: "card1", name: "카드", bill: legacyBill }];
   }
+  if (Array.isArray(raw.accounts) && raw.accounts.length) {
+    d.accounts = raw.accounts.map((a) => ({ initialBalance: 0, ...a }));
+  } else {
+    d.accounts = [{ id: "acc1", name: "통장", initialBalance: raw.account?.initialBalance || 0 }];
+  }
   if (Array.isArray(raw.fixedExpenses)) {
     d.fixedExpenses = raw.fixedExpenses.map((f) => {
       const base = f.totalMonths !== undefined
@@ -56,20 +59,19 @@ function migrate(raw) {
       return { paymentMethod: "cash", cardId: null, ...base };
     });
   }
-  d.account = raw.account || { initialBalance: 0 };
   d.categories = raw.categories && raw.categories.length ? raw.categories.map((c) => ({ budget: 0, ...c })) : defaultData().categories;
   d.expenses = raw.expenses || [];
-  d.balanceEntries = raw.balanceEntries || [];
-  d.savingsGoal = Number(raw.savingsGoal) || 0;
+  d.balanceEntries = (raw.balanceEntries || []).map((b) => ({ accountId: d.accounts[0]?.id || "acc1", ...b }));
+  d.spendingGoal = Number(raw.spendingGoal ?? raw.salary) || 0;
   d.pinLock = raw.pinLock && typeof raw.pinLock === "object" ? { enabled: false, pin: "", ...raw.pinLock } : { enabled: false, pin: "" };
   d.trash = Array.isArray(raw.trash) ? raw.trash : [];
   return d;
 }
 
 function trashLabel(t, catMap) {
-  if (t.type === "expense") return (catMap[t.expense.categoryId]?.name || "미분류") + (t.expense.isReceivable ? " · 채권" : "");
+  if (t.type === "expense") return (catMap[t.expense.categoryId]?.name || "미분류") + (t.expense.isReceivable ? " · 대리결제" : "");
   if (t.type === "balance") return t.payload.type === "in" ? "입금" : "출금";
-  if (t.type === "fixed") return "고정지출 · " + t.payload.name;
+  if (t.type === "fixed") return "표기내역 · " + t.payload.name;
   return "삭제된 항목";
 }
 function trashAmount(t) {
@@ -220,20 +222,24 @@ export default function App() {
   cycleExpenses.forEach((e) => { categorySpentThisMonth[e.categoryId] = (categorySpentThisMonth[e.categoryId] || 0) + Number(e.amount); });
 
   const spent = normalSpent + fixedSum + cardBillTotal;
-  const monthlyIncome = (data.balanceEntries || []).filter((b) => b.type === "in" && b.date.slice(0, 7) === curKey).reduce((s, b) => s + Number(b.amount), 0);
-  const hasIncome = monthlyIncome > 0;
-  const remaining = monthlyIncome - spent;
-  const budgetRatio = hasIncome ? Math.min(spent / monthlyIncome, 1.2) : (spent > 0 ? 1.2 : 0);
+  const spendingGoal = data.spendingGoal || 0;
+  const hasGoal = spendingGoal > 0;
+  const remaining = spendingGoal - spent;
+  const budgetRatio = hasGoal ? Math.min(spent / spendingGoal, 1.2) : (spent > 0 ? 1.2 : 0);
   const receivables = data.expenses.filter((e) => e.isReceivable && !e.settled);
 
-  const balanceIn = (data.balanceEntries || []).filter((b) => b.type === "in").reduce((s, b) => s + Number(b.amount), 0);
-  const balanceOut = (data.balanceEntries || []).filter((b) => b.type === "out").reduce((s, b) => s + Number(b.amount), 0);
-  const accountBalance = (data.account?.initialBalance || 0) + balanceIn - balanceOut;
+  const accounts = data.accounts && data.accounts.length ? data.accounts : [{ id: "acc1", name: "통장", initialBalance: 0 }];
+  const accountTotals = accounts.map((a) => {
+    const aIn = (data.balanceEntries || []).filter((b) => (b.accountId || accounts[0]?.id) === a.id && b.type === "in").reduce((s, b) => s + Number(b.amount), 0);
+    const aOut = (data.balanceEntries || []).filter((b) => (b.accountId || accounts[0]?.id) === a.id && b.type === "out").reduce((s, b) => s + Number(b.amount), 0);
+    return { ...a, balance: Number(a.initialBalance || 0) + aIn - aOut };
+  });
+  const accountBalance = accountTotals.reduce((s, a) => s + a.balance, 0);
 
   const ctx = {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSum, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, categorySpentThisMonth,
-    spent, remaining, budgetRatio, receivables, accountBalance, monthlyIncome, hasIncome,
+    spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal,
   };
 
   const S = {
@@ -354,7 +360,7 @@ function Field({ label, children }) {
 function HomeView({ ctx }) {
   const T = useTheme();
   const { data, curKey, dayIntoCycle, cycleLen, remaining, budgetRatio,
-    fixedSum, normalSpent, fixedActive, cardTotals, receivables, cycleExpenses, accountBalance, hasIncome } = ctx;
+    fixedSum, normalSpent, fixedActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal } = ctx;
   const over = remaining < 0;
   const ringColor = budgetRatio < 0.7 ? T.good : budgetRatio < 1 ? T.warn : T.danger;
   const dashArray = 2 * Math.PI * 54;
@@ -382,7 +388,7 @@ function HomeView({ ctx }) {
               style={{ transition: "stroke-dashoffset 0.6s ease, stroke 0.4s" }} />
           </svg>
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ color: T.muted, fontSize: 10, marginBottom: 2 }}>{over ? "예산 초과" : "남은 돈"}</div>
+            <div style={{ color: T.muted, fontSize: 10, marginBottom: 2 }}>{over ? "목표 초과" : "이번 달 사용 가능"}</div>
             <div style={{ color: over ? T.danger : T.cream, fontFamily: F.mono, fontWeight: 600, fontSize: 18, lineHeight: 1.15, textAlign: "center" }}>
               {over ? "-" : ""}{fmtWon(Math.abs(remaining))}
             </div>
@@ -392,9 +398,9 @@ function HomeView({ ctx }) {
           </div>
         </div>
       </div>
-      {!hasIncome && (
+      {!hasGoal && (
         <div style={{ textAlign: "center", color: T.warn, fontSize: 11, marginTop: -4, marginBottom: 14 }}>
-          이번 달 입금 기록이 아직 없어요 · 급여 받으면 위에서 &lsquo;입금&rsquo;으로 남겨주세요
+          설정에서 이번 달 목표 지출액을 정해주세요
         </div>
       )}
 
@@ -407,9 +413,8 @@ function HomeView({ ctx }) {
 
       <CardsBlock ctx={ctx} cardTotals={cardTotals} />
 
-      {(fixedActive.length > 0 || receivables.length > 0 || data.savingsGoal > 0 || data.categories.some((c) => c.budget > 0)) && (
+      {(fixedActive.length > 0 || receivables.length > 0 || data.categories.some((c) => c.budget > 0)) && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-          <SavingsGoalCard ctx={ctx} />
           <CategoryBudgetCard ctx={ctx} />
           {fixedActive.length > 0 && (
             <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px" }}>
@@ -422,20 +427,7 @@ function HomeView({ ctx }) {
               ))}
             </div>
           )}
-          {receivables.length > 0 && (
-            <div style={{ background: T.bg2, border: `1px solid ${T.good}55`, borderRadius: 12, padding: "10px 12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                <HandCoins size={13} color={T.good} />
-                <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>회수할 돈 (채권) · 내역 탭에서 정산</span>
-              </div>
-              {receivables.map((r) => (
-                <div key={r.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: T.cream, padding: "2px 0" }}>
-                  <span>{r.memo || catMap[r.categoryId]?.name || "대리결제"}</span>
-                  <span style={{ fontFamily: F.mono, color: T.good }}>{fmtWon(r.amount)}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          {receivables.length > 0 && <ReceivablesCard ctx={ctx} receivables={receivables} catMap={catMap} />}
         </div>
       )}
 
@@ -456,9 +448,49 @@ function HomeView({ ctx }) {
   );
 }
 
+function ReceivablesCard({ ctx, receivables, catMap }) {
+  const T = useTheme();
+  const [settlingId, setSettlingId] = useState(null);
+  const [repaidInput, setRepaidInput] = useState("");
+  const open = (r) => { setSettlingId(r.id); setRepaidInput(String(r.amount)); };
+  const confirm = (r) => { settleReceivable(ctx, r, repaidInput); setSettlingId(null); setRepaidInput(""); };
+  return (
+    <div style={{ background: T.bg2, border: `1px solid ${T.good}55`, borderRadius: 12, padding: "10px 12px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+        <HandCoins size={13} color={T.good} />
+        <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>대리결제(추후 정산)</span>
+      </div>
+      {receivables.map((r) => (
+        <div key={r.id}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: T.cream, padding: "3px 0" }}>
+            <span>{r.memo || catMap[r.categoryId]?.name || "대리결제"}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontFamily: F.mono, color: T.good }}>{fmtWon(r.amount)}</span>
+              {settlingId !== r.id && (
+                <button onClick={() => open(r)} style={{ background: T.good, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", color: "#fff", fontSize: 10.5, fontWeight: 700 }}>정산</button>
+              )}
+            </span>
+          </div>
+          {settlingId === r.id && (
+            <div style={{ marginTop: 4, marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
+              <div style={{ color: T.muted, fontSize: 10.5, marginBottom: 5 }}>실제 상환받은 금액 (부족분→카드값, 초과분→통장)</div>
+              <input type="number" inputMode="numeric" autoFocus value={repaidInput} onChange={(e) => setRepaidInput(e.target.value)} style={{ ...inputSty(T), fontFamily: F.mono, fontSize: 13 }} />
+              <QuickAmountButtons amount={repaidInput} setAmount={setRepaidInput} />
+              <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                <button onClick={() => setSettlingId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 11.5, cursor: "pointer" }}>취소</button>
+                <button onClick={() => confirm(r)} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>정산 확정</button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SummaryCard({ ctx }) {
   const T = useTheme();
-  const { curKey, totalSpentThisMonth, prevTotalSpent, remaining } = ctx;
+  const { curKey, totalSpentThisMonth, prevTotalSpent, remaining, hasGoal } = ctx;
   const hasPrev = prevTotalSpent > 0;
   const pct = hasPrev ? Math.round(((totalSpentThisMonth - prevTotalSpent) / prevTotalSpent) * 100) : null;
   const up = pct != null && pct > 0;
@@ -471,33 +503,15 @@ function SummaryCard({ ctx }) {
           {pct == null ? "지난달 비교 데이터 없음" : `지난달 대비 ${up ? "+" : ""}${pct}%`}
         </div>
       </div>
-      <div style={{ color: remaining >= 0 ? T.good : T.danger, fontSize: 12, marginTop: 4 }}>
-        {remaining >= 0 ? `저축 중 ${fmtWon(remaining)}` : `초과 지출 ${fmtWon(Math.abs(remaining))}`}
-      </div>
+      {hasGoal && (
+        <div style={{ color: remaining >= 0 ? T.good : T.danger, fontSize: 12, marginTop: 4 }}>
+          {remaining >= 0 ? `목표 대비 여유 ${fmtWon(remaining)}` : `목표 초과 ${fmtWon(Math.abs(remaining))}`}
+        </div>
+      )}
     </div>
   );
 }
 
-function SavingsGoalCard({ ctx }) {
-  const T = useTheme();
-  const { data, remaining } = ctx;
-  const goal = data.savingsGoal || 0;
-  if (goal <= 0) return null;
-  const saved = Math.max(0, remaining);
-  const ratio = Math.min(saved / goal, 1);
-  const reached = saved >= goal;
-  return (
-    <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: T.muted, marginBottom: 6 }}>
-        <span>이번 달 저축 목표</span>
-        <span style={{ color: reached ? T.good : T.muted, fontWeight: 700 }}>{fmtWon(saved)} / {fmtWon(goal)}</span>
-      </div>
-      <div style={{ height: 7, background: T.mode === "dark" ? "#2A2F4C" : "#EDE4CC", borderRadius: 4, overflow: "hidden" }}>
-        <div style={{ width: `${ratio * 100}%`, height: "100%", background: reached ? T.good : T.gold, transition: "width 0.4s" }} />
-      </div>
-    </div>
-  );
-}
 
 function CategoryBudgetCard({ ctx }) {
   const T = useTheme();
@@ -527,6 +541,25 @@ function CategoryBudgetCard({ ctx }) {
       </div>
     </div>
   );
+}
+
+function settleReceivable(ctx, exp, repaidAmount) {
+  const { data, persist, showToast } = ctx;
+  const repaid = Number(repaidAmount);
+  if (repaidAmount === "" || Number.isNaN(repaid) || repaid < 0) { showToast("상환받은 금액을 입력해주세요"); return; }
+  const diff = repaid - exp.amount;
+  let next = { ...data, expenses: data.expenses.map((e) => (e.id === exp.id ? { ...e, settled: true, repaidAmount: repaid, settledAt: todayISO() } : e)) };
+  if (diff < 0) {
+    const cid = exp.cardId || data.cards[0]?.id;
+    next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Number(c.bill || 0) + Math.abs(diff) } : c));
+  } else if (diff > 0) {
+    const aid = data.accounts[0]?.id;
+    next.balanceEntries = [...(next.balanceEntries || []), { id: "b" + Date.now(), type: "in", amount: diff, date: todayISO(), memo: "대리결제 정산 차액", accountId: aid }];
+  }
+  persist(next);
+  if (diff < 0) showToast(`부족분 ${fmtWon(Math.abs(diff))}이 카드값에 반영됐어요`);
+  else if (diff > 0) showToast(`초과분 ${fmtWon(diff)}이 통장 잔액에 반영됐어요`);
+  else showToast("정산 완료했어요");
 }
 
 function payCard(ctx, card) {
@@ -563,14 +596,18 @@ function CardsBlock({ ctx, cardTotals }) {
 function BalanceCard({ ctx, accountBalance }) {
   const T = useTheme();
   const { data, persist, showToast } = ctx;
+  const accountTotals = ctx.accountTotals || [];
   const [mode, setMode] = useState(null);
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
+  const [accountId, setAccountId] = useState(data.accounts?.[0]?.id || "");
+  const [expanded, setExpanded] = useState(false);
 
   const submit = () => {
     const n = Number(amount);
     if (!n || n <= 0) return showToast("금액을 입력해주세요");
-    const entry = { id: "b" + Date.now(), type: mode, amount: n, date: todayISO(), memo: memo.trim() };
+    if (!accountId) return showToast("통장을 먼저 선택해주세요");
+    const entry = { id: "b" + Date.now(), type: mode, amount: n, date: todayISO(), memo: memo.trim(), accountId };
     persist({ ...data, balanceEntries: [...(data.balanceEntries || []), entry] });
     setAmount(""); setMemo(""); setMode(null);
     showToast(mode === "in" ? "입금을 기록했어요" : "출금을 기록했어요");
@@ -578,11 +615,23 @@ function BalanceCard({ ctx, accountBalance }) {
 
   return (
     <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}55`, borderRadius: 14, padding: "14px 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-        <Wallet size={14} color={T.gold} />
-        <span style={{ color: T.muted, fontSize: 11 }}>통장 잔액</span>
-      </div>
-      <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 24, fontWeight: 700, marginBottom: 10 }}>{fmtWon(accountBalance)}</div>
+      <button onClick={() => setExpanded(!expanded)} style={{ background: "none", border: "none", padding: 0, cursor: accountTotals.length > 1 ? "pointer" : "default", width: "100%", textAlign: "left" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+          <Wallet size={14} color={T.gold} />
+          <span style={{ color: T.muted, fontSize: 11 }}>통장 잔액 (총합){accountTotals.length > 1 ? (expanded ? " ▲" : " ▼") : ""}</span>
+        </div>
+        <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 24, fontWeight: 700, marginBottom: 10 }}>{fmtWon(accountBalance)}</div>
+      </button>
+      {expanded && accountTotals.length > 1 && (
+        <div style={{ marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+          {accountTotals.map((a) => (
+            <div key={a.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: T.cream, padding: "3px 0", borderBottom: `1px dashed ${T.border}` }}>
+              <span>{a.name}</span>
+              <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(a.balance)}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={() => setMode(mode === "in" ? null : "in")}
           style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.good}`, background: mode === "in" ? T.good + "22" : "transparent", color: T.good, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
@@ -595,9 +644,20 @@ function BalanceCard({ ctx, accountBalance }) {
       </div>
       {mode && (
         <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          {(data.accounts || []).length > 1 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {data.accounts.map((a) => (
+                <button key={a.id} onClick={() => setAccountId(a.id)}
+                  style={{ padding: "6px 10px", borderRadius: 16, border: accountId === a.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
+                    background: accountId === a.id ? T.gold + "22" : "transparent", color: accountId === a.id ? T.cream : T.muted, fontSize: 11.5, cursor: "pointer" }}>
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          )}
           <input type="number" inputMode="numeric" autoFocus value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="금액" style={{ ...inputSty(T), fontFamily: F.mono }} />
           <QuickAmountButtons amount={amount} setAmount={setAmount} />
-          <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="메모 (선택, 예: 급여)" style={{ ...inputSty(T), marginTop: 4 }} />
+          <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" style={{ ...inputSty(T), marginTop: 4 }} />
           <button onClick={submit} style={{ ...primaryBtn(T), background: mode === "in" ? T.good : T.danger, color: "#fff", marginTop: 4 }}>
             {mode === "in" ? "입금 기록" : "출금 기록"}
           </button>
@@ -640,14 +700,15 @@ function LedgerRow({ e, cat }) {
 /* ---------- Add ---------- */
 function AddView({ ctx }) {
   const T = useTheme();
-  const { data, persist, showToast } = ctx;
+  const { data, persist, showToast, curKey } = ctx;
+  const [payMethod, setPayMethod] = useState("card"); // card | cash | installment
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState(data.categories[0]?.id || "");
   const [date, setDate] = useState(todayISO());
   const [memo, setMemo] = useState("");
   const [isReceivable, setIsReceivable] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState("card");
   const [cardId, setCardId] = useState(data.cards?.[0]?.id || "");
+  const [accountId, setAccountId] = useState(data.accounts?.[0]?.id || "");
   const [newCatMode, setNewCatMode] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
@@ -663,87 +724,275 @@ function AddView({ ctx }) {
     const n = Number(amount);
     if (!n || n <= 0) return showToast("금액을 입력해주세요");
     if (!categoryId) return showToast("카테고리를 선택해주세요");
-    if (!isReceivable && paymentMethod === "card" && !cardId) return showToast("설정에서 카드를 먼저 등록해주세요");
+    if (payMethod === "card" && !cardId) return showToast("설정에서 카드를 먼저 등록해주세요");
+    if (payMethod === "cash" && !accountId) return showToast("설정에서 통장을 먼저 등록해주세요");
     const catName = data.categories.find((c) => c.id === categoryId)?.name || "지출";
-    const linkedBalanceId = !isReceivable && paymentMethod === "cash" ? "b" + Date.now() : null;
-    const expense = { id: "e" + Date.now(), amount: n, categoryId, date, memo: memo.trim(), isReceivable, settled: false, repaidAmount: null, paymentMethod, cardId: paymentMethod === "card" ? cardId : null, linkedBalanceId };
+    const linkedBalanceId = !isReceivable && payMethod === "cash" ? "b" + Date.now() : null;
+    const expense = { id: "e" + Date.now(), amount: n, categoryId, date, memo: memo.trim(), isReceivable, settled: false, repaidAmount: null, paymentMethod: payMethod, cardId: payMethod === "card" ? cardId : null, linkedBalanceId };
     let next = { ...data, expenses: [...data.expenses, expense] };
     if (!isReceivable) {
-      if (paymentMethod === "card") {
+      if (payMethod === "card") {
         next.cards = data.cards.map((c) => (c.id === cardId ? { ...c, bill: Number(c.bill || 0) + n } : c));
       } else {
-        next.balanceEntries = [...(next.balanceEntries || []), { id: linkedBalanceId, type: "out", amount: n, date, memo: `${catName}${memo.trim() ? " · " + memo.trim() : ""}` }];
+        next.balanceEntries = [...(next.balanceEntries || []), { id: linkedBalanceId, type: "out", amount: n, date, memo: `${catName}${memo.trim() ? " · " + memo.trim() : ""}`, accountId }];
       }
     }
     persist(next);
     setAmount(""); setMemo(""); setIsReceivable(false);
-    showToast(isReceivable ? "채권으로 기록했어요" : paymentMethod === "card" ? "카드값에 반영했어요" : "통장에서 차감했어요");
+    showToast(isReceivable ? "대리결제로 기록했어요" : payMethod === "card" ? "카드값에 반영했어요" : "통장에서 차감했어요");
   };
 
   return (
     <div>
-      <div style={{ color: T.cream, fontFamily: F.display, fontSize: 19, fontWeight: 700, marginBottom: 16 }}>지출 기록</div>
-
-      <Field label="금액">
-        <div style={{ position: "relative" }}>
-          <input type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0"
-            style={{ ...inputSty(T), fontFamily: F.mono, fontSize: 20, fontWeight: 600, paddingRight: 36 }} />
-          <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: T.muted }}>원</span>
-        </div>
-        <QuickAmountButtons amount={amount} setAmount={setAmount} />
-      </Field>
-
-      <Field label="카테고리">
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {data.categories.map((c) => (
-            <button key={c.id} onClick={() => setCategoryId(c.id)}
-              style={{ padding: "8px 14px", borderRadius: 20, border: categoryId === c.id ? `2px solid ${c.color}` : `1px solid ${T.border}`,
-                background: categoryId === c.id ? c.color + "22" : "transparent", color: categoryId === c.id ? T.cream : T.muted,
-                fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.color }} />
-              {c.name}
-            </button>
-          ))}
-          <button onClick={() => setNewCatMode(!newCatMode)}
-            style={{ padding: "8px 12px", borderRadius: 20, border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 13, cursor: "pointer" }}>
-            + 새 카테고리
-          </button>
-        </div>
-        {newCatMode && (
-          <div style={{ marginTop: 10, background: T.bg2, borderRadius: 10, padding: 12 }}>
-            <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="카테고리 이름" style={{ ...inputSty(T), marginBottom: 8 }} />
-            <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-              {PALETTE.map((col) => (
-                <button key={col} onClick={() => setNewCatColor(col)}
-                  style={{ width: 24, height: 24, borderRadius: "50%", background: col, border: newCatColor === col ? `2px solid ${T.cream}` : "2px solid transparent", cursor: "pointer" }} />
-              ))}
-            </div>
-            <button onClick={addCategory} style={primaryBtn(T)}>카테고리 추가</button>
-          </div>
-        )}
-      </Field>
+      <div style={{ color: T.cream, fontFamily: F.display, fontSize: 19, fontWeight: 700, marginBottom: 16 }}>기록</div>
 
       <Field label="결제 수단">
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setPaymentMethod("card")}
-            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", borderRadius: 10, border: paymentMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: paymentMethod === "card" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-            <CreditCard size={15} /> 카드
+          <button onClick={() => setPayMethod("card")}
+            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: payMethod === "card" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+            <CreditCard size={14} /> 카드
           </button>
-          <button onClick={() => setPaymentMethod("cash")}
-            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", borderRadius: 10, border: paymentMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: paymentMethod === "cash" ? T.good + "22" : "transparent", color: T.cream, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-            <Wallet size={15} /> 통장(현금)
+          <button onClick={() => setPayMethod("cash")}
+            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: payMethod === "cash" ? T.good + "22" : "transparent", color: T.cream, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+            <Wallet size={14} /> 현금(통장)
+          </button>
+          <button onClick={() => setPayMethod("installment")}
+            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "installment" ? `2px solid ${T.warn}` : `1px solid ${T.border}`, background: payMethod === "installment" ? T.warn + "22" : "transparent", color: T.cream, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+            <Repeat size={14} /> 할부(대출)
           </button>
         </div>
-        <div style={{ color: T.muted, fontSize: 11, marginTop: 6 }}>
-          {paymentMethod === "card" ? "카드값에 누적되고, 홈에서 나중에 한번에 결제 처리해요." : "지금 바로 통장 잔액에서 차감되고 입출금 내역에도 남아요."}
+      </Field>
+
+      {payMethod === "installment" ? (
+        <InstallmentForm ctx={ctx} />
+      ) : (
+        <>
+          <Field label="금액">
+            <div style={{ position: "relative" }}>
+              <input type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0"
+                style={{ ...inputSty(T), fontFamily: F.mono, fontSize: 20, fontWeight: 600, paddingRight: 36 }} />
+              <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: T.muted }}>원</span>
+            </div>
+            <QuickAmountButtons amount={amount} setAmount={setAmount} />
+          </Field>
+
+          {payMethod === "card" ? (
+            (data.cards || []).length > 0 ? (
+              <Field label="카드">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {data.cards.map((c) => (
+                    <button key={c.id} onClick={() => setCardId(c.id)}
+                      style={{ padding: "7px 12px", borderRadius: 20, border: cardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
+                        background: cardId === c.id ? T.gold + "22" : "transparent", color: cardId === c.id ? T.cream : T.muted, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            ) : (
+              <div style={{ color: T.warn, fontSize: 11, marginBottom: 16 }}>등록된 카드가 없어요. 설정에서 먼저 카드를 등록해주세요.</div>
+            )
+          ) : (
+            (data.accounts || []).length > 1 && (
+              <Field label="통장">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {data.accounts.map((a) => (
+                    <button key={a.id} onClick={() => setAccountId(a.id)}
+                      style={{ padding: "7px 12px", borderRadius: 20, border: accountId === a.id ? `2px solid ${T.good}` : `1px solid ${T.border}`,
+                        background: accountId === a.id ? T.good + "22" : "transparent", color: accountId === a.id ? T.cream : T.muted, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                      {a.name}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            )
+          )}
+
+          <Field label="카테고리">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {data.categories.map((c) => (
+                <button key={c.id} onClick={() => setCategoryId(c.id)}
+                  style={{ padding: "8px 14px", borderRadius: 20, border: categoryId === c.id ? `2px solid ${c.color}` : `1px solid ${T.border}`,
+                    background: categoryId === c.id ? c.color + "22" : "transparent", color: categoryId === c.id ? T.cream : T.muted,
+                    fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.color }} />
+                  {c.name}
+                </button>
+              ))}
+              <button onClick={() => setNewCatMode(!newCatMode)}
+                style={{ padding: "8px 12px", borderRadius: 20, border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 13, cursor: "pointer" }}>
+                + 새 카테고리
+              </button>
+            </div>
+            {newCatMode && (
+              <div style={{ marginTop: 10, background: T.bg2, borderRadius: 10, padding: 12 }}>
+                <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="표기내역" style={{ ...inputSty(T), marginBottom: 8 }} />
+                <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                  {PALETTE.map((col) => (
+                    <button key={col} onClick={() => setNewCatColor(col)}
+                      style={{ width: 24, height: 24, borderRadius: "50%", background: col, border: newCatColor === col ? `2px solid ${T.cream}` : "2px solid transparent", cursor: "pointer" }} />
+                  ))}
+                </div>
+                <button onClick={addCategory} style={primaryBtn(T)}>카테고리 추가</button>
+              </div>
+            )}
+          </Field>
+
+          <Field label="날짜">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputSty(T)} />
+          </Field>
+
+          <Field label="메모 (선택)">
+            <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+          </Field>
+
+          <button onClick={() => setIsReceivable(!isReceivable)}
+            style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: isReceivable ? T.good + "22" : T.bg2,
+              border: isReceivable ? `1px solid ${T.good}` : `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 16, cursor: "pointer" }}>
+            <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isReceivable ? T.good : T.muted}`, background: isReceivable ? T.good : "transparent",
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              {isReceivable && <Check size={13} color="#fff" />}
+            </div>
+            <div style={{ textAlign: "left" }}>
+              <div style={{ color: isReceivable ? T.good : T.cream, fontSize: 13, fontWeight: 700 }}>대리결제 (추후 정산)</div>
+              <div style={{ color: T.muted, fontSize: 11 }}>예산에서 빠지고 홈 화면에서 바로 정산할 수 있어요.</div>
+            </div>
+          </button>
+
+          <button onClick={submit} style={{ ...primaryBtn(T), padding: "14px 0", fontSize: 15 }}>
+            <Check size={16} style={{ marginRight: 6, verticalAlign: -3 }} />
+            기록하기
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function InstallmentForm({ ctx }) {
+  const T = useTheme();
+  const { data, persist, showToast, curKey } = ctx;
+  const [fixedName, setFixedName] = useState("");
+  const [fixedAmount, setFixedAmount] = useState("");
+  const [isInstallment, setIsInstallment] = useState(false);
+  const [totalMonths, setTotalMonths] = useState("");
+  const [startInstallment, setStartInstallment] = useState("1");
+  const [fixedPaymentMethod, setFixedPaymentMethod] = useState("cash");
+  const [fixedCardId, setFixedCardId] = useState(data.cards?.[0]?.id || "");
+  const [overrideEditId, setOverrideEditId] = useState(null);
+  const [overrideInput, setOverrideInput] = useState("");
+
+  const removeFixed = (id) => {
+    const f = data.fixedExpenses.find((x) => x.id === id);
+    if (!f) return;
+    const trashItem = { id: "t" + Date.now(), type: "fixed", deletedAt: todayISO(), payload: f };
+    persist({ ...data, fixedExpenses: data.fixedExpenses.filter((x) => x.id !== id), trash: [...(data.trash || []), trashItem] });
+  };
+  const addFixed = () => {
+    const n = Number(fixedAmount);
+    if (!fixedName.trim()) return showToast("표기내역을 입력해주세요");
+    if (!n || n <= 0) return showToast("금액을 입력해주세요");
+    if (fixedPaymentMethod === "card" && !fixedCardId) return showToast("카드를 먼저 등록/선택하세요");
+    let item;
+    if (isInstallment) {
+      const tm = Number(totalMonths); const si = Number(startInstallment);
+      if (!tm || tm < 1) return showToast("총 개월수를 입력해주세요");
+      if (!si || si < 1 || si > tm) return showToast("현재 회차를 올바르게 입력해주세요 (1~총개월수)");
+      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: tm, startInstallment: si, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null };
+    } else {
+      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: 0, startInstallment: 1, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null };
+    }
+    persist({ ...data, fixedExpenses: [...(data.fixedExpenses || []), item] });
+    setFixedName(""); setFixedAmount(""); setTotalMonths(""); setStartInstallment("1"); setIsInstallment(false);
+    showToast("표기내역을 추가했어요");
+  };
+  const saveOverride = (f) => {
+    const n = Number(overrideInput);
+    if (!n || n <= 0) return showToast("금액을 입력해주세요");
+    const updated = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, overrides: { ...x.overrides, [curKey]: n } } : x));
+    persist({ ...data, fixedExpenses: updated });
+    setOverrideEditId(null); setOverrideInput("");
+    showToast("이번 달 금액을 수정했어요");
+  };
+
+  return (
+    <div>
+      <div style={{ background: T.bg2, borderRadius: 10, padding: 10, marginBottom: 16 }}>
+        {(data.fixedExpenses || []).map((f) => {
+          const info = fixedInfo(f, curKey);
+          return (
+            <div key={f.id} style={{ padding: "8px 4px", borderBottom: `1px solid ${T.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: T.cream, fontSize: 13, fontWeight: 600 }}>
+                    {f.name}{info.label ? ` · ${info.label}` : ""}{!info.active ? " · 완료" : ""}
+                  </div>
+                  <div style={{ color: T.muted, fontSize: 11 }}>
+                    {f.totalMonths ? "할부" : "매달 반복"} · 기본 {fmtWon(f.baseAmount)} · {(f.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === f.cardId)?.name || "카드") : "통장(대출/자동이체)"}
+                  </div>
+                </div>
+                {info.active && (
+                  <button onClick={() => { setOverrideEditId(f.id); setOverrideInput(String(info.amount)); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold }}><Pencil size={14} /></button>
+                )}
+                <button onClick={() => removeFixed(f.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={15} /></button>
+              </div>
+              {overrideEditId === f.id && (
+                <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
+                  <input type="number" value={overrideInput} onChange={(e) => setOverrideInput(e.target.value)} style={{ ...inputSty(T), fontFamily: F.mono }} />
+                  <button onClick={() => saveOverride(f)} style={{ ...primaryBtn(T), width: 60 }}>확인</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {(!data.fixedExpenses || data.fixedExpenses.length === 0) && (
+          <div style={{ color: T.muted, fontSize: 12, textAlign: "center", padding: "8px 0 12px" }}>등록된 표기내역이 없어요.</div>
+        )}
+      </div>
+
+      <Field label="표기내역">
+        <input value={fixedName} onChange={(e) => setFixedName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+      </Field>
+      <Field label="월 납입 금액">
+        <input type="number" value={fixedAmount} onChange={(e) => setFixedAmount(e.target.value)} placeholder="0" style={{ ...inputSty(T), fontFamily: F.mono }} />
+        <QuickAmountButtons amount={fixedAmount} setAmount={setFixedAmount} />
+      </Field>
+      <Field label="반복 유형">
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setIsInstallment(false)} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: !isInstallment ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: !isInstallment ? T.gold + "22" : "transparent", color: T.cream, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>매달 반복</button>
+          <button onClick={() => setIsInstallment(true)} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: isInstallment ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: isInstallment ? T.gold + "22" : "transparent", color: T.cream, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>할부</button>
         </div>
-        {paymentMethod === "card" && (
-          data.cards && data.cards.length > 0 ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+        {isInstallment && (
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: T.muted, fontSize: 10, marginBottom: 3 }}>총 개월수</div>
+              <input type="number" value={totalMonths} onChange={(e) => setTotalMonths(e.target.value)} placeholder="0" style={{ ...inputSty(T), fontFamily: F.mono }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: T.muted, fontSize: 10, marginBottom: 3 }}>현재 회차</div>
+              <input type="number" value={startInstallment} onChange={(e) => setStartInstallment(e.target.value)} placeholder="1" style={{ ...inputSty(T), fontFamily: F.mono }} />
+            </div>
+          </div>
+        )}
+      </Field>
+      <Field label="결제 방식">
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setFixedPaymentMethod("cash")}
+            style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: fixedPaymentMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: fixedPaymentMethod === "cash" ? T.good + "22" : "transparent", color: T.cream, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+            통장(대출/자동이체)
+          </button>
+          <button onClick={() => setFixedPaymentMethod("card")}
+            style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: fixedPaymentMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: fixedPaymentMethod === "card" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+            카드
+          </button>
+        </div>
+        {fixedPaymentMethod === "card" && (
+          (data.cards || []).length > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
               {data.cards.map((c) => (
-                <button key={c.id} onClick={() => setCardId(c.id)}
-                  style={{ padding: "7px 12px", borderRadius: 20, border: cardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                    background: cardId === c.id ? T.gold + "22" : "transparent", color: cardId === c.id ? T.cream : T.muted, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                <button key={c.id} onClick={() => setFixedCardId(c.id)}
+                  style={{ padding: "6px 10px", borderRadius: 16, border: fixedCardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
+                    background: fixedCardId === c.id ? T.gold + "22" : "transparent", color: fixedCardId === c.id ? T.cream : T.muted, fontSize: 11.5, cursor: "pointer" }}>
                   {c.name}
                 </button>
               ))}
@@ -753,32 +1002,7 @@ function AddView({ ctx }) {
           )
         )}
       </Field>
-
-      <Field label="날짜">
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputSty(T)} />
-      </Field>
-
-      <Field label="메모 (선택)">
-        <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 점심 도시락" style={inputSty(T)} />
-      </Field>
-
-      <button onClick={() => setIsReceivable(!isReceivable)}
-        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: isReceivable ? T.good + "22" : T.bg2,
-          border: isReceivable ? `1px solid ${T.good}` : `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 16, cursor: "pointer" }}>
-        <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isReceivable ? T.good : T.muted}`, background: isReceivable ? T.good : "transparent",
-          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          {isReceivable && <Check size={13} color="#fff" />}
-        </div>
-        <div style={{ textAlign: "left" }}>
-          <div style={{ color: isReceivable ? T.good : T.cream, fontSize: 13, fontWeight: 700 }}>지인 대리결제 (채권으로 분류)</div>
-          <div style={{ color: T.muted, fontSize: 11 }}>예산에서 빠지고 &lsquo;회수할 돈&rsquo; 목록으로 이동해요. 정산은 &lsquo;내역&rsquo; 탭에서 해요.</div>
-        </div>
-      </button>
-
-      <button onClick={submit} style={{ ...primaryBtn(T), padding: "14px 0", fontSize: 15 }}>
-        <Check size={16} style={{ marginRight: 6, verticalAlign: -3 }} />
-        기록하기
-      </button>
+      <button onClick={addFixed} style={primaryBtn(T)}>표기내역 추가</button>
     </div>
   );
 }
@@ -789,8 +1013,6 @@ function LedgerView({ ctx }) {
   const { data, persist, showToast, curKey } = ctx;
   const [filter, setFilter] = useState("cycle");
   const [search, setSearch] = useState("");
-  const [settlingId, setSettlingId] = useState(null);
-  const [repaidInput, setRepaidInput] = useState("");
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
   const searchLower = search.trim().toLowerCase();
   const matchesSearch = (e) => {
@@ -870,26 +1092,7 @@ function LedgerView({ ctx }) {
     showToast("휴지통을 비웠어요");
   };
 
-  const openSettle = (e) => { setSettlingId(e.id); setRepaidInput(String(e.amount)); };
-  const cancelSettle = () => { setSettlingId(null); setRepaidInput(""); };
 
-  const confirmSettle = (exp) => {
-    const repaid = Number(repaidInput);
-    if (repaidInput === "" || Number.isNaN(repaid) || repaid < 0) return showToast("상환받은 금액을 입력해주세요");
-    const diff = repaid - exp.amount;
-    let next2 = { ...data, expenses: data.expenses.map((e) => (e.id === exp.id ? { ...e, settled: true, repaidAmount: repaid, settledAt: todayISO() } : e)) };
-    if (diff < 0) {
-      const cid = exp.cardId || data.cards[0]?.id;
-      next2.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Number(c.bill || 0) + Math.abs(diff) } : c));
-    } else if (diff > 0) {
-      next2.balanceEntries = [...(next2.balanceEntries || []), { id: "b" + Date.now(), type: "in", amount: diff, date: todayISO(), memo: "채권 정산 차액" }];
-    }
-    persist(next2);
-    setSettlingId(null); setRepaidInput("");
-    if (diff < 0) showToast(`부족분 ${fmtWon(Math.abs(diff))}이 카드값에 반영됐어요`);
-    else if (diff > 0) showToast(`초과분 ${fmtWon(diff)}이 통장 잔액에 반영됐어요`);
-    else showToast("정산 완료했어요");
-  };
 
   const grouped = useMemo(() => {
     const map = {};
@@ -902,7 +1105,7 @@ function LedgerView({ ctx }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <div style={{ color: T.cream, fontFamily: F.display, fontSize: 19, fontWeight: 700 }}>전체 내역</div>
         <div style={{ display: "flex", background: T.bg2, borderRadius: 8, padding: 3, flexWrap: "wrap" }}>
-          {[["cycle", "이번달"], ["all", "전체"], ["card", "카드"], ["receivable", "채권"], ["balance", "입출금"], ["trash", "휴지통"]].map(([k, l]) => (
+          {[["cycle", "이번달"], ["all", "전체"], ["card", "카드"], ["receivable", "대리결제"], ["balance", "입출금"], ["trash", "휴지통"]].map(([k, l]) => (
             <button key={k} onClick={() => setFilter(k)}
               style={{ border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 11, fontWeight: 600,
                 background: filter === k ? T.gold : "transparent", color: filter === k ? "#23190C" : T.muted, cursor: "pointer" }}>
@@ -942,6 +1145,7 @@ function LedgerView({ ctx }) {
         </>
       ) : filter === "card" ? (
         <>
+          <div style={{ color: T.goldSoft, fontSize: 11, marginBottom: 8 }}>결제하기는 홈 화면에서 할 수 있어요. 여기서는 기록만 확인해요.</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
             {ctx.cardTotals.map((c) => (
               <div key={c.id} style={{ ...paperCard(T), display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px" }}>
@@ -950,10 +1154,6 @@ function LedgerView({ ctx }) {
                   <div style={{ color: T.ink, fontFamily: F.mono, fontSize: 17, fontWeight: 700 }}>{fmtWon(c.total)}</div>
                   {c.fixedPortion > 0 && <div style={{ color: T.goldSoft, fontSize: 10 }}>할부 {fmtWon(c.fixedPortion)} 포함</div>}
                 </div>
-                <button onClick={() => payCard(ctx, c)} disabled={!c.bill}
-                  style={{ background: c.bill ? T.gold : T.border, border: "none", borderRadius: 8, padding: "8px 14px", cursor: c.bill ? "pointer" : "default", color: c.bill ? "#23190C" : T.muted, fontSize: 12.5, fontWeight: 700 }}>
-                  결제하기
-                </button>
               </div>
             ))}
           </div>
@@ -1012,9 +1212,10 @@ function LedgerView({ ctx }) {
         )
       ) : filter === "receivable" ? (
         list.length === 0 ? (
-          <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>채권 기록이 없어요.</div>
+          <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>대리결제 기록이 없어요.</div>
         ) : (
           <div style={paperCard(T)}>
+            <div style={{ color: T.goldSoft, fontSize: 11, marginBottom: 8 }}>정산은 홈 화면에서 할 수 있어요. 여기서는 기록만 확인해요.</div>
             {list.map((e) => (
               <div key={e.id} style={{ padding: "10px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1026,23 +1227,8 @@ function LedgerView({ ctx }) {
                     <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 11 }}>{e.date}{e.settled ? ` · 상환 ${fmtWon(e.repaidAmount)}` : ""}</div>
                   </div>
                   <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 13 }}>{fmtWon(e.amount)}</div>
-                  {!e.settled && settlingId !== e.id && (
-                    <button onClick={() => openSettle(e)} style={{ background: T.good, border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", color: "#fff", fontSize: 11, fontWeight: 700 }}>정산</button>
-                  )}
                   <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
                 </div>
-                {settlingId === e.id && (
-                  <div style={{ marginTop: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 10, padding: 10 }}>
-                    <div style={{ color: T.ink, fontSize: 11.5, marginBottom: 6 }}>실제 상환(회수)받은 금액을 입력하세요. 부족분은 카드값에, 초과분은 통장 잔액에 자동 반영돼요.</div>
-                    <input type="number" inputMode="numeric" autoFocus value={repaidInput} onChange={(ev) => setRepaidInput(ev.target.value)}
-                      style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}`, fontFamily: F.mono }} />
-                    <QuickAmountButtons amount={repaidInput} setAmount={setRepaidInput} />
-                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                      <button onClick={cancelSettle} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.ink, fontSize: 12.5, cursor: "pointer" }}>취소</button>
-                      <button onClick={() => confirmSettle(e)} style={{ flex: 2, ...primaryBtn(T), padding: "9px 0" }}>정산 확정</button>
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -1190,21 +1376,13 @@ function AnalysisView({ ctx }) {
 /* ---------- Settings ---------- */
 function SettingsView({ ctx }) {
   const T = useTheme();
-  const { data, persist, showToast, curKey } = ctx;
+  const { data, persist, showToast } = ctx;
   const [selectedCardId, setSelectedCardId] = useState(data.cards?.[0]?.id || "");
   const [newCardName, setNewCardName] = useState("");
   const [cardAddInput, setCardAddInput] = useState("");
-  const [initBalInput, setInitBalInput] = useState(String(data.account?.initialBalance || 0));
-  const [fixedName, setFixedName] = useState("");
-  const [fixedAmount, setFixedAmount] = useState("");
-  const [isInstallment, setIsInstallment] = useState(false);
-  const [totalMonths, setTotalMonths] = useState("");
-  const [startInstallment, setStartInstallment] = useState("1");
-  const [fixedPaymentMethod, setFixedPaymentMethod] = useState("cash");
-  const [fixedCardId, setFixedCardId] = useState(data.cards?.[0]?.id || "");
-  const [overrideEditId, setOverrideEditId] = useState(null);
-  const [overrideInput, setOverrideInput] = useState("");
-  const [savingsGoalInput, setSavingsGoalInput] = useState(String(data.savingsGoal || ""));
+  const [newAccountName, setNewAccountName] = useState("");
+  const [newAccountBalance, setNewAccountBalance] = useState("");
+  const [spendingGoalInput, setSpendingGoalInput] = useState(String(data.spendingGoal || ""));
   const [catBudgetEditId, setCatBudgetEditId] = useState(null);
   const [catBudgetInput, setCatBudgetInput] = useState("");
   const [showExport, setShowExport] = useState(false);
@@ -1237,12 +1415,6 @@ function SettingsView({ ctx }) {
     showToast("잠금을 설정했어요");
   };
   const disableLock = () => { persist({ ...data, pinLock: { enabled: false, pin: "" } }); showToast("잠금을 해제했어요"); };
-  const removeFixed = (id) => {
-    const f = data.fixedExpenses.find((x) => x.id === id);
-    if (!f) return;
-    const trashItem = { id: "t" + Date.now(), type: "fixed", deletedAt: todayISO(), payload: f };
-    persist({ ...data, fixedExpenses: data.fixedExpenses.filter((x) => x.id !== id), trash: [...(data.trash || []), trashItem] });
-  };
 
   const addCard = () => {
     if (!newCardName.trim()) return showToast("카드 이름을 입력하세요");
@@ -1270,8 +1442,18 @@ function SettingsView({ ctx }) {
     persist({ ...data, cards: data.cards.map((c) => (c.id === selectedCardId ? { ...c, bill: 0 } : c)) });
     showToast("카드값을 초기화했어요");
   };
-  const saveInitBal = () => { const n = Number(initBalInput); if (Number.isNaN(n)) return showToast("올바른 금액을 입력해주세요"); persist({ ...data, account: { ...data.account, initialBalance: n } }); showToast("통장 초기 잔액을 저장했어요"); };
-  const saveSavingsGoal = () => { const n = Number(savingsGoalInput); if (Number.isNaN(n) || n < 0) return showToast("올바른 금액을 입력해주세요"); persist({ ...data, savingsGoal: n }); showToast("저축 목표를 저장했어요"); };
+  const addAccount = () => {
+    if (!newAccountName.trim()) return showToast("통장 이름을 입력하세요");
+    const acc = { id: "acc" + Date.now(), name: newAccountName.trim(), initialBalance: Number(newAccountBalance) || 0 };
+    persist({ ...data, accounts: [...(data.accounts || []), acc] });
+    setNewAccountName(""); setNewAccountBalance("");
+    showToast("통장을 등록했어요");
+  };
+  const removeAccount = (id) => {
+    if (data.accounts.length <= 1) return showToast("통장이 최소 1개는 있어야 해요");
+    persist({ ...data, accounts: data.accounts.filter((a) => a.id !== id) });
+  };
+  const saveSpendingGoal = () => { const n = Number(spendingGoalInput); if (Number.isNaN(n) || n < 0) return showToast("올바른 금액을 입력해주세요"); persist({ ...data, spendingGoal: n }); showToast("목표 지출액을 저장했어요"); };
   const setTheme = (mode) => persist({ ...data, theme: mode });
   const removeCategory = (id) => persist({ ...data, categories: data.categories.filter((c) => c.id !== id) });
   const saveCatBudget = (c) => {
@@ -1280,33 +1462,6 @@ function SettingsView({ ctx }) {
     persist({ ...data, categories: data.categories.map((x) => (x.id === c.id ? { ...x, budget: n } : x)) });
     setCatBudgetEditId(null); setCatBudgetInput("");
     showToast(n > 0 ? "카테고리 예산을 저장했어요" : "카테고리 예산을 해제했어요");
-  };
-
-  const addFixed = () => {
-    const n = Number(fixedAmount);
-    if (!fixedName.trim()) return showToast("이름을 입력해주세요");
-    if (!n || n <= 0) return showToast("금액을 입력해주세요");
-    if (fixedPaymentMethod === "card" && !fixedCardId) return showToast("카드를 먼저 등록/선택하세요");
-    let item;
-    if (isInstallment) {
-      const tm = Number(totalMonths); const si = Number(startInstallment);
-      if (!tm || tm < 1) return showToast("총 개월수를 입력해주세요");
-      if (!si || si < 1 || si > tm) return showToast("현재 회차를 올바르게 입력해주세요 (1~총개월수)");
-      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: tm, startInstallment: si, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null };
-    } else {
-      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: 0, startInstallment: 1, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null };
-    }
-    persist({ ...data, fixedExpenses: [...(data.fixedExpenses || []), item] });
-    setFixedName(""); setFixedAmount(""); setTotalMonths(""); setStartInstallment("1"); setIsInstallment(false);
-    showToast("고정지출을 추가했어요");
-  };
-  const saveOverride = (f) => {
-    const n = Number(overrideInput);
-    if (!n || n <= 0) return showToast("금액을 입력해주세요");
-    const updated = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, overrides: { ...x.overrides, [curKey]: n } } : x));
-    persist({ ...data, fixedExpenses: updated });
-    setOverrideEditId(null); setOverrideInput("");
-    showToast("이번 달 금액을 수정했어요");
   };
 
   return (
@@ -1324,6 +1479,15 @@ function SettingsView({ ctx }) {
             <Sun size={15} /> 라이트
           </button>
         </div>
+      </Field>
+
+      <Field label="이번 달 목표 지출액">
+        <div style={{ display: "flex", gap: 8 }}>
+          <input type="number" value={spendingGoalInput} onChange={(e) => setSpendingGoalInput(e.target.value)} placeholder="표기내역" style={{ ...inputSty(T), fontFamily: F.mono }} />
+          <button onClick={saveSpendingGoal} style={{ ...primaryBtn(T), width: 72 }}>저장</button>
+        </div>
+        <QuickAmountButtons amount={spendingGoalInput} setAmount={setSpendingGoalInput} />
+        <div style={{ color: T.muted, fontSize: 11, marginTop: 6 }}>홈 화면의 원형 게이지는 이 금액에서 고정지출·카드값·대출 등 총지출을 뺀 값을 보여줘요.</div>
       </Field>
 
       <Field label="화면 잠금 (PIN)">
@@ -1352,6 +1516,23 @@ function SettingsView({ ctx }) {
         )}
       </Field>
 
+      <Field label="통장 관리">
+        <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
+          {(data.accounts || []).map((a) => (
+            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
+              <span style={{ flex: 1, color: T.cream, fontSize: 13 }}>{a.name}</span>
+              <button onClick={() => removeAccount(a.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={15} /></button>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input value={newAccountName} onChange={(e) => setNewAccountName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+          <input type="number" value={newAccountBalance} onChange={(e) => setNewAccountBalance(e.target.value)} placeholder="시작 잔액 (선택)" style={{ ...inputSty(T), fontFamily: F.mono }} />
+          <QuickAmountButtons amount={newAccountBalance} setAmount={setNewAccountBalance} />
+          <button onClick={addAccount} style={primaryBtn(T)}>통장 추가</button>
+        </div>
+      </Field>
+
       <Field label="카드 관리">
         <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
           {(data.cards || []).map((c) => (
@@ -1363,7 +1544,7 @@ function SettingsView({ ctx }) {
           ))}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <input value={newCardName} onChange={(e) => setNewCardName(e.target.value)} placeholder="예: 현대카드, 삼성카드" style={inputSty(T)} />
+          <input value={newCardName} onChange={(e) => setNewCardName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
           <button onClick={addCard} style={{ ...primaryBtn(T), width: 72 }}>추가</button>
         </div>
       </Field>
@@ -1386,106 +1567,6 @@ function SettingsView({ ctx }) {
         <button onClick={resetCardBill} style={{ marginTop: 8, background: "transparent", border: `1px solid ${T.danger}`, color: T.danger, borderRadius: 8, padding: "6px 10px", fontSize: 11.5, cursor: "pointer" }}>
           선택한 카드 초기화 (결제 처리)
         </button>
-      </Field>
-
-      <Field label="통장 초기 잔액">
-        <div style={{ display: "flex", gap: 8 }}>
-          <input type="number" value={initBalInput} onChange={(e) => setInitBalInput(e.target.value)} style={{ ...inputSty(T), fontFamily: F.mono }} />
-          <button onClick={saveInitBal} style={{ ...primaryBtn(T), width: 72 }}>저장</button>
-        </div>
-        <QuickAmountButtons amount={initBalInput} setAmount={setInitBalInput} />
-      </Field>
-
-      <Field label="이번 달 저축 목표">
-        <div style={{ display: "flex", gap: 8 }}>
-          <input type="number" value={savingsGoalInput} onChange={(e) => setSavingsGoalInput(e.target.value)} placeholder="예: 500000" style={{ ...inputSty(T), fontFamily: F.mono }} />
-          <button onClick={saveSavingsGoal} style={{ ...primaryBtn(T), width: 72 }}>저장</button>
-        </div>
-        <QuickAmountButtons amount={savingsGoalInput} setAmount={setSavingsGoalInput} />
-        <div style={{ color: T.muted, fontSize: 11, marginTop: 6 }}>0으로 저장하면 홈 화면에서 숨겨져요.</div>
-      </Field>
-
-      <Field label="고정 지출 / 할부 템플릿">
-        <div style={{ background: T.bg2, borderRadius: 10, padding: 10 }}>
-          {(data.fixedExpenses || []).map((f) => {
-            const info = fixedInfo(f, curKey);
-            return (
-              <div key={f.id} style={{ padding: "8px 4px", borderBottom: `1px solid ${T.border}` }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ color: T.cream, fontSize: 13, fontWeight: 600 }}>
-                      {f.name}{info.label ? ` · ${info.label}` : ""}{!info.active ? " · 완료" : ""}
-                    </div>
-                    <div style={{ color: T.muted, fontSize: 11 }}>
-                      {f.totalMonths ? "할부" : "매달 반복"} · 기본 {fmtWon(f.baseAmount)} · {(f.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === f.cardId)?.name || "카드") : "통장(대출/자동이체)"}
-                    </div>
-                  </div>
-                  {info.active && (
-                    <button onClick={() => { setOverrideEditId(f.id); setOverrideInput(String(info.amount)); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold }}><Pencil size={14} /></button>
-                  )}
-                  <button onClick={() => removeFixed(f.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={15} /></button>
-                </div>
-                {overrideEditId === f.id && (
-                  <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
-                    <input type="number" value={overrideInput} onChange={(e) => setOverrideInput(e.target.value)} style={{ ...inputSty(T), fontFamily: F.mono }} />
-                    <button onClick={() => saveOverride(f)} style={{ ...primaryBtn(T), width: 60 }}>확인</button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {(!data.fixedExpenses || data.fixedExpenses.length === 0) && (
-            <div style={{ color: T.muted, fontSize: 12, textAlign: "center", padding: "8px 0 12px" }}>등록된 고정지출이 없어요.</div>
-          )}
-          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-            <input value={fixedName} onChange={(e) => setFixedName(e.target.value)} placeholder="예: 월세, 쏘렌토 할부" style={inputSty(T)} />
-            <input type="number" value={fixedAmount} onChange={(e) => setFixedAmount(e.target.value)} placeholder="월 납입 금액" style={{ ...inputSty(T), fontFamily: F.mono }} />
-            <QuickAmountButtons amount={fixedAmount} setAmount={setFixedAmount} />
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setIsInstallment(false)} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: !isInstallment ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: !isInstallment ? T.gold + "22" : "transparent", color: T.cream, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>매달 반복</button>
-              <button onClick={() => setIsInstallment(true)} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: isInstallment ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: isInstallment ? T.gold + "22" : "transparent", color: T.cream, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>할부</button>
-            </div>
-            {isInstallment && (
-              <div style={{ display: "flex", gap: 6 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: T.muted, fontSize: 10, marginBottom: 3 }}>총 개월수</div>
-                  <input type="number" value={totalMonths} onChange={(e) => setTotalMonths(e.target.value)} placeholder="예: 60" style={{ ...inputSty(T), fontFamily: F.mono }} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: T.muted, fontSize: 10, marginBottom: 3 }}>현재 회차</div>
-                  <input type="number" value={startInstallment} onChange={(e) => setStartInstallment(e.target.value)} placeholder="예: 27" style={{ ...inputSty(T), fontFamily: F.mono }} />
-                </div>
-              </div>
-            )}
-            <div style={{ color: T.muted, fontSize: 10, marginTop: 2 }}>결제 방식</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setFixedPaymentMethod("cash")}
-                style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: fixedPaymentMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: fixedPaymentMethod === "cash" ? T.good + "22" : "transparent", color: T.cream, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                통장(대출/자동이체)
-              </button>
-              <button onClick={() => setFixedPaymentMethod("card")}
-                style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: fixedPaymentMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: fixedPaymentMethod === "card" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                카드
-              </button>
-            </div>
-            {fixedPaymentMethod === "card" && (
-              (data.cards || []).length > 0 ? (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {data.cards.map((c) => (
-                    <button key={c.id} onClick={() => setFixedCardId(c.id)}
-                      style={{ padding: "6px 10px", borderRadius: 16, border: fixedCardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                        background: fixedCardId === c.id ? T.gold + "22" : "transparent", color: fixedCardId === c.id ? T.cream : T.muted, fontSize: 11.5, cursor: "pointer" }}>
-                      {c.name}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ color: T.warn, fontSize: 11 }}>등록된 카드가 없어요. 위에서 카드를 먼저 등록해주세요.</div>
-              )
-            )}
-            <button onClick={addFixed} style={primaryBtn(T)}>고정지출 추가</button>
-          </div>
-        </div>
       </Field>
 
       <Field label="카테고리 관리 / 예산">
