@@ -238,7 +238,7 @@ export default function App() {
 
   const ctx = {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
-    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSum, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, categorySpentThisMonth,
+    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, categorySpentThisMonth,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal,
   };
 
@@ -360,7 +360,7 @@ function Field({ label, children }) {
 function HomeView({ ctx }) {
   const T = useTheme();
   const { data, curKey, dayIntoCycle, cycleLen, remaining, budgetRatio,
-    fixedSum, normalSpent, fixedActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal } = ctx;
+    fixedSum, fixedSumAll, normalSpent, fixedActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal } = ctx;
   const over = remaining < 0;
   const ringColor = budgetRatio < 0.7 ? T.good : budgetRatio < 1 ? T.warn : T.danger;
   const dashArray = 2 * Math.PI * 54;
@@ -407,7 +407,7 @@ function HomeView({ ctx }) {
       <SummaryCard ctx={ctx} />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        <StatCard label="고정지출(대출 등)" value={fmtWon(fixedSum)} />
+        <StatCard label="고정지출(대출/카드할부 등)" value={fmtWon(fixedSumAll)} />
         <StatCard label="현금지출" value={fmtWon(normalSpent)} />
       </div>
 
