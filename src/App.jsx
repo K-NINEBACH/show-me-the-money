@@ -103,14 +103,18 @@ function fixedInfo(f, curKey) {
 
 const FIXED_SORTS = [
   { key: "default", label: "입력순" },
-  { key: "amount", label: "고액순" },
+  { key: "amountDesc", label: "금액 높은순" },
+  { key: "amountAsc", label: "금액 낮은순" },
   { key: "installment", label: "할부 우선" },
-  { key: "cash", label: "통장 우선" },
+  { key: "card", label: "카드우선" },
+  { key: "cash", label: "통장우선" },
 ];
 function sortFixedList(list, sortKey) {
   const arr = [...list];
-  if (sortKey === "amount") arr.sort((a, b) => Number(b.info.amount) - Number(a.info.amount));
+  if (sortKey === "amountDesc") arr.sort((a, b) => Number(b.info.amount) - Number(a.info.amount));
+  else if (sortKey === "amountAsc") arr.sort((a, b) => Number(a.info.amount) - Number(b.info.amount));
   else if (sortKey === "installment") arr.sort((a, b) => (a.totalMonths > 0 ? 0 : 1) - (b.totalMonths > 0 ? 0 : 1));
+  else if (sortKey === "card") arr.sort((a, b) => ((a.paymentMethod || "cash") === "card" ? 0 : 1) - ((b.paymentMethod || "cash") === "card" ? 0 : 1));
   else if (sortKey === "cash") arr.sort((a, b) => ((a.paymentMethod || "cash") === "cash" ? 0 : 1) - ((b.paymentMethod || "cash") === "cash" ? 0 : 1));
   return arr;
 }
@@ -671,7 +675,7 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
           <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, color: T.cream, padding: "3px 0" }}>
             <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""}
               <span style={{ color: isCard ? T.gold : T.muted, fontSize: 11.5 }}>
-                {" · "}{isCard ? (data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드") : "통장"}
+                {" · "}{isCard ? (data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장")}
               </span>
             </span>
             <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
@@ -1076,6 +1080,7 @@ function InstallmentForm({ ctx }) {
   const [startInstallment, setStartInstallment] = useState("1");
   const [fixedPaymentMethod, setFixedPaymentMethod] = useState("cash");
   const [fixedCardId, setFixedCardId] = useState(data.cards?.[0]?.id || "");
+  const [fixedAccountId, setFixedAccountId] = useState(data.accounts?.[0]?.id || "");
   const [overrideEditId, setOverrideEditId] = useState(null);
   const [overrideInput, setOverrideInput] = useState("");
   const [sortKey, setSortKey] = useState("default");
@@ -1091,14 +1096,15 @@ function InstallmentForm({ ctx }) {
     if (!fixedName.trim()) return showToast("표기내역을 입력해주세요");
     if (!n || n <= 0) return showToast("금액을 입력해주세요");
     if (fixedPaymentMethod === "card" && !fixedCardId) return showToast("카드를 먼저 등록/선택하세요");
+    if (fixedPaymentMethod === "cash" && !fixedAccountId) return showToast("통장을 먼저 등록/선택하세요");
     let item;
     if (isInstallment) {
       const tm = Number(totalMonths); const si = Number(startInstallment);
       if (!tm || tm < 1) return showToast("총 개월수를 입력해주세요");
       if (!si || si < 1 || si > tm) return showToast("현재 회차를 올바르게 입력해주세요 (1~총개월수)");
-      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: tm, startInstallment: si, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null };
+      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: tm, startInstallment: si, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null, accountId: fixedPaymentMethod === "cash" ? fixedAccountId : null };
     } else {
-      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: 0, startInstallment: 1, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null };
+      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: 0, startInstallment: 1, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null, accountId: fixedPaymentMethod === "cash" ? fixedAccountId : null };
     }
     persist({ ...data, fixedExpenses: [...(data.fixedExpenses || []), item] });
     setFixedName(""); setFixedAmount(""); setTotalMonths(""); setStartInstallment("1"); setIsInstallment(false);
@@ -1127,7 +1133,7 @@ function InstallmentForm({ ctx }) {
                     {f.name}{info.label ? ` · ${info.label}` : ""}{!info.active ? " · 완료" : ""}
                   </div>
                   <div style={{ color: T.muted, fontSize: 12.5 }}>
-                    {f.totalMonths ? "할부" : "매달 반복"} · 기본 {fmtWon(f.baseAmount)} · {(f.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === f.cardId)?.name || "카드") : "통장(대출/자동이체)"}
+                    {f.totalMonths ? "할부" : "매달 반복"} · 기본 {fmtWon(f.baseAmount)} · {(f.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === f.cardId)?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장(자동이체)")}
                   </div>
                 </div>
                 {info.active && (
@@ -1178,7 +1184,7 @@ function InstallmentForm({ ctx }) {
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setFixedPaymentMethod("cash")}
             style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: fixedPaymentMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: fixedPaymentMethod === "cash" ? T.good + "22" : "transparent", color: T.cream, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
-            통장(대출/자동이체)
+            통장(자동이체)
           </button>
           <button onClick={() => setFixedPaymentMethod("card")}
             style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: fixedPaymentMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: fixedPaymentMethod === "card" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
@@ -1199,6 +1205,17 @@ function InstallmentForm({ ctx }) {
           ) : (
             <div style={{ color: T.warn, fontSize: 12.5, marginTop: 8 }}>등록된 카드가 없어요. 설정에서 먼저 카드를 등록해주세요.</div>
           )
+        )}
+        {fixedPaymentMethod === "cash" && (data.accounts || []).length > 1 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+            {data.accounts.map((a) => (
+              <button key={a.id} onClick={() => setFixedAccountId(a.id)}
+                style={{ padding: "6px 10px", borderRadius: 16, border: fixedAccountId === a.id ? `2px solid ${T.good}` : `1px solid ${T.border}`,
+                  background: fixedAccountId === a.id ? T.good + "22" : "transparent", color: fixedAccountId === a.id ? T.cream : T.muted, fontSize: 13, cursor: "pointer" }}>
+                {a.name}
+              </button>
+            ))}
+          </div>
         )}
       </Field>
       <button onClick={addFixed} style={primaryBtn(T)}>표기내역 추가</button>
