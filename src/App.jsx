@@ -346,6 +346,11 @@ function NavBtn({ icon: Icon, label, active, onClick }) {
   );
 }
 
+function SectionLabel({ children }) {
+  const T = useTheme();
+  return <div style={{ color: T.goldSoft, fontSize: 11, fontWeight: 700, marginBottom: 8, marginTop: 4, paddingLeft: 2 }}>{children}</div>;
+}
+
 function Field({ label, children }) {
   const T = useTheme();
   return (
@@ -360,7 +365,7 @@ function Field({ label, children }) {
 function HomeView({ ctx }) {
   const T = useTheme();
   const { data, curKey, dayIntoCycle, cycleLen, remaining, budgetRatio,
-    fixedSum, fixedSumAll, normalSpent, fixedActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal } = ctx;
+    fixedSum, fixedSumAll, normalSpent, fixedActive, fixedCardActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal } = ctx;
   const over = remaining < 0;
   const ringColor = budgetRatio < 0.7 ? T.good : budgetRatio < 1 ? T.warn : T.danger;
   const dashArray = 2 * Math.PI * 54;
@@ -379,7 +384,8 @@ function HomeView({ ctx }) {
         </div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "center", margin: "18px 0 8px" }}>
+      <SectionLabel>이번 달 목표</SectionLabel>
+      <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 8px" }}>
         <div style={{ position: "relative", width: 176, height: 176 }}>
           <svg width="176" height="176" viewBox="0 0 120 120">
             <circle cx="60" cy="60" r="54" fill="none" stroke={T.mode === "dark" ? "#2A2F4C" : "#EDE4CC"} strokeWidth="10" />
@@ -406,6 +412,7 @@ function HomeView({ ctx }) {
 
       <SummaryCard ctx={ctx} />
 
+      <SectionLabel>지출 현황</SectionLabel>
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         <StatCard label="고정지출(대출/카드할부 등)" value={fmtWon(fixedSumAll)} />
         <StatCard label="현금지출" value={fmtWon(normalSpent)} />
@@ -413,22 +420,31 @@ function HomeView({ ctx }) {
 
       <CardsBlock ctx={ctx} cardTotals={cardTotals} />
 
-      {(fixedActive.length > 0 || receivables.length > 0 || data.categories.some((c) => c.budget > 0)) && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-          <CategoryBudgetCard ctx={ctx} />
-          {fixedActive.length > 0 && (
-            <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px" }}>
-              <div style={{ color: T.muted, fontSize: 11, marginBottom: 6 }}>이번 달 고정지출</div>
-              {fixedActive.map((f) => (
-                <div key={f.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: T.cream, padding: "2px 0" }}>
-                  <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""}</span>
-                  <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {receivables.length > 0 && <ReceivablesCard ctx={ctx} receivables={receivables} catMap={catMap} />}
-        </div>
+      {(fixedActive.length > 0 || fixedCardActive.length > 0 || receivables.length > 0 || data.categories.some((c) => c.budget > 0)) && (
+        <>
+          <SectionLabel>예산 관리</SectionLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+            <CategoryBudgetCard ctx={ctx} />
+            {(fixedActive.length > 0 || fixedCardActive.length > 0) && (
+              <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ color: T.muted, fontSize: 11, marginBottom: 6 }}>이번달 고정지출 상세내역</div>
+                {fixedActive.map((f) => (
+                  <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: T.cream, padding: "3px 0" }}>
+                    <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""}<span style={{ color: T.muted, fontSize: 10 }}> · 통장</span></span>
+                    <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
+                  </div>
+                ))}
+                {fixedCardActive.map((f) => (
+                  <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: T.cream, padding: "3px 0" }}>
+                    <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""}<span style={{ color: T.gold, fontSize: 10 }}> · {data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드"}</span></span>
+                    <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {receivables.length > 0 && <ReceivablesCard ctx={ctx} receivables={receivables} catMap={catMap} />}
+          </div>
+        </>
       )}
 
       <div style={paperCard(T)}>
@@ -1468,6 +1484,7 @@ function SettingsView({ ctx }) {
     <div>
       <div style={{ color: T.cream, fontFamily: F.display, fontSize: 19, fontWeight: 700, marginBottom: 16 }}>설정</div>
 
+      <SectionLabel>화면</SectionLabel>
       <Field label="화면 테마">
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setTheme("dark")}
@@ -1481,6 +1498,7 @@ function SettingsView({ ctx }) {
         </div>
       </Field>
 
+      <SectionLabel>예산</SectionLabel>
       <Field label="이번 달 목표 지출액">
         <div style={{ display: "flex", gap: 8 }}>
           <input type="number" value={spendingGoalInput} onChange={(e) => setSpendingGoalInput(e.target.value)} placeholder="표기내역" style={{ ...inputSty(T), fontFamily: F.mono }} />
@@ -1490,6 +1508,7 @@ function SettingsView({ ctx }) {
         <div style={{ color: T.muted, fontSize: 11, marginTop: 6 }}>홈 화면의 원형 게이지는 이 금액에서 고정지출·카드값·대출 등 총지출을 뺀 값을 보여줘요.</div>
       </Field>
 
+      <SectionLabel>보안</SectionLabel>
       <Field label="화면 잠금 (PIN)">
         {data.pinLock?.enabled ? (
           <div>
@@ -1516,6 +1535,7 @@ function SettingsView({ ctx }) {
         )}
       </Field>
 
+      <SectionLabel>계좌 · 카드</SectionLabel>
       <Field label="통장 관리">
         <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
           {(data.accounts || []).map((a) => (
@@ -1569,6 +1589,7 @@ function SettingsView({ ctx }) {
         </button>
       </Field>
 
+      <SectionLabel>카테고리</SectionLabel>
       <Field label="카테고리 관리 / 예산">
         <div style={{ background: T.bg2, borderRadius: 10, padding: 6 }}>
           {data.categories.map((c) => (
@@ -1595,6 +1616,7 @@ function SettingsView({ ctx }) {
         </div>
       </Field>
 
+      <SectionLabel>데이터</SectionLabel>
       <Field label="데이터 백업">
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
           <button onClick={doExport} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 12.5, cursor: "pointer" }}>내보내기</button>
