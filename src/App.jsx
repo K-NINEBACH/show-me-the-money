@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, createContext, useContext } from "react";
-import { Plus, Trash2, Settings, Home as HomeIcon, BookOpen, X, Check, CreditCard, HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Sun, Moon, Pencil, Repeat } from "lucide-react";
+import { Plus, Trash2, Settings, Home as HomeIcon, BookOpen, X, Check, CreditCard, HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Pencil, Repeat } from "lucide-react";
 
 // NOTE: storage key kept stable across revisions on purpose so existing user data
 // (expenses, categories, balance entries) survives future updates via migrate().
@@ -33,6 +33,8 @@ const defaultData = () => ({
 
 function migrate(raw) {
   const d = { ...defaultData(), ...raw };
+  if (raw.theme === "light") d.theme = "beige";
+  if (!THEMES[d.theme]) d.theme = "dark";
   if (Array.isArray(raw.cards) && raw.cards.length) {
     d.cards = raw.cards.map((c) => ({ bill: 0, ...c }));
   } else {
@@ -100,18 +102,87 @@ function fixedInfo(f, curKey) {
 }
 
 /* ---------- Theme ---------- */
-const DARK = {
-  mode: "dark", bg: "#161B2E", bg2: "#1E2440", navBg: "rgba(22,27,46,0.95)",
-  paper: "#F1E7D0", paperLine: "#D9C9A3", ink: "#2A2419", cream: "#EDE3CB",
-  gold: "#C79A46", goldSoft: "#8A6E3A", good: "#5B8A62", warn: "#C97C3D",
-  danger: "#B6473F", muted: "#9A9080", border: "#3A3F5C",
+const THEMES = {
+  dark: {
+    id: "dark", label: "검정", swatch: "#2A2F45", mode: "dark",
+    bg: "#161B2E", bg2: "#1E2440", navBg: "rgba(22,27,46,0.95)",
+    paper: "#F1E7D0", paperLine: "#D9C9A3", ink: "#2A2419", cream: "#EDE3CB",
+    gold: "#C79A46", goldSoft: "#8A6E3A", good: "#5B8A62", warn: "#C97C3D",
+    danger: "#B6473F", muted: "#9A9080", border: "#3A3F5C",
+  },
+  beige: {
+    id: "beige", label: "베이지", swatch: "#C9B183", mode: "light",
+    bg: "#EAE2D0", bg2: "#F4EEE0", navBg: "rgba(234,226,208,0.95)",
+    paper: "#F7F0DD", paperLine: "#D6C6A0", ink: "#241F17", cream: "#241F17",
+    gold: "#9C6F28", goldSoft: "#6E552A", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#5C5546", border: "#D2C4A6",
+  },
+  white: {
+    id: "white", label: "흰색", swatch: "#E4E4DE", mode: "light",
+    bg: "#F3F3F0", bg2: "#FAFAF8", navBg: "rgba(243,243,240,0.95)",
+    paper: "#F7F5EF", paperLine: "#DDDAD0", ink: "#242320", cream: "#242320",
+    gold: "#5B5B54", goldSoft: "#43423C", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#615C50", border: "#DAD7CC",
+  },
+  gray: {
+    id: "gray", label: "회색", swatch: "#9C9C94", mode: "light",
+    bg: "#E7E7E4", bg2: "#F1F1EE", navBg: "rgba(231,231,228,0.95)",
+    paper: "#EEEEEA", paperLine: "#CFCFC8", ink: "#221F1B", cream: "#221F1B",
+    gold: "#5B5B54", goldSoft: "#3F3F39", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#5E5C56", border: "#CFCFC8",
+  },
+  red: {
+    id: "red", label: "빨강", swatch: "#B33B2E", mode: "light",
+    bg: "#F5E4E1", bg2: "#FBEFEC", navBg: "rgba(245,228,225,0.95)",
+    paper: "#FAEEE9", paperLine: "#E3BEB4", ink: "#2A1917", cream: "#2A1917",
+    gold: "#B33B2E", goldSoft: "#7A281F", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#6B4A44", border: "#E0BBB1",
+  },
+  orange: {
+    id: "orange", label: "주황", swatch: "#C1701E", mode: "light",
+    bg: "#F6E9DA", bg2: "#FBF1E4", navBg: "rgba(246,233,218,0.95)",
+    paper: "#FAEEDC", paperLine: "#E6C89E", ink: "#2B2015", cream: "#2B2015",
+    gold: "#C1701E", goldSoft: "#8A4F15", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#6E5A45", border: "#E3C79C",
+  },
+  yellow: {
+    id: "yellow", label: "노랑", swatch: "#A98A17", mode: "light",
+    bg: "#F7F1D8", bg2: "#FCF8E4", navBg: "rgba(247,241,216,0.95)",
+    paper: "#FAF4D6", paperLine: "#E6D98E", ink: "#2A2612", cream: "#2A2612",
+    gold: "#A98A17", goldSoft: "#786010", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#6E6740", border: "#E3D488",
+  },
+  green: {
+    id: "green", label: "초록", swatch: "#3E7A3E", mode: "light",
+    bg: "#E4EFDE", bg2: "#EEF6E9", navBg: "rgba(228,239,222,0.95)",
+    paper: "#EBF3E1", paperLine: "#BEDCAE", ink: "#182A18", cream: "#182A18",
+    gold: "#3E7A3E", goldSoft: "#2B562B", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#496249", border: "#BEDCAE",
+  },
+  blue: {
+    id: "blue", label: "파랑", swatch: "#2E6DA4", mode: "light",
+    bg: "#DFEAF3", bg2: "#EAF3FA", navBg: "rgba(223,234,243,0.95)",
+    paper: "#E7F1F8", paperLine: "#AECFE6", ink: "#152531", cream: "#152531",
+    gold: "#2E6DA4", goldSoft: "#204C74", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#3F5A6B", border: "#AECFE6",
+  },
+  purple: {
+    id: "purple", label: "보라", swatch: "#7B4FA0", mode: "light",
+    bg: "#EBE1F0", bg2: "#F3ECF7", navBg: "rgba(235,225,240,0.95)",
+    paper: "#F0E8F5", paperLine: "#D2B9E3", ink: "#231831", cream: "#231831",
+    gold: "#7B4FA0", goldSoft: "#573773", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#5B4A6B", border: "#D2B9E3",
+  },
+  pink: {
+    id: "pink", label: "분홍", swatch: "#B34E82", mode: "light",
+    bg: "#F6E3EC", bg2: "#FBEFF4", navBg: "rgba(246,227,236,0.95)",
+    paper: "#FAEBF1", paperLine: "#E5B9CE", ink: "#2B151F", cream: "#2B151F",
+    gold: "#B34E82", goldSoft: "#7C3559", good: "#3A6640", warn: "#9A5320",
+    danger: "#8C332C", muted: "#6B4557", border: "#E5B9CE",
+  },
 };
-const LIGHT = {
-  mode: "light", bg: "#EAE2D0", bg2: "#F4EEE0", navBg: "rgba(234,226,208,0.95)",
-  paper: "#F7F0DD", paperLine: "#D6C6A0", ink: "#241F17", cream: "#241F17",
-  gold: "#9C6F28", goldSoft: "#6E552A", good: "#3A6640", warn: "#9A5320",
-  danger: "#8C332C", muted: "#5C5546", border: "#D2C4A6",
-};
+const THEME_ORDER = ["dark", "beige", "white", "gray", "red", "orange", "yellow", "green", "blue", "purple", "pink"];
+const DARK = THEMES.dark;
 const ThemeContext = createContext(DARK);
 const useTheme = () => useContext(ThemeContext);
 
@@ -167,7 +238,7 @@ export default function App() {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 1800); };
 
-  const T = data && data.theme === "light" ? LIGHT : DARK;
+  const T = (data && THEMES[data.theme]) || THEMES.dark;
 
   if (!loaded || !data) {
     return (
@@ -849,15 +920,16 @@ function AddView({ ctx }) {
               </button>
             </div>
             {selectedCategory && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-                <span style={{ color: T.muted, fontSize: 12 }}>
-                  {selectedCategory.name} 예산: {selectedCategory.budget > 0 ? fmtWon(selectedCategory.budget) : "없음"}
+              <button onClick={() => { setCatBudgetEditing(!catBudgetEditing); setCatBudgetInput(String(selectedCategory.budget || "")); }}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10,
+                  background: T.bg2, border: `1px solid ${T.gold}`, borderRadius: 10, padding: "10px 12px", cursor: "pointer" }}>
+                <span style={{ color: T.cream, fontSize: 13.5, fontWeight: 600 }}>
+                  {selectedCategory.name} 예산: <span style={{ color: selectedCategory.budget > 0 ? T.gold : T.muted, fontFamily: F.mono, fontWeight: 700 }}>{selectedCategory.budget > 0 ? fmtWon(selectedCategory.budget) : "없음"}</span>
                 </span>
-                <button onClick={() => { setCatBudgetEditing(!catBudgetEditing); setCatBudgetInput(String(selectedCategory.budget || "")); }}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: T.gold }}>
-                  <Pencil size={13} />
-                </button>
-              </div>
+                <span style={{ display: "flex", alignItems: "center", gap: 4, color: T.gold, fontSize: 12.5, fontWeight: 700 }}>
+                  <Pencil size={16} /> 설정
+                </span>
+              </button>
             )}
             {catBudgetEditing && (
               <div style={{ marginTop: 8 }}>
@@ -1322,8 +1394,6 @@ function SettingsView({ ctx }) {
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountBalance, setNewAccountBalance] = useState("");
   const [spendingGoalInput, setSpendingGoalInput] = useState(String(data.spendingGoal || ""));
-  const [catBudgetEditId, setCatBudgetEditId] = useState(null);
-  const [catBudgetInput, setCatBudgetInput] = useState("");
   const [showExport, setShowExport] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
@@ -1395,13 +1465,6 @@ function SettingsView({ ctx }) {
   const saveSpendingGoal = () => { const n = Number(spendingGoalInput); if (Number.isNaN(n) || n < 0) return showToast("올바른 금액을 입력해주세요"); persist({ ...data, spendingGoal: n }); showToast("목표 지출액을 저장했어요"); };
   const setTheme = (mode) => persist({ ...data, theme: mode });
   const removeCategory = (id) => persist({ ...data, categories: data.categories.filter((c) => c.id !== id) });
-  const saveCatBudget = (c) => {
-    const n = Number(catBudgetInput);
-    if (Number.isNaN(n) || n < 0) return showToast("올바른 금액을 입력해주세요");
-    persist({ ...data, categories: data.categories.map((x) => (x.id === c.id ? { ...x, budget: n } : x)) });
-    setCatBudgetEditId(null); setCatBudgetInput("");
-    showToast(n > 0 ? "카테고리 예산을 저장했어요" : "카테고리 예산을 해제했어요");
-  };
 
   return (
     <div>
@@ -1409,16 +1472,25 @@ function SettingsView({ ctx }) {
 
       <SectionLabel>화면</SectionLabel>
       <Field label="화면 테마">
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setTheme("dark")}
-            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", borderRadius: 10, border: data.theme !== "light" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: data.theme !== "light" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 14.5, fontWeight: 700, cursor: "pointer" }}>
-            <Moon size={15} /> 다크
-          </button>
-          <button onClick={() => setTheme("light")}
-            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", borderRadius: 10, border: data.theme === "light" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: data.theme === "light" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 14.5, fontWeight: 700, cursor: "pointer" }}>
-            <Sun size={15} /> 라이트
-          </button>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+          {THEME_ORDER.map((id) => {
+            const th = THEMES[id];
+            const active = data.theme === id;
+            return (
+              <button key={id} onClick={() => setTheme(id)}
+                style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, width: 52 }}>
+                <span style={{
+                  width: 36, height: 36, borderRadius: "50%", background: th.swatch,
+                  border: active ? `3px solid ${T.gold}` : `1px solid ${T.border}`,
+                  boxShadow: active ? `0 0 0 2px ${T.bg2}` : "none",
+                  display: "block",
+                }} />
+                <span style={{ color: active ? T.gold : T.muted, fontSize: 11, fontWeight: active ? 700 : 500 }}>{th.label}</span>
+              </button>
+            );
+          })}
         </div>
+        <div style={{ color: T.muted, fontSize: 12, marginTop: 10 }}>현재 테마: {THEMES[data.theme]?.label || "검정"}</div>
       </Field>
 
       <SectionLabel>예산</SectionLabel>
@@ -1513,30 +1585,18 @@ function SettingsView({ ctx }) {
       </Field>
 
       <SectionLabel>카테고리</SectionLabel>
-      <Field label="카테고리 관리 / 예산">
+      <Field label="카테고리 관리">
         <div style={{ background: T.bg2, borderRadius: 10, padding: 6 }}>
           {data.categories.map((c) => (
-            <div key={c.id} style={{ padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ width: 10, height: 10, borderRadius: "50%", background: c.color }} />
-                <span style={{ flex: 1, color: T.cream, fontSize: 14.5 }}>{c.name}</span>
-                <span style={{ color: T.muted, fontSize: 12.5 }}>{c.budget > 0 ? `예산 ${fmtWon(c.budget)}` : "예산 없음"}</span>
-                <button onClick={() => { setCatBudgetEditId(c.id); setCatBudgetInput(String(c.budget || "")); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold }}><Pencil size={14} /></button>
-                <button onClick={() => removeCategory(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={15} /></button>
-              </div>
-              {catBudgetEditId === c.id && (
-                <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input type="number" value={catBudgetInput} onChange={(e) => setCatBudgetInput(e.target.value)} placeholder="이번 달 예산 (0=해제)" style={{ ...inputSty(T), fontFamily: F.mono }} />
-                    <button onClick={() => saveCatBudget(c)} style={{ ...primaryBtn(T), width: 60 }}>확인</button>
-                  </div>
-                  <QuickAmountButtons amount={catBudgetInput} setAmount={setCatBudgetInput} />
-                </div>
-              )}
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
+              <span style={{ width: 10, height: 10, borderRadius: "50%", background: c.color }} />
+              <span style={{ flex: 1, color: T.cream, fontSize: 14.5 }}>{c.name}</span>
+              <button onClick={() => removeCategory(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={15} /></button>
             </div>
           ))}
           {data.categories.length === 0 && <div style={{ color: T.muted, fontSize: 13.5, textAlign: "center", padding: "10px 0" }}>카테고리가 없어요. &lsquo;기록&rsquo; 탭에서 추가할 수 있어요.</div>}
         </div>
+        <div style={{ color: T.muted, fontSize: 12, marginTop: 8 }}>카테고리별 예산은 &lsquo;기록&rsquo; 탭에서 설정해요.</div>
       </Field>
 
       <SectionLabel>데이터</SectionLabel>
