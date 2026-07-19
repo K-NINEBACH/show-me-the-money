@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, createContext, useContext } from "react";
-import { Plus, Trash2, Settings, Home as HomeIcon, BookOpen, X, Check, CreditCard, HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Pencil, Repeat, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Settings, Home as HomeIcon, BookOpen, X, Check, CreditCard, HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Pencil, Repeat, Calendar, ChevronLeft, ChevronRight, ClipboardPaste } from "lucide-react";
 
 // NOTE: storage key kept stable across revisions on purpose so existing user data
 // (expenses, categories, balance entries) survives future updates via migrate().
@@ -95,6 +95,39 @@ function purgeOldTrash(d) {
 
 
 function fmtWon(n) { return Math.round(n).toLocaleString("ko-KR") + "원"; }
+
+function parsePaymentText(text) {
+  const amountMatch = text.match(/([\d,]{3,})\s*원/);
+  const amount = amountMatch ? amountMatch[1].replace(/,/g, "") : "";
+
+  let type = "unknown";
+  if (/입금|입금액|이체입금/.test(text)) type = "in";
+  else if (/승인|출금|결제|이체출금/.test(text)) type = "out";
+
+  const dateMatch = text.match(/(\d{1,2})[\/.\-](\d{1,2})/);
+  let date = null;
+  if (dateMatch) {
+    const now = new Date();
+    const mm = String(dateMatch[1]).padStart(2, "0");
+    const dd = String(dateMatch[2]).padStart(2, "0");
+    date = `${now.getFullYear()}-${mm}-${dd}`;
+  }
+
+  const noise = /^(승인|일시불|할부|원|입금|출금|결제|잔액|카드|Web발신|체크카드|신용카드|누적|사용|금액|매출|취소|이체)$/;
+  const tokens = text.split(/[\s\[\]()]+/).filter(Boolean);
+  const candidates = tokens.filter((t) => {
+    if (noise.test(t)) return false;
+    if (/^[\d,]+원?$/.test(t)) return false;
+    if (/^\d{1,2}[:.]\d{2}(:\d{2})?$/.test(t)) return false;
+    if (/^\d{1,2}[/.\-]\d{1,2}$/.test(t)) return false;
+    if (/^\d+$/.test(t)) return false;
+    if (/카드|은행|증권|Web발신/.test(t)) return false;
+    return /[가-힣a-zA-Z]/.test(t);
+  });
+  const merchant = candidates.length ? candidates[candidates.length - 1] : "";
+
+  return { amount, type, date, merchant };
+}
 function todayISO() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); }
 function monthKey(ref = new Date()) { return `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, "0")}`; }
 function monthLabel(key) { const [y, m] = key.split("-").map(Number); return `${y}년 ${m}월`; }
@@ -1037,6 +1070,8 @@ function BalanceCard({ ctx, accountBalance }) {
   const [memo, setMemo] = useState("");
   const [accountId, setAccountId] = useState(data.accounts?.[0]?.id || "");
   const [expanded, setExpanded] = useState(false);
+  const [showPaste, setShowPaste] = useState(false);
+  const [pasteText, setPasteText] = useState("");
 
   const submit = () => {
     const n = Number(amount);
@@ -1046,6 +1081,17 @@ function BalanceCard({ ctx, accountBalance }) {
     persist({ ...data, balanceEntries: [...(data.balanceEntries || []), entry] });
     setAmount(""); setMemo(""); setMode(null);
     showToast(mode === "in" ? "입금을 기록했어요" : "출금을 기록했어요");
+  };
+
+  const applyParse = () => {
+    if (!pasteText.trim()) return showToast("문자 내용을 붙여넣어주세요");
+    const r = parsePaymentText(pasteText);
+    if (r.amount) setAmount(r.amount);
+    if (r.merchant) setMemo(r.merchant);
+    if (r.type === "in" || r.type === "out") setMode(r.type);
+    setPasteText("");
+    setShowPaste(false);
+    showToast(r.amount ? "문자에서 읽어왔어요 · 확인하고 등록하세요" : "일부만 읽어왔어요 · 확인해주세요");
   };
 
   return (
@@ -1080,6 +1126,18 @@ function BalanceCard({ ctx, accountBalance }) {
       </div>
       {mode && (
         <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          <button onClick={() => setShowPaste(!showPaste)}
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 0", borderRadius: 8,
+              border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+            <ClipboardPaste size={13} /> 입출금 문자 붙여넣기로 채우기
+          </button>
+          {showPaste && (
+            <div>
+              <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="예: 국민은행 입금 500,000원 07/20 14:23"
+                style={{ ...inputSty(T), height: 70, fontSize: 12.5, marginBottom: 6 }} />
+              <button onClick={applyParse} style={primaryBtn(T)}>읽어오기</button>
+            </div>
+          )}
           {(data.accounts || []).length > 1 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {data.accounts.map((a) => (
@@ -1150,6 +1208,20 @@ function AddView({ ctx }) {
   const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
   const [catBudgetEditing, setCatBudgetEditing] = useState(false);
   const [catBudgetInput, setCatBudgetInput] = useState("");
+  const [showPaste, setShowPaste] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+
+  const applyParse = () => {
+    if (!pasteText.trim()) return showToast("문자 내용을 붙여넣어주세요");
+    const r = parsePaymentText(pasteText);
+    if (!r.amount) { showToast("금액을 못 찾았어요, 직접 입력해주세요"); }
+    else setAmount(r.amount);
+    if (r.merchant) setMemo(r.merchant);
+    if (r.date) setDate(r.date);
+    setPasteText("");
+    setShowPaste(false);
+    showToast(r.amount ? "문자에서 읽어왔어요 · 확인하고 등록하세요" : "일부만 읽어왔어요 · 확인해주세요");
+  };
 
   const selectedCategory = data.categories.find((c) => c.id === categoryId);
   const saveCatBudget = () => {
@@ -1214,6 +1286,19 @@ function AddView({ ctx }) {
         <InstallmentForm ctx={ctx} />
       ) : (
         <>
+          <button onClick={() => setShowPaste(!showPaste)}
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 0", borderRadius: 10,
+              border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: showPaste ? 10 : 16 }}>
+            <ClipboardPaste size={14} /> 결제 문자 붙여넣기로 채우기
+          </button>
+          {showPaste && (
+            <div style={{ marginBottom: 16 }}>
+              <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="예: [현대카드] 승인 12,000원 07/20 14:23 스타벅스"
+                style={{ ...inputSty(T), height: 80, fontSize: 13, marginBottom: 8 }} />
+              <button onClick={applyParse} style={primaryBtn(T)}>읽어오기</button>
+            </div>
+          )}
+
           <Field label="금액">
             <MoneyInput value={amount} onChange={setAmount} big />
             <QuickAmountButtons amount={amount} setAmount={setAmount} />
