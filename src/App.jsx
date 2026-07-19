@@ -1524,6 +1524,8 @@ function LedgerView({ ctx }) {
   const { data, persist, showToast, curKey } = ctx;
   const [filter, setFilter] = useState("cycle");
   const [search, setSearch] = useState("");
+  const [rangeStart, setRangeStart] = useState(dateStrFor(monthKeyOffset(curKey, -2), 1));
+  const [rangeEnd, setRangeEnd] = useState(todayISO());
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
   const searchLower = search.trim().toLowerCase();
   const matchesSearch = (e) => {
@@ -1536,13 +1538,16 @@ function LedgerView({ ctx }) {
     let arr;
     if (filter === "receivable") arr = [...data.expenses.filter((e) => e.isReceivable)].sort((a, b) => (a.settled === b.settled ? b.date.localeCompare(a.date) : a.settled ? 1 : -1));
     else if (filter === "card") arr = [...data.expenses.filter((e) => !e.isReceivable && (e.paymentMethod || "cash") === "card")].sort((a, b) => b.date.localeCompare(a.date));
-    else {
+    else if (filter === "range") {
+      arr = data.expenses.filter((e) => !e.isReceivable && e.date >= rangeStart && e.date <= rangeEnd);
+      arr = [...arr].sort((a, b) => b.date.localeCompare(a.date));
+    } else {
       arr = data.expenses.filter((e) => !e.isReceivable);
       if (filter === "cycle") arr = arr.filter((e) => e.date.slice(0, 7) === curKey);
       arr = [...arr].sort((a, b) => b.date.localeCompare(a.date));
     }
     return arr.filter(matchesSearch);
-  }, [data.expenses, filter, curKey, searchLower]);
+  }, [data.expenses, filter, curKey, searchLower, rangeStart, rangeEnd]);
 
   const balanceList = useMemo(() => {
     const arr = [...(data.balanceEntries || [])].sort((a, b) => b.date.localeCompare(a.date));
@@ -1581,6 +1586,62 @@ function LedgerView({ ctx }) {
     persist(next);
     showToast("휴지통으로 이동했어요");
   };
+  const [editingId, setEditingId] = useState(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editCategoryId, setEditCategoryId] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editMemo, setEditMemo] = useState("");
+  const [editPaymentMethod, setEditPaymentMethod] = useState("cash");
+  const [editCardId, setEditCardId] = useState("");
+  const [editAccountId, setEditAccountId] = useState("");
+
+  const startEdit = (e) => {
+    setEditingId(e.id);
+    setEditAmount(String(e.amount));
+    setEditCategoryId(e.categoryId);
+    setEditDate(e.date);
+    setEditMemo(e.memo || "");
+    setEditPaymentMethod(e.paymentMethod || "cash");
+    setEditCardId(e.cardId || data.cards[0]?.id || "");
+    const linked = e.linkedBalanceId ? (data.balanceEntries || []).find((b) => b.id === e.linkedBalanceId) : null;
+    setEditAccountId(linked?.accountId || data.accounts[0]?.id || "");
+  };
+  const cancelEdit = () => setEditingId(null);
+
+  const saveEdit = (exp) => {
+    const n = Number(editAmount);
+    if (!n || n <= 0) return showToast("금액을 입력해주세요");
+    if (!editCategoryId) return showToast("카테고리를 선택해주세요");
+    if (editPaymentMethod === "card" && !editCardId) return showToast("카드를 선택해주세요");
+    if (editPaymentMethod === "cash" && !editAccountId) return showToast("통장을 선택해주세요");
+
+    let next = { ...data };
+    if ((exp.paymentMethod || "cash") === "card") {
+      const oldCid = exp.cardId || data.cards[0]?.id;
+      next.cards = data.cards.map((c) => (c.id === oldCid ? { ...c, bill: Math.max(0, Number(c.bill || 0) - Number(exp.amount)) } : c));
+    } else if (exp.linkedBalanceId) {
+      next.balanceEntries = (data.balanceEntries || []).filter((b) => b.id !== exp.linkedBalanceId);
+    }
+
+    const catName = data.categories.find((c) => c.id === editCategoryId)?.name || "지출";
+    let newLinkedBalanceId = null;
+    if (editPaymentMethod === "card") {
+      next.cards = (next.cards || data.cards).map((c) => (c.id === editCardId ? { ...c, bill: Number(c.bill || 0) + n } : c));
+    } else {
+      newLinkedBalanceId = "b" + Date.now();
+      next.balanceEntries = [...(next.balanceEntries || data.balanceEntries || []), { id: newLinkedBalanceId, type: "out", amount: n, date: editDate, memo: `${catName}${editMemo.trim() ? " · " + editMemo.trim() : ""}`, accountId: editAccountId }];
+    }
+
+    next.expenses = data.expenses.map((e) =>
+      e.id === exp.id
+        ? { ...e, amount: n, categoryId: editCategoryId, date: editDate, memo: editMemo.trim(), paymentMethod: editPaymentMethod, cardId: editPaymentMethod === "card" ? editCardId : null, linkedBalanceId: editPaymentMethod === "cash" ? newLinkedBalanceId : null }
+        : e
+    );
+    persist(next);
+    setEditingId(null);
+    showToast("수정했어요 · 카드값/통장에 바로 반영됐어요");
+  };
+
   const removeBalance = (id) => {
     const b = data.balanceEntries.find((x) => x.id === id);
     if (!b) return;
@@ -1620,12 +1681,55 @@ function LedgerView({ ctx }) {
     return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0]));
   }, [list]);
 
+  const renderEditForm = (e) => (
+    <div style={{ marginTop: 8, marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 10, padding: 10 }}>
+      <div style={{ marginBottom: 8 }}>
+        <MoneyInput value={editAmount} onChange={setEditAmount} />
+        <QuickAmountButtons amount={editAmount} setAmount={setEditAmount} />
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+        {data.categories.map((c) => (
+          <button key={c.id} onClick={() => setEditCategoryId(c.id)}
+            style={{ padding: "6px 10px", borderRadius: 16, border: editCategoryId === c.id ? `2px solid ${c.color}` : `1px solid ${T.border}`,
+              background: editCategoryId === c.id ? c.color + "22" : "transparent", color: T.ink, fontSize: 12, cursor: "pointer" }}>
+            {c.name}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        <button onClick={() => setEditPaymentMethod("card")} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: editPaymentMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: editPaymentMethod === "card" ? T.gold + "22" : "transparent", color: T.ink, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>카드</button>
+        <button onClick={() => setEditPaymentMethod("cash")} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: editPaymentMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: editPaymentMethod === "cash" ? T.good + "22" : "transparent", color: T.ink, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>현금(통장)</button>
+      </div>
+      {editPaymentMethod === "card" ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+          {data.cards.map((c) => (
+            <button key={c.id} onClick={() => setEditCardId(c.id)} style={{ padding: "5px 9px", borderRadius: 14, border: editCardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: editCardId === c.id ? T.gold + "22" : "transparent", color: T.ink, fontSize: 11.5, cursor: "pointer" }}>{c.name}</button>
+          ))}
+        </div>
+      ) : (
+        data.accounts.length > 1 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+            {data.accounts.map((a) => (
+              <button key={a.id} onClick={() => setEditAccountId(a.id)} style={{ padding: "5px 9px", borderRadius: 14, border: editAccountId === a.id ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: editAccountId === a.id ? T.good + "22" : "transparent", color: T.ink, fontSize: 11.5, cursor: "pointer" }}>{a.name}</button>
+            ))}
+          </div>
+        )
+      )}
+      <input type="date" value={editDate} onChange={(ev) => setEditDate(ev.target.value)} style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}`, marginBottom: 8 }} />
+      <input value={editMemo} onChange={(ev) => setEditMemo(ev.target.value)} placeholder="표기내역" style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}`, marginBottom: 8 }} />
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={cancelEdit} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.ink, fontSize: 12.5, cursor: "pointer" }}>취소</button>
+        <button onClick={() => saveEdit(e)} style={{ flex: 2, ...primaryBtn(T), padding: "9px 0" }}>저장</button>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <div style={{ color: T.cream, fontFamily: F.display, fontSize: 20.5, fontWeight: 700 }}>전체 내역</div>
         <div style={{ display: "flex", background: T.bg2, borderRadius: 8, padding: 3, flexWrap: "wrap" }}>
-          {[["cycle", "이번달"], ["all", "전체"], ["card", "카드"], ["receivable", "대리결제"], ["balance", "입출금"], ["trash", "휴지통"]].map(([k, l]) => (
+          {[["cycle", "이번달"], ["all", "전체"], ["range", "기간"], ["card", "카드"], ["receivable", "대리결제"], ["balance", "입출금"], ["trash", "휴지통"]].map(([k, l]) => (
             <button key={k} onClick={() => setFilter(k)}
               style={{ border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 12.5, fontWeight: 600,
                 background: filter === k ? T.gold : "transparent", color: filter === k ? "#23190C" : T.muted, cursor: "pointer" }}>
@@ -1637,6 +1741,14 @@ function LedgerView({ ctx }) {
 
       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="메모나 카테고리로 검색"
         style={{ ...inputSty(T), marginBottom: 14, fontSize: 14.5 }} />
+
+      {filter === "range" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} style={{ ...inputSty(T), fontSize: 12.5, padding: "8px 10px" }} />
+          <span style={{ color: T.muted, fontSize: 12 }}>~</span>
+          <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} style={{ ...inputSty(T), fontSize: 12.5, padding: "8px 10px" }} />
+        </div>
+      )}
 
       {filter === "trash" ? (
         <>
@@ -1694,18 +1806,22 @@ function LedgerView({ ctx }) {
           ) : (
             <div style={paperCard(T)}>
               {list.map((e) => (
-                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: T.ink, fontSize: 14.5, fontWeight: 600 }}>
-                      {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
-                      <span style={{ fontSize: 11.5, marginLeft: 6, color: T.goldSoft, fontWeight: 700 }}>{data.cards.find((c) => c.id === (e.cardId || data.cards[0]?.id))?.name || "카드"}</span>
+                <div key={e.id}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ color: T.ink, fontSize: 14.5, fontWeight: 600 }}>
+                        {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
+                        <span style={{ fontSize: 11.5, marginLeft: 6, color: T.goldSoft, fontWeight: 700 }}>{data.cards.find((c) => c.id === (e.cardId || data.cards[0]?.id))?.name || "카드"}</span>
+                      </div>
+                      {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 12.5 }}>{e.memo}</div>}
                     </div>
-                    {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 12.5 }}>{e.memo}</div>}
+                    <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date.slice(5)}</div>
+                    <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 14.5 }}>{fmtWon(e.amount)}</div>
+                    <button onClick={() => startEdit(e)} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>
+                    <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
                   </div>
-                  <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date.slice(5)}</div>
-                  <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 14.5 }}>{fmtWon(e.amount)}</div>
-                  <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
+                  {editingId === e.id && renderEditForm(e)}
                 </div>
               ))}
             </div>
@@ -1764,19 +1880,23 @@ function LedgerView({ ctx }) {
               </div>
               <div style={paperCard(T)}>
                 {items.map((e) => (
-                  <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: T.ink, fontSize: 14.5, fontWeight: 600 }}>
-                        {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
-                        <span style={{ fontSize: 11.5, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
-                          {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
-                        </span>
+                  <div key={e.id}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ color: T.ink, fontSize: 14.5, fontWeight: 600 }}>
+                          {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
+                          <span style={{ fontSize: 11.5, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
+                            {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
+                          </span>
+                        </div>
+                        {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 12.5 }}>{e.memo}</div>}
                       </div>
-                      {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 12.5 }}>{e.memo}</div>}
+                      <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 14.5 }}>{fmtWon(e.amount)}</div>
+                      <button onClick={() => startEdit(e)} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>
+                      <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
                     </div>
-                    <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 14.5 }}>{fmtWon(e.amount)}</div>
-                    <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
+                    {editingId === e.id && renderEditForm(e)}
                   </div>
                 ))}
               </div>
