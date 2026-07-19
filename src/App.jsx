@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, createContext, useContext } from "react";
-import { Plus, Trash2, Settings, Home as HomeIcon, BookOpen, X, Check, CreditCard, HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Pencil, Repeat } from "lucide-react";
+import { Plus, Trash2, Settings, Home as HomeIcon, BookOpen, X, Check, CreditCard, HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Pencil, Repeat, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 
 // NOTE: storage key kept stable across revisions on purpose so existing user data
 // (expenses, categories, balance entries) survives future updates via migrate().
@@ -16,6 +16,7 @@ const QUICK_AMOUNTS = [
 
 const defaultData = () => ({
   theme: "dark",
+  onboarded: false,
   spendingGoal: 0,
   accounts: [{ id: "acc1", name: "통장", initialBalance: 0 }],
   cards: [{ id: "card1", name: "카드", bill: 0 }],
@@ -33,6 +34,7 @@ const defaultData = () => ({
 
 function migrate(raw) {
   const d = { ...defaultData(), ...raw };
+  d.onboarded = raw.onboarded !== false;
   if (raw.theme === "light") d.theme = "beige";
   if (!THEMES[d.theme]) d.theme = "dark";
   if (Array.isArray(raw.cards) && raw.cards.length) {
@@ -81,6 +83,15 @@ function trashAmount(t) {
   if (t.type === "fixed") return Number(t.payload.baseAmount);
   return 0;
 }
+const TRASH_RETENTION_DAYS = 21;
+function purgeOldTrash(d) {
+  const cutoff = Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const kept = (d.trash || []).filter((t) => {
+    const dt = new Date(t.deletedAt).getTime();
+    return Number.isNaN(dt) ? true : dt >= cutoff;
+  });
+  return kept.length === (d.trash || []).length ? d : { ...d, trash: kept };
+}
 
 
 function fmtWon(n) { return Math.round(n).toLocaleString("ko-KR") + "원"; }
@@ -90,6 +101,7 @@ function monthLabel(key) { const [y, m] = key.split("-").map(Number); return `${
 function daysInMonthKey(key) { const [y, m] = key.split("-").map(Number); return new Date(y, m, 0).getDate(); }
 function dateStrFor(key, day) { const [y, m] = key.split("-").map(Number); return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`; }
 function monthKeyOffset(key, offset) { const [y, m] = key.split("-").map(Number); const d = new Date(y, m - 1 + offset, 1); return monthKey(d); }
+function firstWeekday(key) { const [y, m] = key.split("-").map(Number); return new Date(y, m - 1, 1).getDay(); }
 function monthsBetweenKeys(aKey, bKey) { const [ay, am] = aKey.split("-").map(Number); const [by, bm] = bKey.split("-").map(Number); return (by - ay) * 12 + (bm - am); }
 
 function fixedInfo(f, curKey) {
@@ -300,8 +312,14 @@ export default function App() {
     (async () => {
       try {
         const res = localStorage.getItem(STORAGE_KEY);
-        if (res) setData(migrate(JSON.parse(res)));
-        else setData(defaultData());
+        if (res) {
+          const loaded = migrate(JSON.parse(res));
+          const purged = purgeOldTrash(loaded);
+          setData(purged);
+          if (purged !== loaded) {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(purged)); } catch {}
+          }
+        } else setData(defaultData());
       } catch { setData(defaultData()); }
       finally { setLoaded(true); }
     })();
@@ -323,6 +341,14 @@ export default function App() {
         <div style={{ background: DARK.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ color: DARK.cream, fontFamily: F.body }}>불러오는 중…</div>
         </div>
+      </ThemeContext.Provider>
+    );
+  }
+
+  if (!data.onboarded) {
+    return (
+      <ThemeContext.Provider value={T}>
+        <Onboarding data={data} persist={persist} />
       </ThemeContext.Provider>
     );
   }
@@ -404,17 +430,243 @@ export default function App() {
           {tab === "home" && <HomeView ctx={ctx} />}
           {tab === "add" && <AddView ctx={ctx} />}
           {tab === "ledger" && <LedgerView ctx={ctx} />}
+          {tab === "calendar" && <CalendarView ctx={ctx} />}
           {tab === "settings" && <SettingsView ctx={ctx} />}
         </div>
         <nav style={S.nav}>
           <NavBtn icon={HomeIcon} label="홈" active={tab === "home"} onClick={() => setTab("home")} />
           <NavBtn icon={Plus} label="기록" active={tab === "add"} onClick={() => setTab("add")} />
           <NavBtn icon={BookOpen} label="내역" active={tab === "ledger"} onClick={() => setTab("ledger")} />
+          <NavBtn icon={Calendar} label="달력" active={tab === "calendar"} onClick={() => setTab("calendar")} />
           <NavBtn icon={Settings} label="설정" active={tab === "settings"} onClick={() => setTab("settings")} />
         </nav>
         {toast && <div style={S.toast}>{toast}</div>}
       </div>
     </ThemeContext.Provider>
+  );
+}
+
+function OnboardStep({ children }) {
+  return <div style={{ width: "100%" }}>{children}</div>;
+}
+
+function Onboarding({ data, persist }) {
+  const [step, setStep] = useState(0);
+  const [useCard, setUseCard] = useState(true);
+  const [cardName, setCardName] = useState("");
+  const [accountName, setAccountName] = useState("");
+  const [startBalance, setStartBalance] = useState("");
+  const [categories, setCategories] = useState(data.categories);
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
+  const [spendingGoal, setSpendingGoal] = useState("");
+  const [themeId, setThemeId] = useState("dark");
+  const T = THEMES[themeId] || THEMES.dark;
+
+  const TOTAL = 8;
+
+  const addCat = () => {
+    if (!newCatName.trim()) return;
+    setCategories([...categories, { id: "c" + Date.now(), name: newCatName.trim(), color: newCatColor, budget: 0 }]);
+    setNewCatName("");
+  };
+  const removeCat = (id) => setCategories(categories.filter((c) => c.id !== id));
+
+  const finish = () => {
+    const cards = useCard ? [{ id: "card1", name: cardName.trim() || "카드", bill: 0 }] : [];
+    const accounts = [{ id: "acc1", name: accountName.trim() || "통장", initialBalance: Number(startBalance) || 0 }];
+    persist({
+      ...data,
+      onboarded: true,
+      cards,
+      accounts,
+      categories,
+      spendingGoal: Number(spendingGoal) || 0,
+      theme: themeId,
+    });
+  };
+
+  const next = () => setStep((s) => Math.min(s + 1, TOTAL - 1));
+  const back = () => setStep((s) => Math.max(s - 1, 0));
+  const navBtnStyle = { flex: 1, padding: "12px 0", borderRadius: 10, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 14, cursor: "pointer" };
+
+  return (
+    <div style={{ background: T.bg, minHeight: "100vh", display: "flex", flexDirection: "column", fontFamily: F.body, transition: "background 0.3s" }}>
+      <GoogleFonts />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 24px 100px" }}>
+        {step > 0 && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 28 }}>
+            {Array.from({ length: TOTAL - 1 }, (_, i) => (
+              <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: i <= step - 1 ? T.gold : T.border }} />
+            ))}
+          </div>
+        )}
+
+        {step === 0 && (
+          <OnboardStep>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ color: T.gold, fontFamily: F.display, fontSize: 26, fontWeight: 700, marginBottom: 10 }}>내 돈 챙겨줘</div>
+              <div style={{ color: T.muted, fontSize: 14.5, lineHeight: 1.6, marginBottom: 30 }}>
+                카드값, 할부, 통장 잔액을 한 곳에서 관리하는<br />개인 가계부예요.<br /><br />
+                간단한 질문 몇 개로 시작할게요.
+              </div>
+              <button onClick={next} style={{ ...primaryBtn(T), padding: "14px 28px", fontSize: 15, width: "auto" }}>시작하기</button>
+            </div>
+          </OnboardStep>
+        )}
+
+        {step === 1 && (
+          <OnboardStep>
+            <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>카드를 쓰시나요?</div>
+            <div style={{ color: T.muted, fontSize: 13, marginBottom: 20, textAlign: "center" }}>지출을 카드로도 기록하고 싶으면 선택하세요.</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+              <button onClick={() => setUseCard(true)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: useCard ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: useCard ? T.gold + "22" : "transparent", color: T.cream, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>카드 써요</button>
+              <button onClick={() => setUseCard(false)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: !useCard ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: !useCard ? T.gold + "22" : "transparent", color: T.cream, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>안 써요</button>
+            </div>
+            {useCard && (
+              <div style={{ width: "100%", marginBottom: 20 }}>
+                <div style={{ color: T.muted, fontSize: 12, marginBottom: 6 }}>카드 이름 (나중에 여러 개 추가 가능)</div>
+                <input value={cardName} onChange={(e) => setCardName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, width: "100%" }}>
+              <button onClick={back} style={navBtnStyle}>이전</button>
+              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 14 }}>다음</button>
+            </div>
+          </OnboardStep>
+        )}
+
+        {step === 2 && (
+          <OnboardStep>
+            <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>통장 정보를 알려주세요</div>
+            <div style={{ color: T.muted, fontSize: 13, marginBottom: 20, textAlign: "center" }}>여러 통장은 나중에 설정에서 추가할 수 있어요.</div>
+            <div style={{ width: "100%", marginBottom: 14 }}>
+              <div style={{ color: T.muted, fontSize: 12, marginBottom: 6 }}>통장 이름</div>
+              <input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+            </div>
+            <div style={{ width: "100%", marginBottom: 20 }}>
+              <div style={{ color: T.muted, fontSize: 12, marginBottom: 6 }}>지금 잔액 (선택, 나중에 수정 가능)</div>
+              <MoneyInput value={startBalance} onChange={setStartBalance} />
+              <QuickAmountButtons amount={startBalance} setAmount={setStartBalance} />
+            </div>
+            <div style={{ display: "flex", gap: 8, width: "100%" }}>
+              <button onClick={back} style={navBtnStyle}>이전</button>
+              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 14 }}>다음</button>
+            </div>
+          </OnboardStep>
+        )}
+
+        {step === 3 && (
+          <OnboardStep>
+            <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>카테고리를 확인해주세요</div>
+            <div style={{ color: T.muted, fontSize: 13, marginBottom: 16, textAlign: "center" }}>필요하면 지금 추가하고, 나중에 기록 탭에서도 추가할 수 있어요.</div>
+            <div style={{ width: "100%", background: T.bg2, borderRadius: 10, padding: 10, marginBottom: 14 }}>
+              {categories.map((c) => (
+                <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 6px", borderBottom: `1px solid ${T.border}` }}>
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", background: c.color }} />
+                  <span style={{ flex: 1, color: T.cream, fontSize: 14 }}>{c.name}</span>
+                  <button onClick={() => removeCat(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={14} /></button>
+                </div>
+              ))}
+            </div>
+            <div style={{ width: "100%", marginBottom: 20 }}>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+                <button onClick={addCat} style={{ ...primaryBtn(T), width: 60 }}>추가</button>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {PALETTE.map((col) => (
+                  <button key={col} onClick={() => setNewCatColor(col)}
+                    style={{ width: 22, height: 22, borderRadius: "50%", background: col, border: newCatColor === col ? `2px solid ${T.cream}` : "2px solid transparent", cursor: "pointer" }} />
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, width: "100%" }}>
+              <button onClick={back} style={navBtnStyle}>이전</button>
+              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 14 }}>다음</button>
+            </div>
+          </OnboardStep>
+        )}
+
+        {step === 4 && (
+          <OnboardStep>
+            <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>이번 달 목표 지출액</div>
+            <div style={{ color: T.muted, fontSize: 13, marginBottom: 20, textAlign: "center" }}>홈 화면의 원형 게이지 기준이 돼요. 나중에 바꿀 수 있고, 안 정해도 괜찮아요.</div>
+            <div style={{ width: "100%", marginBottom: 20 }}>
+              <MoneyInput value={spendingGoal} onChange={setSpendingGoal} />
+              <QuickAmountButtons amount={spendingGoal} setAmount={setSpendingGoal} />
+            </div>
+            <div style={{ display: "flex", gap: 8, width: "100%" }}>
+              <button onClick={back} style={navBtnStyle}>이전</button>
+              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 14 }}>다음</button>
+            </div>
+          </OnboardStep>
+        )}
+
+        {step === 5 && (
+          <OnboardStep>
+            <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>화면 테마를 골라주세요</div>
+            <div style={{ color: T.muted, fontSize: 13, marginBottom: 20, textAlign: "center" }}>눌러보면 바로 이 화면에 적용돼서 느낌을 볼 수 있어요.</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", rowGap: 16, columnGap: 4, width: "100%", marginBottom: 24 }}>
+              {THEME_ORDER.map((id) => {
+                const th = THEMES[id];
+                const active = themeId === id;
+                return (
+                  <button key={id} onClick={() => setThemeId(id)}
+                    style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                    <span style={{ width: 32, height: 32, borderRadius: "50%", background: th.swatch, border: active ? `3px solid ${T.gold}` : `1px solid ${T.border}` }} />
+                    <span style={{ color: active ? T.gold : T.muted, fontSize: 10, fontWeight: active ? 700 : 500 }}>{th.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", gap: 8, width: "100%" }}>
+              <button onClick={back} style={navBtnStyle}>이전</button>
+              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 14 }}>다음</button>
+            </div>
+          </OnboardStep>
+        )}
+
+        {step === 6 && (
+          <OnboardStep>
+            <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 14, textAlign: "center" }}>이렇게 쓰시면 돼요</div>
+            <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12, marginBottom: 26 }}>
+              {[
+                ["기록", "지출은 '기록' 탭에서 카드/현금/할부 중 골라 남겨요."],
+                ["카드·통장", "설정에서 언제든 추가·삭제하고, 어느 카드·통장인지도 바꿀 수 있어요."],
+                ["홈", "홈에서 카드값 결제, 대리결제 정산까지 바로 처리해요."],
+                ["달력", "달력 탭에서 하루하루 얼마 썼는지 한눈에 볼 수 있어요."],
+              ].map(([title, desc]) => (
+                <div key={title} style={{ background: T.bg2, borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ color: T.gold, fontSize: 13, fontWeight: 700, marginBottom: 3 }}>{title}</div>
+                  <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5 }}>{desc}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, width: "100%" }}>
+              <button onClick={back} style={navBtnStyle}>이전</button>
+              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 14 }}>다음</button>
+            </div>
+          </OnboardStep>
+        )}
+
+        {step === 7 && (
+          <OnboardStep>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ color: T.gold, fontFamily: F.display, fontSize: 20, fontWeight: 700, marginBottom: 14 }}>준비됐어요!</div>
+              <div style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.7, marginBottom: 28, textAlign: "left" }}>
+                {useCard && <div>· 카드: {cardName.trim() || "카드"}</div>}
+                <div>· 통장: {accountName.trim() || "통장"}{startBalance ? ` (${Number(startBalance).toLocaleString("ko-KR")}원)` : ""}</div>
+                <div>· 카테고리: {categories.map((c) => c.name).join(", ")}</div>
+                <div>· 목표 지출액: {spendingGoal ? `${Number(spendingGoal).toLocaleString("ko-KR")}원` : "나중에 설정"}</div>
+                <div>· 테마: {THEMES[themeId]?.label}</div>
+              </div>
+              <button onClick={finish} style={{ ...primaryBtn(T), padding: "14px 28px", fontSize: 15, width: "auto" }}>시작하기</button>
+            </div>
+          </OnboardStep>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -727,14 +979,18 @@ function settleReceivable(ctx, exp, repaidAmount) {
   const repaid = Number(repaidAmount);
   if (repaidAmount === "" || Number.isNaN(repaid) || repaid < 0) { showToast("상환받은 금액을 입력해주세요"); return; }
   const diff = repaid - exp.amount;
-  let next = { ...data, expenses: data.expenses.map((e) => (e.id === exp.id ? { ...e, settled: true, repaidAmount: repaid, settledAt: todayISO() } : e)) };
+  let settlementCardDelta = 0, settlementCardId = null, settlementBalanceId = null;
+  let next = { ...data };
   if (diff < 0) {
-    const cid = exp.cardId || data.cards[0]?.id;
-    next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Number(c.bill || 0) + Math.abs(diff) } : c));
+    settlementCardDelta = Math.abs(diff);
+    settlementCardId = exp.cardId || data.cards[0]?.id;
+    next.cards = data.cards.map((c) => (c.id === settlementCardId ? { ...c, bill: Number(c.bill || 0) + settlementCardDelta } : c));
   } else if (diff > 0) {
+    settlementBalanceId = "b" + Date.now();
     const aid = data.accounts[0]?.id;
-    next.balanceEntries = [...(next.balanceEntries || []), { id: "b" + Date.now(), type: "in", amount: diff, date: todayISO(), memo: "대리결제 정산 차액", accountId: aid }];
+    next.balanceEntries = [...(data.balanceEntries || []), { id: settlementBalanceId, type: "in", amount: diff, date: todayISO(), memo: "대리결제 정산 차액", accountId: aid }];
   }
+  next.expenses = data.expenses.map((e) => (e.id === exp.id ? { ...e, settled: true, repaidAmount: repaid, settledAt: todayISO(), settlementCardDelta, settlementCardId, settlementBalanceId } : e));
   persist(next);
   if (diff < 0) showToast(`부족분 ${fmtWon(Math.abs(diff))}이 카드값에 반영됐어요`);
   else if (diff > 0) showToast(`초과분 ${fmtWon(diff)}이 통장 잔액에 반영됐어요`);
@@ -1310,6 +1566,15 @@ function LedgerView({ ctx }) {
         linkedBalanceEntry = (data.balanceEntries || []).find((b) => b.id === exp.linkedBalanceId) || null;
         next.balanceEntries = (next.balanceEntries || data.balanceEntries || []).filter((b) => b.id !== exp.linkedBalanceId);
       }
+    } else if (exp.settled) {
+      if (exp.settlementCardDelta && exp.settlementCardId) {
+        cardBillDelta = Number(exp.settlementCardDelta);
+        cardIdForTrash = exp.settlementCardId;
+        next.cards = data.cards.map((c) => (c.id === cardIdForTrash ? { ...c, bill: Math.max(0, Number(c.bill || 0) - cardBillDelta) } : c));
+      } else if (exp.settlementBalanceId) {
+        linkedBalanceEntry = (data.balanceEntries || []).find((b) => b.id === exp.settlementBalanceId) || null;
+        next.balanceEntries = (next.balanceEntries || data.balanceEntries || []).filter((b) => b.id !== exp.settlementBalanceId);
+      }
     }
     const trashItem = { id: "t" + Date.now(), type: "expense", deletedAt: todayISO(), expense: exp, linkedBalanceEntry, cardBillDelta, cardId: cardIdForTrash };
     next.trash = [...(data.trash || []), trashItem];
@@ -1375,6 +1640,7 @@ function LedgerView({ ctx }) {
 
       {filter === "trash" ? (
         <>
+          <div style={{ color: T.muted, fontSize: 11.5, marginBottom: 8 }}>21일이 지나면 자동으로 삭제돼요.</div>
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
             <button onClick={emptyTrash} style={{ background: "transparent", border: `1px solid ${T.danger}`, color: T.danger, borderRadius: 8, padding: "6px 10px", fontSize: 13, cursor: "pointer" }}>
               휴지통 비우기
@@ -1523,6 +1789,156 @@ function LedgerView({ ctx }) {
 }
 
 /* ---------- Analysis ---------- */
+/* ---------- Calendar ---------- */
+function CalendarView({ ctx }) {
+  const T = useTheme();
+  const { data, curKey } = ctx;
+  const [viewKey, setViewKey] = useState(curKey);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
+
+  const monthExpenses = useMemo(() => data.expenses.filter((e) => !e.isReceivable && e.date.slice(0, 7) === viewKey), [data.expenses, viewKey]);
+  const monthTotal = monthExpenses.reduce((s, e) => s + Number(e.amount), 0);
+
+  const dailyTotals = useMemo(() => {
+    const map = {};
+    monthExpenses.forEach((e) => { const day = Number(e.date.slice(8, 10)); map[day] = (map[day] || 0) + Number(e.amount); });
+    return map;
+  }, [monthExpenses]);
+
+  const incomeDays = useMemo(() => {
+    const set = new Set();
+    (data.balanceEntries || []).forEach((b) => {
+      if (b.type === "in" && b.date.slice(0, 7) === viewKey) set.add(Number(b.date.slice(8, 10)));
+    });
+    return set;
+  }, [data.balanceEntries, viewKey]);
+
+  const maxDaily = Math.max(0, ...Object.values(dailyTotals));
+  const topDay = useMemo(() => {
+    const entries = Object.entries(dailyTotals);
+    if (!entries.length) return null;
+    return Number(entries.sort((a, b) => b[1] - a[1])[0][0]);
+  }, [dailyTotals]);
+
+  const topCategory = useMemo(() => {
+    const map = {};
+    monthExpenses.forEach((e) => { map[e.categoryId] = (map[e.categoryId] || 0) + Number(e.amount); });
+    const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]);
+    return sorted.length ? catMap[sorted[0][0]]?.name : null;
+  }, [monthExpenses]);
+
+  const compareBadge = useMemo(() => {
+    const prevKey = monthKeyOffset(viewKey, -1);
+    const isCurrentMonth = viewKey === curKey;
+    const todayDay = Number(todayISO().slice(8, 10));
+    const cutoff = isCurrentMonth ? todayDay : daysInMonthKey(viewKey);
+    const prevCutoff = Math.min(cutoff, daysInMonthKey(prevKey));
+    const curSum = monthExpenses.filter((e) => Number(e.date.slice(8, 10)) <= cutoff).reduce((s, e) => s + Number(e.amount), 0);
+    const prevSum = data.expenses.filter((e) => !e.isReceivable && e.date.slice(0, 7) === prevKey && Number(e.date.slice(8, 10)) <= prevCutoff).reduce((s, e) => s + Number(e.amount), 0);
+    if (prevSum <= 0) return null;
+    const pct = Math.round(((curSum - prevSum) / prevSum) * 100);
+    return { pct, up: pct > 0 };
+  }, [monthExpenses, data.expenses, viewKey, curKey]);
+
+  const days = daysInMonthKey(viewKey);
+  const offset = firstWeekday(viewKey);
+  const cells = [...Array(offset).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
+  const todayStr2 = todayISO();
+
+  const selectedList = selectedDate ? data.expenses.filter((e) => !e.isReceivable && e.date === selectedDate).sort((a, b) => b.amount - a.amount) : [];
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <button onClick={() => { setViewKey(monthKeyOffset(viewKey, -1)); setSelectedDate(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.muted }}><ChevronLeft size={22} /></button>
+        <div style={{ color: T.cream, fontFamily: F.display, fontSize: 19.5, fontWeight: 700 }}>{monthLabel(viewKey)}</div>
+        <button onClick={() => { setViewKey(monthKeyOffset(viewKey, 1)); setSelectedDate(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.muted }}><ChevronRight size={22} /></button>
+      </div>
+
+      <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 26, fontWeight: 700, marginBottom: 4 }}>{fmtWon(monthTotal)}</div>
+      {topCategory && <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 6 }}>이번 달 <span style={{ color: T.gold, fontWeight: 700 }}>{topCategory}</span>에서 가장 많이 썼어요</div>}
+      {compareBadge && (
+        <div style={{ display: "inline-block", color: compareBadge.up ? T.danger : T.good, background: (compareBadge.up ? T.danger : T.good) + "1A", borderRadius: 8, padding: "3px 8px", fontSize: 11.5, fontWeight: 700, marginBottom: 14 }}>
+          지난달 이맘때보다 {compareBadge.up ? "+" : ""}{compareBadge.pct}%
+        </div>
+      )}
+      {!topCategory && <div style={{ marginBottom: 10 }} />}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", marginBottom: 6 }}>
+        {["일", "월", "화", "수", "목", "금", "토"].map((d) => (
+          <div key={d} style={{ color: T.muted, fontSize: 11.5, padding: "4px 0" }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", rowGap: 12 }}>
+        {cells.map((day, i) => {
+          if (day == null) return <div key={i} />;
+          const dateStr = dateStrFor(viewKey, day);
+          const amt = dailyTotals[day];
+          const isToday = dateStr === todayStr2;
+          const isSelected = dateStr === selectedDate;
+          const isTop = day === topDay && amt > 0;
+          const intensity = maxDaily > 0 && amt ? Math.min(amt / maxDaily, 1) : 0;
+          const heatAlpha = Math.round(intensity * 70).toString(16).padStart(2, "0");
+          const hasIncome = incomeDays.has(day);
+          return (
+            <button key={i} onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+              style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "2px 0" }}>
+              <span style={{
+                position: "relative", width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 13, fontWeight: isToday ? 700 : 500,
+                background: isToday ? T.ink : isSelected ? T.gold + "33" : amt ? `${T.danger}${heatAlpha}` : "transparent",
+                color: isToday ? T.paper : isSelected ? T.gold : T.cream,
+                border: isTop ? `1.5px solid ${T.gold}` : isSelected && !isToday ? `1.5px solid ${T.gold}` : "none",
+              }}>
+                {day}
+                {hasIncome && (
+                  <span style={{ position: "absolute", top: -2, right: -2, width: 7, height: 7, borderRadius: "50%", background: T.good, border: `1px solid ${T.bg}` }} />
+                )}
+              </span>
+              <span style={{ fontSize: 9.5, color: amt ? T.muted : "transparent", fontFamily: F.mono }}>
+                {amt ? (amt >= 10000 ? `${Math.round(amt / 1000) / 10}만` : amt.toLocaleString("ko-KR")) : "-"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 14, marginTop: 14, fontSize: 10.5, color: T.muted }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: "50%", background: `${T.danger}70` }} /> 많이 쓴 날</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: T.good }} /> 입금일</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: "50%", border: `1.5px solid ${T.gold}` }} /> 최고 지출일</span>
+      </div>
+
+      {selectedDate && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ color: T.goldSoft, fontSize: 12.5, marginBottom: 8 }}>{selectedDate} 내역</div>
+          {selectedList.length === 0 ? (
+            <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "24px 14px" }}>이 날 기록이 없어요.</div>
+          ) : (
+            <div style={paperCard(T)}>
+              {selectedList.map((e) => (
+                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: T.ink, fontSize: 13.5, fontWeight: 600 }}>
+                      {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
+                      <span style={{ fontSize: 11, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
+                        {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
+                      </span>
+                    </div>
+                    {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 11.5 }}>{e.memo}</div>}
+                  </div>
+                  <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 13.5 }}>{fmtWon(e.amount)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Settings ---------- */
 function SettingsView({ ctx }) {
   const T = useTheme();
