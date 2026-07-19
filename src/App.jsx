@@ -117,6 +117,8 @@ function parsePaymentText(text) {
   const tokens = text.split(/[\s\[\]()]+/).filter(Boolean);
   const candidates = tokens.filter((t) => {
     if (noise.test(t)) return false;
+    if (/누적/.test(t)) return false;
+    if (/\*/.test(t)) return false;
     if (/^[\d,]+원?$/.test(t)) return false;
     if (/^\d{1,2}[:.]\d{2}(:\d{2})?$/.test(t)) return false;
     if (/^\d{1,2}[/.\-]\d{1,2}$/.test(t)) return false;
@@ -124,7 +126,16 @@ function parsePaymentText(text) {
     if (/카드|은행|증권|Web발신/.test(t)) return false;
     return /[가-힣a-zA-Z]/.test(t);
   });
-  const merchant = candidates.length ? candidates[candidates.length - 1] : "";
+  let merchant = "";
+  if (candidates.length) {
+    if (dateMatch) {
+      const dateIdx = text.indexOf(dateMatch[0]);
+      const afterDate = candidates.filter((c) => text.indexOf(c) > dateIdx);
+      merchant = afterDate.length ? afterDate[0] : candidates[candidates.length - 1];
+    } else {
+      merchant = candidates[candidates.length - 1];
+    }
+  }
 
   return { amount, type, date, merchant };
 }
