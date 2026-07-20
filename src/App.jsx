@@ -59,7 +59,7 @@ function migrate(raw) {
       const base = f.totalMonths !== undefined
         ? { overrides: {}, ...f }
         : { id: f.id, name: f.name, baseAmount: f.amount, totalMonths: 0, startInstallment: 1, setupMonthKey: monthKey(new Date()), overrides: {} };
-      return { paymentMethod: "cash", cardId: null, ...base };
+      return { paymentMethod: "cash", cardId: null, paidMonths: {}, ...base };
     });
   }
   d.categories = raw.categories && raw.categories.length ? raw.categories.map((c) => ({ budget: 0, ...c })) : defaultData().categories;
@@ -91,6 +91,30 @@ function purgeOldTrash(d) {
     return Number.isNaN(dt) ? true : dt >= cutoff;
   });
   return kept.length === (d.trash || []).length ? d : { ...d, trash: kept };
+}
+
+function autoProcessFixed(d) {
+  const now = new Date();
+  const curKey = monthKey(now);
+  const today = now.getDate();
+  let changed = false;
+  const newEntries = [];
+  const fixedExpenses = (d.fixedExpenses || []).map((f) => {
+    if ((f.paymentMethod || "cash") !== "cash") return f;
+    if (!f.autoPayDay) return f;
+    if (f.paidMonths && f.paidMonths[curKey]) return f;
+    if (today < f.autoPayDay) return f;
+    const info = fixedInfo(f, curKey);
+    if (!info.active) return f;
+    changed = true;
+    const aid = f.accountId || d.accounts[0]?.id;
+    const entryId = "b" + Date.now() + Math.floor(Math.random() * 1000);
+    const payDateDay = Math.min(f.autoPayDay, daysInMonthKey(curKey));
+    newEntries.push({ id: entryId, type: "out", amount: info.amount, date: dateStrFor(curKey, payDateDay), memo: `${f.name} 자동이체`, accountId: aid, linkedFixedId: f.id, linkedFixedMonth: curKey });
+    return { ...f, paidMonths: { ...(f.paidMonths || {}), [curKey]: entryId } };
+  });
+  if (!changed) return d;
+  return { ...d, fixedExpenses, balanceEntries: [...(d.balanceEntries || []), ...newEntries] };
 }
 
 
@@ -359,9 +383,10 @@ export default function App() {
         if (res) {
           const loaded = migrate(JSON.parse(res));
           const purged = purgeOldTrash(loaded);
-          setData(purged);
-          if (purged !== loaded) {
-            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(purged)); } catch {}
+          const processed = autoProcessFixed(purged);
+          setData(processed);
+          if (processed !== loaded) {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(processed)); } catch {}
           }
         } else setData(defaultData());
       } catch { setData(defaultData()); }
@@ -453,10 +478,12 @@ export default function App() {
   });
   const accountBalance = accountTotals.reduce((s, a) => s + a.balance, 0);
 
+  const unpaidFixed = fixedActive.filter((f) => (f.paymentMethod || "cash") === "cash" && !(f.paidMonths && f.paidMonths[curKey]));
+
   const ctx = {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, categorySpentThisMonth,
-    spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal,
+    spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed,
   };
 
   const S = {
@@ -806,7 +833,7 @@ function Field({ label, children }) {
 function HomeView({ ctx }) {
   const T = useTheme();
   const { data, curKey, dayIntoCycle, cycleLen, remaining, budgetRatio,
-    fixedSum, fixedSumAll, normalSpent, fixedActive, fixedCardActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal } = ctx;
+    fixedSum, fixedSumAll, normalSpent, fixedActive, fixedCardActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal, unpaidFixed } = ctx;
   const over = remaining < 0;
   const ringColor = budgetRatio < 0.7 ? T.good : budgetRatio < 1 ? T.warn : T.danger;
   const dashArray = 2 * Math.PI * 54;
@@ -817,6 +844,13 @@ function HomeView({ ctx }) {
   return (
     <div>
       <BalanceCard ctx={ctx} accountBalance={accountBalance} />
+
+      {unpaidFixed.length > 0 && (
+        <div style={{ marginTop: 10, background: T.warn + "18", border: `1px solid ${T.warn}66`, borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: T.warn, fontSize: 12.5, fontWeight: 700 }}>출금처리 안 한 고정지출 {unpaidFixed.length}건</span>
+          <span style={{ color: T.muted, fontSize: 11.5, flex: 1 }}>실제로 빠져나갔으면 아래에서 출금처리 하세요</span>
+        </div>
+      )}
 
       <div style={{ height: 1, background: `linear-gradient(90deg, transparent, ${T.border}, transparent)`, margin: "26px 0 0" }} />
 
@@ -963,7 +997,7 @@ function SummaryCard({ ctx }) {
 
 function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
   const T = useTheme();
-  const { data } = ctx;
+  const { data, curKey } = ctx;
   const [sortKey, setSortKey] = useState("default");
   const combined = [...fixedActive, ...fixedCardActive];
   const sorted = sortFixedList(combined, sortKey);
@@ -973,14 +1007,24 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
       <FixedSortTabs sortKey={sortKey} setSortKey={setSortKey} />
       {sorted.map((f) => {
         const isCard = (f.paymentMethod || "cash") === "card";
+        const paidId = f.paidMonths?.[curKey];
         return (
-          <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, color: T.cream, padding: "3px 0" }}>
+          <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, color: T.cream, padding: "4px 0" }}>
             <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""}
               <span style={{ color: isCard ? T.gold : T.muted, fontSize: 11.5 }}>
                 {" · "}{isCard ? (data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장")}
               </span>
             </span>
-            <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
+              {!isCard && (
+                paidId ? (
+                  <button onClick={() => unmarkFixedPaid(ctx, f)} style={{ background: "none", border: `1px solid ${T.good}`, borderRadius: 6, padding: "3px 6px", cursor: "pointer", color: T.good, fontSize: 10, fontWeight: 700 }}>출금완료</button>
+                ) : (
+                  <button onClick={() => markFixedPaid(ctx, f, f.info)} style={{ background: T.good, border: "none", borderRadius: 6, padding: "3px 7px", cursor: "pointer", color: "#fff", fontSize: 10, fontWeight: 700 }}>출금처리</button>
+                )
+              )}
+            </span>
           </div>
         );
       })}
@@ -1041,6 +1085,50 @@ function settleReceivable(ctx, exp, repaidAmount) {
   else showToast("정산 완료했어요");
 }
 
+function reconcileAccount(ctx, account, actualBalance) {
+  const { data, persist, showToast } = ctx;
+  const actual = Number(actualBalance);
+  if (Number.isNaN(actual)) { showToast("올바른 금액을 입력해주세요"); return; }
+  const diff = actual - account.balance;
+  if (diff === 0) { showToast("이미 실제 잔액과 같아요"); return; }
+  const entry = { id: "b" + Date.now(), type: diff > 0 ? "in" : "out", amount: Math.abs(diff), date: todayISO(), memo: "잔액 조정", accountId: account.id, isAdjustment: true };
+  persist({ ...data, balanceEntries: [...(data.balanceEntries || []), entry] });
+  showToast(`${account.name} 잔액을 실제와 맞췄어요 (${diff > 0 ? "+" : "-"}${fmtWon(Math.abs(diff))})`);
+}
+
+function reconcileCard(ctx, card, actualBill) {
+  const { data, persist, showToast } = ctx;
+  const actual = Number(actualBill);
+  if (Number.isNaN(actual) || actual < 0) { showToast("올바른 금액을 입력해주세요"); return; }
+  const next = data.cards.map((c) => (c.id === card.id ? { ...c, bill: actual } : c));
+  persist({ ...data, cards: next });
+  showToast(`${card.name} 카드값을 ${fmtWon(actual)}로 맞췄어요`);
+}
+
+function markFixedPaid(ctx, f, info) {
+  const { data, persist, showToast, curKey } = ctx;
+  const aid = f.accountId || data.accounts[0]?.id;
+  const entry = { id: "b" + Date.now(), type: "out", amount: info.amount, date: todayISO(), memo: `${f.name} 자동이체`, accountId: aid, linkedFixedId: f.id, linkedFixedMonth: curKey };
+  const updatedFixed = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, paidMonths: { ...(x.paidMonths || {}), [curKey]: entry.id } } : x));
+  persist({ ...data, fixedExpenses: updatedFixed, balanceEntries: [...(data.balanceEntries || []), entry] });
+  showToast(`${fmtWon(info.amount)} 출금 처리했어요`);
+}
+function unmarkFixedPaid(ctx, f) {
+  const { data, persist, showToast, curKey } = ctx;
+  const entryId = f.paidMonths?.[curKey];
+  let next = { ...data };
+  if (entryId) next.balanceEntries = (data.balanceEntries || []).filter((b) => b.id !== entryId);
+  const updatedFixed = data.fixedExpenses.map((x) => {
+    if (x.id !== f.id) return x;
+    const pm = { ...(x.paidMonths || {}) };
+    delete pm[curKey];
+    return { ...x, paidMonths: pm };
+  });
+  next.fixedExpenses = updatedFixed;
+  persist(next);
+  showToast("출금 처리를 취소했어요");
+}
+
 function payCard(ctx, card) {
   const { data, persist, showToast } = ctx;
   const billOnly = Number(card.bill || 0);
@@ -1052,20 +1140,38 @@ function payCard(ctx, card) {
 
 function CardsBlock({ ctx, cardTotals }) {
   const T = useTheme();
+  const [reconcileId, setReconcileId] = useState(null);
+  const [reconcileInput, setReconcileInput] = useState("");
   if (!cardTotals || cardTotals.length === 0) return null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
       {cardTotals.map((c) => (
-        <div key={c.id} style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ color: T.muted, fontSize: 12.5 }}>{c.name}</div>
-            <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 15.5, fontWeight: 700 }}>{fmtWon(c.total)}</div>
-            {c.fixedPortion > 0 && <div style={{ color: T.goldSoft, fontSize: 11.5 }}>이번 달 할부 {fmtWon(c.fixedPortion)} 포함</div>}
+        <div key={c.id} style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: T.muted, fontSize: 12.5 }}>{c.name}</div>
+              <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 15.5, fontWeight: 700 }}>{fmtWon(c.total)}</div>
+              {c.fixedPortion > 0 && <div style={{ color: T.goldSoft, fontSize: 11.5 }}>이번 달 할부 {fmtWon(c.fixedPortion)} 포함</div>}
+            </div>
+            <button onClick={() => { setReconcileId(reconcileId === c.id ? null : c.id); setReconcileInput(String(c.bill || "")); }}
+              style={{ padding: "7px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, fontSize: 12, cursor: "pointer" }}>
+              맞추기
+            </button>
+            <button onClick={() => payCard(ctx, c)} disabled={!c.bill}
+              style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: c.bill ? T.gold : T.border, color: c.bill ? "#23190C" : T.muted, fontSize: 13, fontWeight: 700, cursor: c.bill ? "pointer" : "default" }}>
+              결제하기
+            </button>
           </div>
-          <button onClick={() => payCard(ctx, c)} disabled={!c.bill}
-            style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: c.bill ? T.gold : T.border, color: c.bill ? "#23190C" : T.muted, fontSize: 13, fontWeight: 700, cursor: c.bill ? "pointer" : "default" }}>
-            결제하기
-          </button>
+          {reconcileId === c.id && (
+            <div style={{ marginTop: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
+              <div style={{ color: T.muted, fontSize: 10.5, marginBottom: 5 }}>카드 앱에 찍힌 실제 청구액(직접 등록분)을 입력하면 맞춰요. 할부는 자동 포함돼요.</div>
+              <MoneyInput value={reconcileInput} onChange={setReconcileInput} />
+              <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 11.5, cursor: "pointer" }}>취소</button>
+                <button onClick={() => { reconcileCard(ctx, c, reconcileInput); setReconcileId(null); }} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>맞추기</button>
+              </div>
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -1083,6 +1189,8 @@ function BalanceCard({ ctx, accountBalance }) {
   const [expanded, setExpanded] = useState(false);
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState("");
+  const [reconcileId, setReconcileId] = useState(null);
+  const [reconcileInput, setReconcileInput] = useState("");
 
   const submit = () => {
     const n = Number(amount);
@@ -1118,11 +1226,45 @@ function BalanceCard({ ctx, accountBalance }) {
       {expanded && accountTotals.length > 1 && (
         <div style={{ marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
           {accountTotals.map((a) => (
-            <div key={a.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: T.cream, padding: "3px 0", borderBottom: `1px dashed ${T.border}` }}>
-              <span>{a.name}</span>
-              <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(a.balance)}</span>
+            <div key={a.id}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, color: T.cream, padding: "3px 0", borderBottom: `1px dashed ${T.border}` }}>
+                <span>{a.name}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(a.balance)}</span>
+                  <button onClick={() => { setReconcileId(reconcileId === a.id ? null : a.id); setReconcileInput(String(a.balance)); }} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "2px 6px", cursor: "pointer", color: T.muted, fontSize: 10 }}>맞추기</button>
+                </span>
+              </div>
+              {reconcileId === a.id && (
+                <div style={{ padding: "8px 0" }}>
+                  <div style={{ color: T.muted, fontSize: 10.5, marginBottom: 5 }}>통장 앱에 찍힌 실제 잔액을 입력하면 차액을 자동으로 맞춰요</div>
+                  <MoneyInput value={reconcileInput} onChange={setReconcileInput} />
+                  <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                    <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 11.5, cursor: "pointer" }}>취소</button>
+                    <button onClick={() => { reconcileAccount(ctx, a, reconcileInput); setReconcileId(null); }} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>맞추기</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
+        </div>
+      )}
+      {accountTotals.length === 1 && (
+        <div style={{ marginBottom: 10 }}>
+          {reconcileId === accountTotals[0].id ? (
+            <div style={{ background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
+              <div style={{ color: T.muted, fontSize: 10.5, marginBottom: 5 }}>통장 앱에 찍힌 실제 잔액을 입력하면 차액을 자동으로 맞춰요</div>
+              <MoneyInput value={reconcileInput} onChange={setReconcileInput} />
+              <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 11.5, cursor: "pointer" }}>취소</button>
+                <button onClick={() => { reconcileAccount(ctx, accountTotals[0], reconcileInput); setReconcileId(null); }} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>맞추기</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => { setReconcileId(accountTotals[0].id); setReconcileInput(String(accountTotals[0].balance)); }}
+              style={{ width: "100%", padding: "7px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, fontSize: 12, cursor: "pointer" }}>
+              실제 잔액으로 맞추기
+            </button>
+          )}
         </div>
       )}
       <div style={{ display: "flex", gap: 8 }}>
@@ -1440,6 +1582,7 @@ function InstallmentForm({ ctx }) {
   const [fixedPaymentMethod, setFixedPaymentMethod] = useState("cash");
   const [fixedCardId, setFixedCardId] = useState(data.cards?.[0]?.id || "");
   const [fixedAccountId, setFixedAccountId] = useState(data.accounts?.[0]?.id || "");
+  const [autoPayDay, setAutoPayDay] = useState("");
   const [overrideEditId, setOverrideEditId] = useState(null);
   const [overrideInput, setOverrideInput] = useState("");
   const [sortKey, setSortKey] = useState("default");
@@ -1470,12 +1613,12 @@ function InstallmentForm({ ctx }) {
       const tm = Number(totalMonths); const si = Number(startInstallment);
       if (!tm || tm < 1) return showToast("총 개월수를 입력해주세요");
       if (!si || si < 1 || si > tm) return showToast("현재 회차를 올바르게 입력해주세요 (1~총개월수)");
-      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: tm, startInstallment: si, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null, accountId: fixedPaymentMethod === "cash" ? fixedAccountId : null };
+      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: tm, startInstallment: si, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null, accountId: fixedPaymentMethod === "cash" ? fixedAccountId : null, paidMonths: {}, autoPayDay: fixedPaymentMethod === "cash" && Number(autoPayDay) >= 1 ? Number(autoPayDay) : null };
     } else {
-      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: 0, startInstallment: 1, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null, accountId: fixedPaymentMethod === "cash" ? fixedAccountId : null };
+      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: 0, startInstallment: 1, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null, accountId: fixedPaymentMethod === "cash" ? fixedAccountId : null, paidMonths: {}, autoPayDay: fixedPaymentMethod === "cash" && Number(autoPayDay) >= 1 ? Number(autoPayDay) : null };
     }
     persist({ ...data, fixedExpenses: [...(data.fixedExpenses || []), item] });
-    setFixedName(""); setFixedAmount(""); setTotalMonths(""); setStartInstallment("1"); setIsInstallment(false);
+    setFixedName(""); setFixedAmount(""); setTotalMonths(""); setStartInstallment("1"); setIsInstallment(false); setAutoPayDay("");
     showToast("표기내역을 추가했어요");
   };
   const saveOverride = (f) => {
@@ -1501,7 +1644,7 @@ function InstallmentForm({ ctx }) {
                     {f.name}{info.label ? ` · ${info.label}` : ""}{!info.active ? " · 완료" : ""}
                   </div>
                   <div style={{ color: T.muted, fontSize: 12.5 }}>
-                    {f.totalMonths ? "할부" : "매달 반복"} · 기본 {fmtWon(f.baseAmount)} · {(f.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === f.cardId)?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장(자동이체)")}
+                    {f.totalMonths ? "할부" : "매달 반복"} · 기본 {fmtWon(f.baseAmount)} · {(f.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === f.cardId)?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장(자동이체)")}{f.autoPayDay ? ` · 매달 ${f.autoPayDay}일 자동` : ""}
                   </div>
                 </div>
                 {info.active && (
@@ -1606,6 +1749,18 @@ function InstallmentForm({ ctx }) {
                 {a.name}
               </button>
             ))}
+          </div>
+        )}
+        {fixedPaymentMethod === "cash" && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ color: T.muted, fontSize: 12, marginBottom: 6 }}>자동 출금처리 (선택)</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: T.muted, fontSize: 12.5 }}>매달</span>
+              <input type="number" value={autoPayDay} onChange={(e) => setAutoPayDay(e.target.value)} placeholder="예: 25" min="1" max="31"
+                style={{ ...inputSty(T), fontFamily: F.mono, width: 70, textAlign: "center" }} />
+              <span style={{ color: T.muted, fontSize: 12.5 }}>일에 자동 출금</span>
+            </div>
+            <div style={{ color: T.muted, fontSize: 11, marginTop: 5 }}>비워두면 매달 홈에서 직접 &lsquo;출금처리&rsquo; 버튼을 눌러야 해요.</div>
           </div>
         )}
       </Field>
