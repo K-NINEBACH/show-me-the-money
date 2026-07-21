@@ -205,7 +205,7 @@ function FixedSortTabs({ sortKey, setSortKey }) {
     <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
       {FIXED_SORTS.map((s) => (
         <button key={s.key} onClick={() => setSortKey(s.key)}
-          style={{ border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10.5, fontWeight: 600, cursor: "pointer",
+          style={{ border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 12, fontWeight: 600, cursor: "pointer",
             background: sortKey === s.key ? T.gold : "transparent", color: sortKey === s.key ? "#23190C" : T.muted }}>
           {s.label}
         </button>
@@ -361,7 +361,7 @@ function QuickAmountButtons({ amount, setAmount }) {
     <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
       {QUICK_AMOUNTS.map((o) => (
         <button key={o.n} type="button" onClick={() => add(o.n)}
-          style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bg2, color: T.gold, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+          style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bg2, color: T.gold, fontSize: 14.5, fontWeight: 700, cursor: "pointer" }}>
           +{o.label}
         </button>
       ))}
@@ -481,18 +481,22 @@ export default function App() {
   const accountBalance = accountTotals.reduce((s, a) => s + a.balance, 0);
 
   const unpaidFixed = [...fixedActive, ...fixedCardRecurring].filter((f) => !(f.paidMonths && f.paidMonths[curKey]));
+  const unpaidFixedSum = unpaidFixed.reduce((s, f) => s + Number(f.info.amount), 0);
+  const processedSpent = spent - unpaidFixedSum;
+  const realRemaining = spendingGoal - processedSpent;
+  const realBudgetRatio = hasGoal ? Math.min(processedSpent / spendingGoal, 1.2) : (processedSpent > 0 ? 1.2 : 0);
 
   const ctx = {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, categorySpentThisMonth,
-    spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed,
+    spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio,
   };
 
   const S = {
     appShell: { background: `radial-gradient(circle at 50% -10%, ${T.bg2}, ${T.bg} 60%)`, minHeight: "100vh", display: "flex", flexDirection: "column", fontFamily: F.body },
     screen: { flex: 1, overflowY: "auto", padding: "20px 16px 12px", paddingBottom: 90 },
     nav: { position: "fixed", bottom: 0, left: 0, right: 0, display: "flex", background: T.navBg, borderTop: `1px solid ${T.goldSoft}55`, backdropFilter: "blur(8px)", padding: "8px 4px calc(8px + env(safe-area-inset-bottom))" },
-    toast: { position: "fixed", bottom: 84, left: "50%", transform: "translateX(-50%)", background: T.gold, color: "#23190C", padding: "8px 16px", borderRadius: 20, fontSize: 14.5, fontWeight: 600, boxShadow: "0 4px 16px rgba(0,0,0,0.3)" },
+    toast: { position: "fixed", bottom: 84, left: "50%", transform: "translateX(-50%)", background: T.gold, color: "#23190C", padding: "8px 16px", borderRadius: 20, fontSize: 16, fontWeight: 600, boxShadow: "0 4px 16px rgba(0,0,0,0.3)" },
   };
 
   return (
@@ -561,7 +565,7 @@ function Onboarding({ data, persist }) {
 
   const next = () => setStep((s) => Math.min(s + 1, TOTAL - 1));
   const back = () => setStep((s) => Math.max(s - 1, 0));
-  const navBtnStyle = { flex: 1, padding: "12px 0", borderRadius: 10, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 14, cursor: "pointer" };
+  const navBtnStyle = { flex: 1, padding: "12px 0", borderRadius: 10, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 15.5, cursor: "pointer" };
 
   return (
     <div style={{ background: T.bg, minHeight: "100vh", display: "flex", flexDirection: "column", fontFamily: F.body, transition: "background 0.3s" }}>
@@ -579,11 +583,11 @@ function Onboarding({ data, persist }) {
           <OnboardStep>
             <div style={{ textAlign: "center" }}>
               <div style={{ color: T.gold, fontFamily: F.display, fontSize: 26, fontWeight: 700, marginBottom: 10 }}>내 돈 챙겨줘</div>
-              <div style={{ color: T.muted, fontSize: 14.5, lineHeight: 1.6, marginBottom: 30 }}>
+              <div style={{ color: T.muted, fontSize: 16, lineHeight: 1.6, marginBottom: 30 }}>
                 카드값, 할부, 통장 잔액을 한 곳에서 관리하는<br />개인 가계부예요.<br /><br />
                 간단한 질문 몇 개로 시작할게요.
               </div>
-              <button onClick={next} style={{ ...primaryBtn(T), padding: "14px 28px", fontSize: 15, width: "auto" }}>시작하기</button>
+              <button onClick={next} style={{ ...primaryBtn(T), padding: "14px 28px", fontSize: 16.5, width: "auto" }}>시작하기</button>
             </div>
           </OnboardStep>
         )}
@@ -591,20 +595,20 @@ function Onboarding({ data, persist }) {
         {step === 1 && (
           <OnboardStep>
             <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>카드를 쓰시나요?</div>
-            <div style={{ color: T.muted, fontSize: 13, marginBottom: 20, textAlign: "center" }}>지출을 카드로도 기록하고 싶으면 선택하세요.</div>
+            <div style={{ color: T.muted, fontSize: 14.5, marginBottom: 20, textAlign: "center" }}>지출을 카드로도 기록하고 싶으면 선택하세요.</div>
             <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-              <button onClick={() => setUseCard(true)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: useCard ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: useCard ? T.gold + "22" : "transparent", color: T.cream, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>카드 써요</button>
-              <button onClick={() => setUseCard(false)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: !useCard ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: !useCard ? T.gold + "22" : "transparent", color: T.cream, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>안 써요</button>
+              <button onClick={() => setUseCard(true)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: useCard ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: useCard ? T.gold + "22" : "transparent", color: T.cream, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>카드 써요</button>
+              <button onClick={() => setUseCard(false)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: !useCard ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: !useCard ? T.gold + "22" : "transparent", color: T.cream, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>안 써요</button>
             </div>
             {useCard && (
               <div style={{ width: "100%", marginBottom: 20 }}>
-                <div style={{ color: T.muted, fontSize: 12, marginBottom: 6 }}>카드 이름 (나중에 여러 개 추가 가능)</div>
+                <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 6 }}>카드 이름 (나중에 여러 개 추가 가능)</div>
                 <input value={cardName} onChange={(e) => setCardName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
               </div>
             )}
             <div style={{ display: "flex", gap: 8, width: "100%" }}>
               <button onClick={back} style={navBtnStyle}>이전</button>
-              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 14 }}>다음</button>
+              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 15.5 }}>다음</button>
             </div>
           </OnboardStep>
         )}
@@ -612,19 +616,19 @@ function Onboarding({ data, persist }) {
         {step === 2 && (
           <OnboardStep>
             <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>통장 정보를 알려주세요</div>
-            <div style={{ color: T.muted, fontSize: 13, marginBottom: 20, textAlign: "center" }}>여러 통장은 나중에 설정에서 추가할 수 있어요.</div>
+            <div style={{ color: T.muted, fontSize: 14.5, marginBottom: 20, textAlign: "center" }}>여러 통장은 나중에 설정에서 추가할 수 있어요.</div>
             <div style={{ width: "100%", marginBottom: 14 }}>
-              <div style={{ color: T.muted, fontSize: 12, marginBottom: 6 }}>통장 이름</div>
+              <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 6 }}>통장 이름</div>
               <input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
             </div>
             <div style={{ width: "100%", marginBottom: 20 }}>
-              <div style={{ color: T.muted, fontSize: 12, marginBottom: 6 }}>지금 잔액 (선택, 나중에 수정 가능)</div>
+              <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 6 }}>지금 잔액 (선택, 나중에 수정 가능)</div>
               <MoneyInput value={startBalance} onChange={setStartBalance} />
               <QuickAmountButtons amount={startBalance} setAmount={setStartBalance} />
             </div>
             <div style={{ display: "flex", gap: 8, width: "100%" }}>
               <button onClick={back} style={navBtnStyle}>이전</button>
-              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 14 }}>다음</button>
+              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 15.5 }}>다음</button>
             </div>
           </OnboardStep>
         )}
@@ -632,12 +636,12 @@ function Onboarding({ data, persist }) {
         {step === 3 && (
           <OnboardStep>
             <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>카테고리를 확인해주세요</div>
-            <div style={{ color: T.muted, fontSize: 13, marginBottom: 16, textAlign: "center" }}>필요하면 지금 추가하고, 나중에 기록 탭에서도 추가할 수 있어요.</div>
+            <div style={{ color: T.muted, fontSize: 14.5, marginBottom: 16, textAlign: "center" }}>필요하면 지금 추가하고, 나중에 기록 탭에서도 추가할 수 있어요.</div>
             <div style={{ width: "100%", background: T.bg2, borderRadius: 10, padding: 10, marginBottom: 14 }}>
               {categories.map((c) => (
                 <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 6px", borderBottom: `1px solid ${T.border}` }}>
                   <span style={{ width: 10, height: 10, borderRadius: "50%", background: c.color }} />
-                  <span style={{ flex: 1, color: T.cream, fontSize: 14 }}>{c.name}</span>
+                  <span style={{ flex: 1, color: T.cream, fontSize: 15.5 }}>{c.name}</span>
                   <button onClick={() => removeCat(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={14} /></button>
                 </div>
               ))}
@@ -656,7 +660,7 @@ function Onboarding({ data, persist }) {
             </div>
             <div style={{ display: "flex", gap: 8, width: "100%" }}>
               <button onClick={back} style={navBtnStyle}>이전</button>
-              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 14 }}>다음</button>
+              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 15.5 }}>다음</button>
             </div>
           </OnboardStep>
         )}
@@ -664,14 +668,14 @@ function Onboarding({ data, persist }) {
         {step === 4 && (
           <OnboardStep>
             <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>이번 달 목표 지출액</div>
-            <div style={{ color: T.muted, fontSize: 13, marginBottom: 20, textAlign: "center" }}>홈 화면의 원형 게이지 기준이 돼요. 나중에 바꿀 수 있고, 안 정해도 괜찮아요.</div>
+            <div style={{ color: T.muted, fontSize: 14.5, marginBottom: 20, textAlign: "center" }}>홈 화면의 원형 게이지 기준이 돼요. 나중에 바꿀 수 있고, 안 정해도 괜찮아요.</div>
             <div style={{ width: "100%", marginBottom: 20 }}>
               <MoneyInput value={spendingGoal} onChange={setSpendingGoal} />
               <QuickAmountButtons amount={spendingGoal} setAmount={setSpendingGoal} />
             </div>
             <div style={{ display: "flex", gap: 8, width: "100%" }}>
               <button onClick={back} style={navBtnStyle}>이전</button>
-              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 14 }}>다음</button>
+              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 15.5 }}>다음</button>
             </div>
           </OnboardStep>
         )}
@@ -679,7 +683,7 @@ function Onboarding({ data, persist }) {
         {step === 5 && (
           <OnboardStep>
             <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>화면 테마를 골라주세요</div>
-            <div style={{ color: T.muted, fontSize: 13, marginBottom: 20, textAlign: "center" }}>눌러보면 바로 이 화면에 적용돼서 느낌을 볼 수 있어요.</div>
+            <div style={{ color: T.muted, fontSize: 14.5, marginBottom: 20, textAlign: "center" }}>눌러보면 바로 이 화면에 적용돼서 느낌을 볼 수 있어요.</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", rowGap: 16, columnGap: 4, width: "100%", marginBottom: 24 }}>
               {THEME_ORDER.map((id) => {
                 const th = THEMES[id];
@@ -688,14 +692,14 @@ function Onboarding({ data, persist }) {
                   <button key={id} onClick={() => setThemeId(id)}
                     style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                     <span style={{ width: 32, height: 32, borderRadius: "50%", background: th.swatch, border: active ? `3px solid ${T.gold}` : `1px solid ${T.border}` }} />
-                    <span style={{ color: active ? T.gold : T.muted, fontSize: 10, fontWeight: active ? 700 : 500 }}>{th.label}</span>
+                    <span style={{ color: active ? T.gold : T.muted, fontSize: 11.5, fontWeight: active ? 700 : 500 }}>{th.label}</span>
                   </button>
                 );
               })}
             </div>
             <div style={{ display: "flex", gap: 8, width: "100%" }}>
               <button onClick={back} style={navBtnStyle}>이전</button>
-              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 14 }}>다음</button>
+              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 15.5 }}>다음</button>
             </div>
           </OnboardStep>
         )}
@@ -711,14 +715,14 @@ function Onboarding({ data, persist }) {
                 ["달력", "달력 탭에서 하루하루 얼마 썼는지 한눈에 볼 수 있어요."],
               ].map(([title, desc]) => (
                 <div key={title} style={{ background: T.bg2, borderRadius: 10, padding: "10px 12px" }}>
-                  <div style={{ color: T.gold, fontSize: 13, fontWeight: 700, marginBottom: 3 }}>{title}</div>
-                  <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5 }}>{desc}</div>
+                  <div style={{ color: T.gold, fontSize: 14.5, fontWeight: 700, marginBottom: 3 }}>{title}</div>
+                  <div style={{ color: T.muted, fontSize: 14, lineHeight: 1.5 }}>{desc}</div>
                 </div>
               ))}
             </div>
             <div style={{ display: "flex", gap: 8, width: "100%" }}>
               <button onClick={back} style={navBtnStyle}>이전</button>
-              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 14 }}>다음</button>
+              <button onClick={next} style={{ flex: 2, ...primaryBtn(T), padding: "12px 0", fontSize: 15.5 }}>다음</button>
             </div>
           </OnboardStep>
         )}
@@ -727,14 +731,14 @@ function Onboarding({ data, persist }) {
           <OnboardStep>
             <div style={{ textAlign: "center" }}>
               <div style={{ color: T.gold, fontFamily: F.display, fontSize: 20, fontWeight: 700, marginBottom: 14 }}>준비됐어요!</div>
-              <div style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.7, marginBottom: 28, textAlign: "left" }}>
+              <div style={{ color: T.muted, fontSize: 15, lineHeight: 1.7, marginBottom: 28, textAlign: "left" }}>
                 {useCard && <div>· 카드: {cardName.trim() || "카드"}</div>}
                 <div>· 통장: {accountName.trim() || "통장"}{startBalance ? ` (${Number(startBalance).toLocaleString("ko-KR")}원)` : ""}</div>
                 <div>· 카테고리: {categories.map((c) => c.name).join(", ")}</div>
                 <div>· 목표 지출액: {spendingGoal ? `${Number(spendingGoal).toLocaleString("ko-KR")}원` : "나중에 설정"}</div>
                 <div>· 테마: {THEMES[themeId]?.label}</div>
               </div>
-              <button onClick={finish} style={{ ...primaryBtn(T), padding: "14px 28px", fontSize: 15, width: "auto" }}>시작하기</button>
+              <button onClick={finish} style={{ ...primaryBtn(T), padding: "14px 28px", fontSize: 16.5, width: "auto" }}>시작하기</button>
             </div>
           </OnboardStep>
         )}
@@ -778,7 +782,7 @@ function LockScreen({ data, onUnlock }) {
           }} />
         ))}
       </div>
-      <div style={{ height: 16, color: T.danger, fontSize: 13.5, marginBottom: 10 }}>{error ? "PIN이 올바르지 않아요" : ""}</div>
+      <div style={{ height: 16, color: T.danger, fontSize: 15, marginBottom: 10 }}>{error ? "PIN이 올바르지 않아요" : ""}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 68px)", gap: 16 }}>
         {keys.map((k, i) =>
           k === "" ? (
@@ -811,21 +815,21 @@ function NavBtn({ icon: Icon, label, active, onClick }) {
   return (
     <button onClick={onClick} style={{ flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0", cursor: "pointer", color: active ? T.gold : T.muted, transition: "color 0.2s" }}>
       <Icon size={20} strokeWidth={active ? 2.4 : 1.8} />
-      <span style={{ fontSize: 11.5, fontFamily: F.body, fontWeight: active ? 700 : 500 }}>{label}</span>
+      <span style={{ fontSize: 13, fontFamily: F.body, fontWeight: active ? 700 : 500 }}>{label}</span>
     </button>
   );
 }
 
 function SectionLabel({ children }) {
   const T = useTheme();
-  return <div style={{ color: T.goldSoft, fontSize: 12.5, fontWeight: 700, marginBottom: 8, marginTop: 4, paddingLeft: 2 }}>{children}</div>;
+  return <div style={{ color: T.goldSoft, fontSize: 14, fontWeight: 700, marginBottom: 8, marginTop: 4, paddingLeft: 2 }}>{children}</div>;
 }
 
 function Field({ label, children }) {
   const T = useTheme();
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 7 }}>{label}</div>
+      <div style={{ color: T.muted, fontSize: 15, marginBottom: 7 }}>{label}</div>
       {children}
     </div>
   );
@@ -835,11 +839,11 @@ function Field({ label, children }) {
 function HomeView({ ctx }) {
   const T = useTheme();
   const { data, curKey, dayIntoCycle, cycleLen, remaining, budgetRatio,
-    fixedSum, fixedSumAll, normalSpent, fixedActive, fixedCardActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal, unpaidFixed } = ctx;
-  const over = remaining < 0;
-  const ringColor = budgetRatio < 0.7 ? T.good : budgetRatio < 1 ? T.warn : T.danger;
+    fixedSum, fixedSumAll, normalSpent, fixedActive, fixedCardActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal, unpaidFixed, unpaidFixedSum, realRemaining, realBudgetRatio } = ctx;
+  const over = realRemaining < 0;
+  const ringColor = realBudgetRatio < 0.7 ? T.good : realBudgetRatio < 1 ? T.warn : T.danger;
   const dashArray = 2 * Math.PI * 54;
-  const dashOffset = dashArray * (1 - Math.min(budgetRatio, 1));
+  const dashOffset = dashArray * (1 - Math.min(realBudgetRatio, 1));
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
   const recent = [...cycleExpenses].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
 
@@ -849,15 +853,15 @@ function HomeView({ ctx }) {
 
       {unpaidFixed.length > 0 && (
         <div style={{ marginTop: 10, background: T.warn + "18", border: `1px solid ${T.warn}66`, borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ color: T.warn, fontSize: 12.5, fontWeight: 700 }}>출금처리 안 한 고정지출 {unpaidFixed.length}건</span>
-          <span style={{ color: T.muted, fontSize: 11.5, flex: 1 }}>실제로 빠져나갔으면 아래에서 출금처리 하세요</span>
+          <span style={{ color: T.warn, fontSize: 14, fontWeight: 700 }}>출금처리 안 한 고정지출 {unpaidFixed.length}건</span>
+          <span style={{ color: T.muted, fontSize: 13, flex: 1 }}>실제로 빠져나갔으면 아래에서 출금처리 하세요</span>
         </div>
       )}
 
       <div style={{ height: 1, background: `linear-gradient(90deg, transparent, ${T.border}, transparent)`, margin: "26px 0 0" }} />
 
       <div style={{ textAlign: "center", marginBottom: 6, marginTop: 20 }}>
-        <div style={{ color: T.muted, fontSize: 13.5, letterSpacing: 1 }}>내 돈 챙겨줘</div>
+        <div style={{ color: T.muted, fontSize: 15, letterSpacing: 1 }}>내 돈 챙겨줘</div>
         <div style={{ color: T.cream, fontFamily: F.display, fontSize: 21.5, fontWeight: 700, marginTop: 2 }}>
           {monthLabel(curKey)} · {dayIntoCycle}일차
         </div>
@@ -873,23 +877,28 @@ function HomeView({ ctx }) {
               style={{ transition: "stroke-dashoffset 0.6s ease, stroke 0.4s" }} />
           </svg>
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ color: T.muted, fontSize: 11.5, marginBottom: 2 }}>{over ? "목표 초과" : "이번 달 사용 가능"}</div>
+            <div style={{ color: T.muted, fontSize: 13, marginBottom: 2 }}>{over ? "목표 초과" : "지금 실제 사용 가능"}</div>
             <div style={{ color: over ? T.danger : T.cream, fontFamily: F.mono, fontWeight: 600, fontSize: 19.5, lineHeight: 1.15, textAlign: "center" }}>
-              {over ? "-" : ""}{fmtWon(Math.abs(remaining))}
+              {over ? "-" : ""}{fmtWon(Math.abs(realRemaining))}
             </div>
-            <div style={{ color: T.goldSoft, fontSize: 11.5, marginTop: 4 }}>
+            <div style={{ color: T.goldSoft, fontSize: 13, marginTop: 4 }}>
               {cycleLen - dayIntoCycle >= 0 ? `${cycleLen - dayIntoCycle}일 남음` : ""}
             </div>
           </div>
         </div>
       </div>
       {!hasGoal && (
-        <div style={{ textAlign: "center", color: T.warn, fontSize: 12.5, marginTop: -4, marginBottom: 6 }}>
+        <div style={{ textAlign: "center", color: T.warn, fontSize: 14, marginTop: -4, marginBottom: 6 }}>
           설정에서 이번 달 목표 지출액을 정해주세요
         </div>
       )}
-      <div style={{ textAlign: "center", color: T.muted, fontSize: 11, marginTop: -4, marginBottom: 14, padding: "0 24px" }}>
-        목표 지출액 기준 계획상 금액이에요 · 카드값은 결제 전까지 통장 잔액에 반영 안 돼요
+      {unpaidFixedSum > 0 && (
+        <div style={{ textAlign: "center", color: T.warn, fontSize: 13, marginTop: -4, marginBottom: 6 }}>
+          곧 빠질 예정 {fmtWon(unpaidFixedSum)} 별도 (출금처리 전)
+        </div>
+      )}
+      <div style={{ textAlign: "center", color: T.muted, fontSize: 12.5, marginTop: -4, marginBottom: 14, padding: "0 24px" }}>
+        고정지출을 아직 출금처리 안 했으면 그만큼 빼고 계산해요 · 전부 포함한 계획상 잔여는 {fmtWon(Math.abs(remaining))}{remaining < 0 ? " 초과" : ""}
       </div>
 
       <SummaryCard ctx={ctx} />
@@ -920,10 +929,10 @@ function HomeView({ ctx }) {
       <div style={paperCard(T)}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
           <div style={{ fontFamily: F.display, color: T.ink, fontSize: 16.5, fontWeight: 700 }}>최근 기록</div>
-          <div style={{ fontSize: 12.5, color: T.goldSoft }}>이번 달 {cycleExpenses.length}건</div>
+          <div style={{ fontSize: 14, color: T.goldSoft }}>이번 달 {cycleExpenses.length}건</div>
         </div>
         {recent.length === 0 ? (
-          <div style={{ color: T.muted, fontSize: 14.5, textAlign: "center", padding: "18px 0" }}>
+          <div style={{ color: T.muted, fontSize: 16, textAlign: "center", padding: "18px 0" }}>
             아직 이번 달 기록이 없어요.<br />지출이 생기면 &lsquo;기록&rsquo; 탭에서 남겨보세요.
           </div>
         ) : (
@@ -944,26 +953,26 @@ function ReceivablesCard({ ctx, receivables, catMap }) {
     <div style={{ background: T.bg2, border: `1px solid ${T.good}55`, borderRadius: 12, padding: "10px 12px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
         <HandCoins size={13} color={T.good} />
-        <span style={{ color: T.good, fontSize: 12.5, fontWeight: 700 }}>대리결제(추후 정산)</span>
+        <span style={{ color: T.good, fontSize: 14, fontWeight: 700 }}>대리결제(추후 정산)</span>
       </div>
       {receivables.map((r) => (
         <div key={r.id}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, color: T.cream, padding: "3px 0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 15, color: T.cream, padding: "3px 0" }}>
             <span>{r.memo || catMap[r.categoryId]?.name || "대리결제"}</span>
             <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontFamily: F.mono, color: T.good }}>{fmtWon(r.amount)}</span>
               {settlingId !== r.id && (
-                <button onClick={() => open(r)} style={{ background: T.good, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", color: "#fff", fontSize: 12, fontWeight: 700 }}>정산</button>
+                <button onClick={() => open(r)} style={{ background: T.good, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", color: "#fff", fontSize: 13.5, fontWeight: 700 }}>정산</button>
               )}
             </span>
           </div>
           {settlingId === r.id && (
             <div style={{ marginTop: 4, marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
-              <div style={{ color: T.muted, fontSize: 12, marginBottom: 5 }}>실제 상환받은 금액 (부족분→카드값, 초과분→통장)</div>
+              <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 5 }}>실제 상환받은 금액 (부족분→카드값, 초과분→통장)</div>
               <MoneyInput value={repaidInput} onChange={setRepaidInput} autoFocus />
               <QuickAmountButtons amount={repaidInput} setAmount={setRepaidInput} />
               <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                <button onClick={() => setSettlingId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13, cursor: "pointer" }}>취소</button>
+                <button onClick={() => setSettlingId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 14.5, cursor: "pointer" }}>취소</button>
                 <button onClick={() => confirm(r)} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>정산 확정</button>
               </div>
             </div>
@@ -982,15 +991,15 @@ function SummaryCard({ ctx }) {
   const up = pct != null && pct > 0;
   return (
     <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
-      <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 4 }}>{monthLabel(curKey)} 요약</div>
+      <div style={{ color: T.muted, fontSize: 14, marginBottom: 4 }}>{monthLabel(curKey)} 요약</div>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
         <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 16.5, fontWeight: 700 }}>총 지출 {fmtWon(totalSpentThisMonth)}</div>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: pct == null ? T.muted : up ? T.danger : T.good }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: pct == null ? T.muted : up ? T.danger : T.good }}>
           {pct == null ? "지난달 비교 데이터 없음" : `지난달 대비 ${up ? "+" : ""}${pct}%`}
         </div>
       </div>
       {hasGoal && (
-        <div style={{ color: remaining >= 0 ? T.good : T.danger, fontSize: 13.5, marginTop: 4 }}>
+        <div style={{ color: remaining >= 0 ? T.good : T.danger, fontSize: 15, marginTop: 4 }}>
           {remaining >= 0 ? `목표 대비 여유 ${fmtWon(remaining)}` : `목표 초과 ${fmtWon(Math.abs(remaining))}`}
         </div>
       )}
@@ -1007,7 +1016,7 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
   const sorted = sortFixedList(combined, sortKey);
   return (
     <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px" }}>
-      <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 6 }}>이번달 고정지출 상세내역</div>
+      <div style={{ color: T.muted, fontSize: 14, marginBottom: 6 }}>이번달 고정지출 상세내역</div>
       <FixedSortTabs sortKey={sortKey} setSortKey={setSortKey} />
       {sorted.map((f) => {
         const isCard = (f.paymentMethod || "cash") === "card";
@@ -1015,9 +1024,9 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
         const needsAction = !isRealInstallment;
         const paidId = f.paidMonths?.[curKey];
         return (
-          <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, color: T.cream, padding: "4px 0" }}>
+          <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 15, color: T.cream, padding: "4px 0" }}>
             <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""}
-              <span style={{ color: isCard ? T.gold : T.muted, fontSize: 11.5 }}>
+              <span style={{ color: isCard ? T.gold : T.muted, fontSize: 13 }}>
                 {" · "}{isCard ? (data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장")}
               </span>
             </span>
@@ -1025,9 +1034,9 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
               <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
               {needsAction && (
                 paidId ? (
-                  <button onClick={() => unmarkFixedPaid(ctx, f)} style={{ background: "none", border: `1px solid ${T.good}`, borderRadius: 6, padding: "3px 6px", cursor: "pointer", color: T.good, fontSize: 10, fontWeight: 700 }}>{isCard ? "반영완료" : "출금완료"}</button>
+                  <button onClick={() => unmarkFixedPaid(ctx, f)} style={{ background: "none", border: `1px solid ${T.good}`, borderRadius: 6, padding: "3px 6px", cursor: "pointer", color: T.good, fontSize: 11.5, fontWeight: 700 }}>{isCard ? "반영완료" : "출금완료"}</button>
                 ) : (
-                  <button onClick={() => markFixedPaid(ctx, f, f.info)} style={{ background: T.good, border: "none", borderRadius: 6, padding: "3px 7px", cursor: "pointer", color: "#fff", fontSize: 10, fontWeight: 700 }}>{isCard ? "카드반영" : "출금처리"}</button>
+                  <button onClick={() => markFixedPaid(ctx, f, f.info)} style={{ background: T.good, border: "none", borderRadius: 6, padding: "3px 7px", cursor: "pointer", color: "#fff", fontSize: 11.5, fontWeight: 700 }}>{isCard ? "카드반영" : "출금처리"}</button>
                 )
               )}
             </span>
@@ -1045,7 +1054,7 @@ function CategoryBudgetCard({ ctx }) {
   if (budgeted.length === 0) return null;
   return (
     <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px" }}>
-      <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 8 }}>카테고리별 예산</div>
+      <div style={{ color: T.muted, fontSize: 14, marginBottom: 8 }}>카테고리별 예산</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {budgeted.map((c) => {
           const spent = categorySpentThisMonth[c.id] || 0;
@@ -1053,9 +1062,9 @@ function CategoryBudgetCard({ ctx }) {
           const over = spent > c.budget;
           return (
             <div key={c.id}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: T.cream, marginBottom: 3 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, color: T.cream, marginBottom: 3 }}>
                 <span>{c.name}</span>
-                <span style={{ color: over ? T.danger : T.muted, fontFamily: F.mono, fontSize: 12.5 }}>{fmtWon(spent)} / {fmtWon(c.budget)}</span>
+                <span style={{ color: over ? T.danger : T.muted, fontFamily: F.mono, fontSize: 14 }}>{fmtWon(spent)} / {fmtWon(c.budget)}</span>
               </div>
               <div style={{ height: 6, background: T.mode === "dark" ? "#2A2F4C" : "#DCCBA0", borderRadius: 4, overflow: "hidden" }}>
                 <div style={{ width: `${ratio * 100}%`, height: "100%", background: over ? T.danger : c.color, transition: "width 0.4s" }} />
@@ -1175,25 +1184,25 @@ function CardsBlock({ ctx, cardTotals }) {
         <div key={c.id} style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ color: T.muted, fontSize: 12.5 }}>{c.name}</div>
+              <div style={{ color: T.muted, fontSize: 14 }}>{c.name}</div>
               <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 15.5, fontWeight: 700 }}>{fmtWon(c.total)}</div>
-              {c.fixedPortion > 0 && <div style={{ color: T.goldSoft, fontSize: 11.5 }}>이번 달 할부 {fmtWon(c.fixedPortion)} 포함</div>}
+              {c.fixedPortion > 0 && <div style={{ color: T.goldSoft, fontSize: 13 }}>이번 달 할부 {fmtWon(c.fixedPortion)} 포함</div>}
             </div>
             <button onClick={() => { setReconcileId(reconcileId === c.id ? null : c.id); setReconcileInput(String(c.total || "")); }}
-              style={{ padding: "7px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, fontSize: 12, cursor: "pointer" }}>
+              style={{ padding: "7px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, fontSize: 13.5, cursor: "pointer" }}>
               맞추기
             </button>
             <button onClick={() => payCard(ctx, c)} disabled={!c.bill}
-              style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: c.bill ? T.gold : T.border, color: c.bill ? "#23190C" : T.muted, fontSize: 13, fontWeight: 700, cursor: c.bill ? "pointer" : "default" }}>
+              style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: c.bill ? T.gold : T.border, color: c.bill ? "#23190C" : T.muted, fontSize: 14.5, fontWeight: 700, cursor: c.bill ? "pointer" : "default" }}>
               결제하기
             </button>
           </div>
           {reconcileId === c.id && (
             <div style={{ marginTop: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
-              <div style={{ color: T.muted, fontSize: 10.5, marginBottom: 5 }}>카드 앱에 찍힌 이번 달 청구 총액(할부 포함)을 그대로 입력하면 맞춰요.</div>
+              <div style={{ color: T.muted, fontSize: 12, marginBottom: 5 }}>카드 앱에 찍힌 이번 달 청구 총액(할부 포함)을 그대로 입력하면 맞춰요.</div>
               <MoneyInput value={reconcileInput} onChange={setReconcileInput} />
               <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 11.5, cursor: "pointer" }}>취소</button>
+                <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13, cursor: "pointer" }}>취소</button>
                 <button onClick={() => { reconcileCard(ctx, c, reconcileInput); setReconcileId(null); }} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>맞추기</button>
               </div>
             </div>
@@ -1252,21 +1261,21 @@ function TransitQuickAdd({ ctx }) {
 
   return (
     <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px", marginBottom: 14 }}>
-      <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 2 }}>대중교통비 빠른입력</div>
-      <div style={{ color: T.muted, fontSize: 10.5, marginBottom: 8 }}>계기판에 뜨는 이번 달 누적 금액을 그대로 입력하면, 이전 값을 대체해서 갱신돼요 (더해지지 않아요).</div>
+      <div style={{ color: T.muted, fontSize: 14, marginBottom: 2 }}>대중교통비 빠른입력</div>
+      <div style={{ color: T.muted, fontSize: 12, marginBottom: 8 }}>계기판에 뜨는 이번 달 누적 금액을 그대로 입력하면, 이전 값을 대체해서 갱신돼요 (더해지지 않아요).</div>
       <MoneyInput value={amount} onChange={setAmount} placeholder="이번 달 누적 금액" />
       {data.cards.length > 1 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
           {data.cards.map((c) => (
             <button key={c.id} onClick={() => setCardId(c.id)}
               style={{ padding: "6px 10px", borderRadius: 16, border: cardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                background: cardId === c.id ? T.gold + "22" : "transparent", color: cardId === c.id ? T.cream : T.muted, fontSize: 12.5, cursor: "pointer" }}>
+                background: cardId === c.id ? T.gold + "22" : "transparent", color: cardId === c.id ? T.cream : T.muted, fontSize: 14, cursor: "pointer" }}>
               {c.name}
             </button>
           ))}
         </div>
       )}
-      <button onClick={submit} style={{ ...primaryBtn(T), marginTop: 8, padding: "9px 0", fontSize: 13 }}>{existing ? "누적 금액 갱신" : "카드값에 반영"}</button>
+      <button onClick={submit} style={{ ...primaryBtn(T), marginTop: 8, padding: "9px 0", fontSize: 14.5 }}>{existing ? "누적 금액 갱신" : "카드값에 반영"}</button>
     </div>
   );
 }
@@ -1311,28 +1320,28 @@ function BalanceCard({ ctx, accountBalance }) {
       <button onClick={() => setExpanded(!expanded)} style={{ background: "none", border: "none", padding: 0, cursor: accountTotals.length > 1 ? "pointer" : "default", width: "100%", textAlign: "left" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
           <Wallet size={14} color={T.good} />
-          <span style={{ color: T.good, fontSize: 12.5, fontWeight: 700 }}>통장 잔액 (총합){accountTotals.length > 1 ? (expanded ? " ▲" : " ▼") : ""}</span>
+          <span style={{ color: T.good, fontSize: 14, fontWeight: 700 }}>통장 잔액 (총합){accountTotals.length > 1 ? (expanded ? " ▲" : " ▼") : ""}</span>
         </div>
         <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 26, fontWeight: 700, marginBottom: 2 }}>{fmtWon(accountBalance)}</div>
-        <div style={{ color: T.good, fontSize: 10.5, marginBottom: 10 }}>실제로 계좌에 있는 돈 · 입출금·현금결제만 실시간 반영</div>
+        <div style={{ color: T.good, fontSize: 12, marginBottom: 10 }}>실제로 계좌에 있는 돈 · 입출금·현금결제만 실시간 반영</div>
       </button>
       {expanded && accountTotals.length > 1 && (
         <div style={{ marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
           {accountTotals.map((a) => (
             <div key={a.id}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, color: T.cream, padding: "3px 0", borderBottom: `1px dashed ${T.border}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 15, color: T.cream, padding: "3px 0", borderBottom: `1px dashed ${T.border}` }}>
                 <span>{a.name}</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(a.balance)}</span>
-                  <button onClick={() => { setReconcileId(reconcileId === a.id ? null : a.id); setReconcileInput(String(a.balance)); }} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "2px 6px", cursor: "pointer", color: T.muted, fontSize: 10 }}>맞추기</button>
+                  <button onClick={() => { setReconcileId(reconcileId === a.id ? null : a.id); setReconcileInput(String(a.balance)); }} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "2px 6px", cursor: "pointer", color: T.muted, fontSize: 11.5 }}>맞추기</button>
                 </span>
               </div>
               {reconcileId === a.id && (
                 <div style={{ padding: "8px 0" }}>
-                  <div style={{ color: T.muted, fontSize: 10.5, marginBottom: 5 }}>통장 앱에 찍힌 실제 잔액을 입력하면 차액을 자동으로 맞춰요</div>
+                  <div style={{ color: T.muted, fontSize: 12, marginBottom: 5 }}>통장 앱에 찍힌 실제 잔액을 입력하면 차액을 자동으로 맞춰요</div>
                   <MoneyInput value={reconcileInput} onChange={setReconcileInput} />
                   <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                    <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 11.5, cursor: "pointer" }}>취소</button>
+                    <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13, cursor: "pointer" }}>취소</button>
                     <button onClick={() => { reconcileAccount(ctx, a, reconcileInput); setReconcileId(null); }} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>맞추기</button>
                   </div>
                 </div>
@@ -1345,16 +1354,16 @@ function BalanceCard({ ctx, accountBalance }) {
         <div style={{ marginBottom: 10 }}>
           {reconcileId === accountTotals[0].id ? (
             <div style={{ background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
-              <div style={{ color: T.muted, fontSize: 10.5, marginBottom: 5 }}>통장 앱에 찍힌 실제 잔액을 입력하면 차액을 자동으로 맞춰요</div>
+              <div style={{ color: T.muted, fontSize: 12, marginBottom: 5 }}>통장 앱에 찍힌 실제 잔액을 입력하면 차액을 자동으로 맞춰요</div>
               <MoneyInput value={reconcileInput} onChange={setReconcileInput} />
               <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 11.5, cursor: "pointer" }}>취소</button>
+                <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13, cursor: "pointer" }}>취소</button>
                 <button onClick={() => { reconcileAccount(ctx, accountTotals[0], reconcileInput); setReconcileId(null); }} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>맞추기</button>
               </div>
             </div>
           ) : (
             <button onClick={() => { setReconcileId(accountTotals[0].id); setReconcileInput(String(accountTotals[0].balance)); }}
-              style={{ width: "100%", padding: "7px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, fontSize: 12, cursor: "pointer" }}>
+              style={{ width: "100%", padding: "7px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, fontSize: 13.5, cursor: "pointer" }}>
               실제 잔액으로 맞추기
             </button>
           )}
@@ -1362,11 +1371,11 @@ function BalanceCard({ ctx, accountBalance }) {
       )}
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={() => setMode(mode === "in" ? null : "in")}
-          style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.good}`, background: mode === "in" ? T.good + "22" : "transparent", color: T.good, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+          style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.good}`, background: mode === "in" ? T.good + "22" : "transparent", color: T.good, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
           <ArrowDownCircle size={14} /> 입금
         </button>
         <button onClick={() => setMode(mode === "out" ? null : "out")}
-          style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.danger}`, background: mode === "out" ? T.danger + "22" : "transparent", color: T.danger, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+          style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.danger}`, background: mode === "out" ? T.danger + "22" : "transparent", color: T.danger, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
           <ArrowUpCircle size={14} /> 출금
         </button>
       </div>
@@ -1374,13 +1383,13 @@ function BalanceCard({ ctx, accountBalance }) {
         <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
           <button onClick={() => setShowPaste(!showPaste)}
             style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 0", borderRadius: 8,
-              border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+              border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
             <ClipboardPaste size={13} /> 입출금 문자 붙여넣기로 채우기
           </button>
           {showPaste && (
             <div>
               <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="예: 국민은행 입금 500,000원 07/20 14:23"
-                style={{ ...inputSty(T), height: 70, fontSize: 12.5, marginBottom: 6 }} />
+                style={{ ...inputSty(T), height: 70, fontSize: 14, marginBottom: 6 }} />
               <button onClick={applyParse} style={primaryBtn(T)}>읽어오기</button>
             </div>
           )}
@@ -1389,7 +1398,7 @@ function BalanceCard({ ctx, accountBalance }) {
               {data.accounts.map((a) => (
                 <button key={a.id} onClick={() => setAccountId(a.id)}
                   style={{ padding: "6px 10px", borderRadius: 16, border: accountId === a.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                    background: accountId === a.id ? T.gold + "22" : "transparent", color: accountId === a.id ? T.cream : T.muted, fontSize: 13, cursor: "pointer" }}>
+                    background: accountId === a.id ? T.gold + "22" : "transparent", color: accountId === a.id ? T.cream : T.muted, fontSize: 14.5, cursor: "pointer" }}>
                   {a.name}
                 </button>
               ))}
@@ -1411,8 +1420,8 @@ function StatCard({ label, value }) {
   const T = useTheme();
   return (
     <div style={{ flex: 1, background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 10px" }}>
-      <div style={{ color: T.muted, fontSize: 11.5, marginBottom: 4 }}>{label}</div>
-      <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 14, fontWeight: 600 }}>{value}</div>
+      <div style={{ color: T.muted, fontSize: 13, marginBottom: 4 }}>{label}</div>
+      <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 15.5, fontWeight: 600 }}>{value}</div>
     </div>
   );
 }
@@ -1423,16 +1432,16 @@ function LedgerRow({ e, cat }) {
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
       <div style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: T.ink, fontSize: 14.5, fontWeight: 600 }}>
+        <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
           {cat ? cat.name : "미분류"}
-          <span style={{ fontSize: 11.5, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
+          <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
             {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
           </span>
         </div>
-        {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.memo}</div>}
+        {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.memo}</div>}
       </div>
-      <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date.slice(5)}</div>
-      <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 14.5, minWidth: 74, textAlign: "right" }}>{fmtWon(e.amount)}</div>
+      <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 14, fontFamily: F.mono }}>{e.date.slice(5)}</div>
+      <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16, minWidth: 74, textAlign: "right" }}>{fmtWon(e.amount)}</div>
     </div>
   );
 }
@@ -1514,15 +1523,15 @@ function AddView({ ctx }) {
       <Field label="결제 수단">
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setPayMethod("card")}
-            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: payMethod === "card" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: payMethod === "card" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
             <CreditCard size={14} /> 카드
           </button>
           <button onClick={() => setPayMethod("cash")}
-            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: payMethod === "cash" ? T.good + "22" : "transparent", color: T.cream, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: payMethod === "cash" ? T.good + "22" : "transparent", color: T.cream, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
             <Wallet size={14} /> 현금(통장)
           </button>
           <button onClick={() => setPayMethod("installment")}
-            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "installment" ? `2px solid ${T.warn}` : `1px solid ${T.border}`, background: payMethod === "installment" ? T.warn + "22" : "transparent", color: T.cream, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "installment" ? `2px solid ${T.warn}` : `1px solid ${T.border}`, background: payMethod === "installment" ? T.warn + "22" : "transparent", color: T.cream, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
             <Repeat size={14} /> 할부(고정지출)
           </button>
         </div>
@@ -1534,13 +1543,13 @@ function AddView({ ctx }) {
         <>
           <button onClick={() => setShowPaste(!showPaste)}
             style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 0", borderRadius: 10,
-              border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: showPaste ? 10 : 16 }}>
+              border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 14.5, fontWeight: 700, cursor: "pointer", marginBottom: showPaste ? 10 : 16 }}>
             <ClipboardPaste size={14} /> 결제 문자 붙여넣기로 채우기
           </button>
           {showPaste && (
             <div style={{ marginBottom: 16 }}>
               <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="예: [현대카드] 승인 12,000원 07/20 14:23 스타벅스"
-                style={{ ...inputSty(T), height: 80, fontSize: 13, marginBottom: 8 }} />
+                style={{ ...inputSty(T), height: 80, fontSize: 14.5, marginBottom: 8 }} />
               <button onClick={applyParse} style={primaryBtn(T)}>읽어오기</button>
             </div>
           )}
@@ -1557,14 +1566,14 @@ function AddView({ ctx }) {
                   {data.cards.map((c) => (
                     <button key={c.id} onClick={() => setCardId(c.id)}
                       style={{ padding: "7px 12px", borderRadius: 20, border: cardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                        background: cardId === c.id ? T.gold + "22" : "transparent", color: cardId === c.id ? T.cream : T.muted, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                        background: cardId === c.id ? T.gold + "22" : "transparent", color: cardId === c.id ? T.cream : T.muted, fontSize: 15.5, fontWeight: 600, cursor: "pointer" }}>
                       {c.name}
                     </button>
                   ))}
                 </div>
               </Field>
             ) : (
-              <div style={{ color: T.warn, fontSize: 12.5, marginBottom: 16 }}>등록된 카드가 없어요. 설정에서 먼저 카드를 등록해주세요.</div>
+              <div style={{ color: T.warn, fontSize: 14, marginBottom: 16 }}>등록된 카드가 없어요. 설정에서 먼저 카드를 등록해주세요.</div>
             )
           ) : (
             (data.accounts || []).length > 1 && (
@@ -1573,7 +1582,7 @@ function AddView({ ctx }) {
                   {data.accounts.map((a) => (
                     <button key={a.id} onClick={() => setAccountId(a.id)}
                       style={{ padding: "7px 12px", borderRadius: 20, border: accountId === a.id ? `2px solid ${T.good}` : `1px solid ${T.border}`,
-                        background: accountId === a.id ? T.good + "22" : "transparent", color: accountId === a.id ? T.cream : T.muted, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                        background: accountId === a.id ? T.good + "22" : "transparent", color: accountId === a.id ? T.cream : T.muted, fontSize: 15.5, fontWeight: 600, cursor: "pointer" }}>
                       {a.name}
                     </button>
                   ))}
@@ -1588,13 +1597,13 @@ function AddView({ ctx }) {
                 <button key={c.id} onClick={() => setCategoryId(c.id)}
                   style={{ padding: "8px 14px", borderRadius: 20, border: categoryId === c.id ? `2px solid ${c.color}` : `1px solid ${T.border}`,
                     background: categoryId === c.id ? c.color + "22" : "transparent", color: categoryId === c.id ? T.cream : T.muted,
-                    fontSize: 14.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                    fontSize: 16, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.color }} />
                   {c.name}
                 </button>
               ))}
               <button onClick={() => setNewCatMode(!newCatMode)}
-                style={{ padding: "8px 12px", borderRadius: 20, border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 14.5, cursor: "pointer" }}>
+                style={{ padding: "8px 12px", borderRadius: 20, border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 16, cursor: "pointer" }}>
                 + 새 카테고리
               </button>
             </div>
@@ -1602,10 +1611,10 @@ function AddView({ ctx }) {
               <button onClick={() => { setCatBudgetEditing(!catBudgetEditing); setCatBudgetInput(String(selectedCategory.budget || "")); }}
                 style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10,
                   background: T.bg2, border: `1px solid ${T.gold}`, borderRadius: 10, padding: "10px 12px", cursor: "pointer" }}>
-                <span style={{ color: T.cream, fontSize: 13.5, fontWeight: 600 }}>
+                <span style={{ color: T.cream, fontSize: 15, fontWeight: 600 }}>
                   {selectedCategory.name} 예산: <span style={{ color: selectedCategory.budget > 0 ? T.gold : T.muted, fontFamily: F.mono, fontWeight: 700 }}>{selectedCategory.budget > 0 ? fmtWon(selectedCategory.budget) : "없음"}</span>
                 </span>
-                <span style={{ display: "flex", alignItems: "center", gap: 4, color: T.gold, fontSize: 12.5, fontWeight: 700 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 4, color: T.gold, fontSize: 14, fontWeight: 700 }}>
                   <Pencil size={16} /> 설정
                 </span>
               </button>
@@ -1649,8 +1658,8 @@ function AddView({ ctx }) {
               {isReceivable && <Check size={13} color="#fff" />}
             </div>
             <div style={{ textAlign: "left" }}>
-              <div style={{ color: isReceivable ? T.good : T.cream, fontSize: 14.5, fontWeight: 700 }}>대리결제 (추후 정산)</div>
-              <div style={{ color: T.muted, fontSize: 12.5 }}>예산에서 빠지고 홈 화면에서 바로 정산할 수 있어요.</div>
+              <div style={{ color: isReceivable ? T.good : T.cream, fontSize: 16, fontWeight: 700 }}>대리결제 (추후 정산)</div>
+              <div style={{ color: T.muted, fontSize: 14 }}>예산에서 빠지고 홈 화면에서 바로 정산할 수 있어요.</div>
             </div>
           </button>
 
@@ -1733,10 +1742,10 @@ function InstallmentForm({ ctx }) {
             <div key={f.id} style={{ padding: "8px 4px", borderBottom: `1px solid ${T.border}` }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ color: T.cream, fontSize: 14.5, fontWeight: 600 }}>
+                  <div style={{ color: T.cream, fontSize: 16, fontWeight: 600 }}>
                     {f.name}{info.label ? ` · ${info.label}` : ""}{!info.active ? " · 완료" : ""}
                   </div>
-                  <div style={{ color: T.muted, fontSize: 12.5 }}>
+                  <div style={{ color: T.muted, fontSize: 14 }}>
                     {f.totalMonths ? "할부" : "매달 반복"} · 기본 {fmtWon(f.baseAmount)} · {(f.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === f.cardId)?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장(자동이체)")}{f.autoPayDay ? ` · 매달 ${f.autoPayDay}일 자동` : ""}
                   </div>
                 </div>
@@ -1756,7 +1765,7 @@ function InstallmentForm({ ctx }) {
               )}
               {reassignEditId === f.id && (
                 <div style={{ marginTop: 6 }}>
-                  <div style={{ color: T.muted, fontSize: 11.5, marginBottom: 4 }}>
+                  <div style={{ color: T.muted, fontSize: 13, marginBottom: 4 }}>
                     {(f.paymentMethod || "cash") === "card" ? "다른 카드로 변경" : "다른 통장으로 변경"}
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -1766,7 +1775,7 @@ function InstallmentForm({ ctx }) {
                       return (
                         <button key={opt.id} onClick={() => reassignFixed(f, opt.id)}
                           style={{ padding: "6px 10px", borderRadius: 16, border: active ? `2px solid ${T.good}` : `1px solid ${T.border}`,
-                            background: active ? T.good + "22" : "transparent", color: active ? T.cream : T.muted, fontSize: 13, cursor: "pointer" }}>
+                            background: active ? T.good + "22" : "transparent", color: active ? T.cream : T.muted, fontSize: 14.5, cursor: "pointer" }}>
                           {opt.name}
                         </button>
                       );
@@ -1778,7 +1787,7 @@ function InstallmentForm({ ctx }) {
           );
         })}
         {(!data.fixedExpenses || data.fixedExpenses.length === 0) && (
-          <div style={{ color: T.muted, fontSize: 13.5, textAlign: "center", padding: "8px 0 12px" }}>등록된 표기내역이 없어요.</div>
+          <div style={{ color: T.muted, fontSize: 15, textAlign: "center", padding: "8px 0 12px" }}>등록된 표기내역이 없어요.</div>
         )}
       </div>
 
@@ -1791,17 +1800,17 @@ function InstallmentForm({ ctx }) {
       </Field>
       <Field label="반복 유형">
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setIsInstallment(false)} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: !isInstallment ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: !isInstallment ? T.gold + "22" : "transparent", color: T.cream, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>매달 반복</button>
-          <button onClick={() => setIsInstallment(true)} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: isInstallment ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: isInstallment ? T.gold + "22" : "transparent", color: T.cream, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>할부</button>
+          <button onClick={() => setIsInstallment(false)} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: !isInstallment ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: !isInstallment ? T.gold + "22" : "transparent", color: T.cream, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>매달 반복</button>
+          <button onClick={() => setIsInstallment(true)} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: isInstallment ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: isInstallment ? T.gold + "22" : "transparent", color: T.cream, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>할부</button>
         </div>
         {isInstallment && (
           <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ color: T.muted, fontSize: 11.5, marginBottom: 3 }}>총 개월수</div>
+              <div style={{ color: T.muted, fontSize: 13, marginBottom: 3 }}>총 개월수</div>
               <input type="number" value={totalMonths} onChange={(e) => setTotalMonths(e.target.value)} placeholder="0" style={{ ...inputSty(T), fontFamily: F.mono }} />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ color: T.muted, fontSize: 11.5, marginBottom: 3 }}>현재 회차</div>
+              <div style={{ color: T.muted, fontSize: 13, marginBottom: 3 }}>현재 회차</div>
               <input type="number" value={startInstallment} onChange={(e) => setStartInstallment(e.target.value)} placeholder="1" style={{ ...inputSty(T), fontFamily: F.mono }} />
             </div>
           </div>
@@ -1810,11 +1819,11 @@ function InstallmentForm({ ctx }) {
       <Field label="결제 방식">
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setFixedPaymentMethod("cash")}
-            style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: fixedPaymentMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: fixedPaymentMethod === "cash" ? T.good + "22" : "transparent", color: T.cream, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
+            style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: fixedPaymentMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: fixedPaymentMethod === "cash" ? T.good + "22" : "transparent", color: T.cream, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
             통장(자동이체)
           </button>
           <button onClick={() => setFixedPaymentMethod("card")}
-            style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: fixedPaymentMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: fixedPaymentMethod === "card" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
+            style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: fixedPaymentMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: fixedPaymentMethod === "card" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
             카드
           </button>
         </div>
@@ -1824,24 +1833,24 @@ function InstallmentForm({ ctx }) {
               {data.cards.map((c) => (
                 <button key={c.id} onClick={() => setFixedCardId(c.id)}
                   style={{ padding: "6px 10px", borderRadius: 16, border: fixedCardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                    background: fixedCardId === c.id ? T.gold + "22" : "transparent", color: fixedCardId === c.id ? T.cream : T.muted, fontSize: 13, cursor: "pointer" }}>
+                    background: fixedCardId === c.id ? T.gold + "22" : "transparent", color: fixedCardId === c.id ? T.cream : T.muted, fontSize: 14.5, cursor: "pointer" }}>
                   {c.name}
                 </button>
               ))}
             </div>
           ) : (
-            <div style={{ color: T.warn, fontSize: 12.5, marginTop: 8 }}>등록된 카드가 없어요. 설정에서 먼저 카드를 등록해주세요.</div>
+            <div style={{ color: T.warn, fontSize: 14, marginTop: 8 }}>등록된 카드가 없어요. 설정에서 먼저 카드를 등록해주세요.</div>
           )
         )}
         {fixedPaymentMethod === "card" && !isInstallment && (
-          <div style={{ color: T.muted, fontSize: 11, marginTop: 8 }}>할부가 아닌 매달 반복 결제(구독 등)는 자동으로 카드값에 안 잡혀요. 실제 결제되면 홈에서 &lsquo;카드반영&rsquo; 버튼을 눌러야 카드값에 반영돼요.</div>
+          <div style={{ color: T.muted, fontSize: 12.5, marginTop: 8 }}>할부가 아닌 매달 반복 결제(구독 등)는 자동으로 카드값에 안 잡혀요. 실제 결제되면 홈에서 &lsquo;카드반영&rsquo; 버튼을 눌러야 카드값에 반영돼요.</div>
         )}
         {fixedPaymentMethod === "cash" && (data.accounts || []).length > 1 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
             {data.accounts.map((a) => (
               <button key={a.id} onClick={() => setFixedAccountId(a.id)}
                 style={{ padding: "6px 10px", borderRadius: 16, border: fixedAccountId === a.id ? `2px solid ${T.good}` : `1px solid ${T.border}`,
-                  background: fixedAccountId === a.id ? T.good + "22" : "transparent", color: fixedAccountId === a.id ? T.cream : T.muted, fontSize: 13, cursor: "pointer" }}>
+                  background: fixedAccountId === a.id ? T.good + "22" : "transparent", color: fixedAccountId === a.id ? T.cream : T.muted, fontSize: 14.5, cursor: "pointer" }}>
                 {a.name}
               </button>
             ))}
@@ -1849,14 +1858,14 @@ function InstallmentForm({ ctx }) {
         )}
         {fixedPaymentMethod === "cash" && (
           <div style={{ marginTop: 10 }}>
-            <div style={{ color: T.muted, fontSize: 12, marginBottom: 6 }}>자동 출금처리 (선택)</div>
+            <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 6 }}>자동 출금처리 (선택)</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ color: T.muted, fontSize: 12.5 }}>매달</span>
+              <span style={{ color: T.muted, fontSize: 14 }}>매달</span>
               <input type="number" value={autoPayDay} onChange={(e) => setAutoPayDay(e.target.value)} placeholder="예: 25" min="1" max="31"
                 style={{ ...inputSty(T), fontFamily: F.mono, width: 70, textAlign: "center" }} />
-              <span style={{ color: T.muted, fontSize: 12.5 }}>일에 자동 출금</span>
+              <span style={{ color: T.muted, fontSize: 14 }}>일에 자동 출금</span>
             </div>
-            <div style={{ color: T.muted, fontSize: 11, marginTop: 5 }}>비워두면 매달 홈에서 직접 &lsquo;출금처리&rsquo; 버튼을 눌러야 해요.</div>
+            <div style={{ color: T.muted, fontSize: 12.5, marginTop: 5 }}>비워두면 매달 홈에서 직접 &lsquo;출금처리&rsquo; 버튼을 눌러야 해요.</div>
           </div>
         )}
       </Field>
@@ -2038,26 +2047,26 @@ function LedgerView({ ctx }) {
         {data.categories.map((c) => (
           <button key={c.id} onClick={() => setEditCategoryId(c.id)}
             style={{ padding: "6px 10px", borderRadius: 16, border: editCategoryId === c.id ? `2px solid ${c.color}` : `1px solid ${T.border}`,
-              background: editCategoryId === c.id ? c.color + "22" : "transparent", color: T.ink, fontSize: 12, cursor: "pointer" }}>
+              background: editCategoryId === c.id ? c.color + "22" : "transparent", color: T.ink, fontSize: 13.5, cursor: "pointer" }}>
             {c.name}
           </button>
         ))}
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-        <button onClick={() => setEditPaymentMethod("card")} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: editPaymentMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: editPaymentMethod === "card" ? T.gold + "22" : "transparent", color: T.ink, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>카드</button>
-        <button onClick={() => setEditPaymentMethod("cash")} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: editPaymentMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: editPaymentMethod === "cash" ? T.good + "22" : "transparent", color: T.ink, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>현금(통장)</button>
+        <button onClick={() => setEditPaymentMethod("card")} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: editPaymentMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: editPaymentMethod === "card" ? T.gold + "22" : "transparent", color: T.ink, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>카드</button>
+        <button onClick={() => setEditPaymentMethod("cash")} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: editPaymentMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: editPaymentMethod === "cash" ? T.good + "22" : "transparent", color: T.ink, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>현금(통장)</button>
       </div>
       {editPaymentMethod === "card" ? (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
           {data.cards.map((c) => (
-            <button key={c.id} onClick={() => setEditCardId(c.id)} style={{ padding: "5px 9px", borderRadius: 14, border: editCardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: editCardId === c.id ? T.gold + "22" : "transparent", color: T.ink, fontSize: 11.5, cursor: "pointer" }}>{c.name}</button>
+            <button key={c.id} onClick={() => setEditCardId(c.id)} style={{ padding: "5px 9px", borderRadius: 14, border: editCardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: editCardId === c.id ? T.gold + "22" : "transparent", color: T.ink, fontSize: 13, cursor: "pointer" }}>{c.name}</button>
           ))}
         </div>
       ) : (
         data.accounts.length > 1 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
             {data.accounts.map((a) => (
-              <button key={a.id} onClick={() => setEditAccountId(a.id)} style={{ padding: "5px 9px", borderRadius: 14, border: editAccountId === a.id ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: editAccountId === a.id ? T.good + "22" : "transparent", color: T.ink, fontSize: 11.5, cursor: "pointer" }}>{a.name}</button>
+              <button key={a.id} onClick={() => setEditAccountId(a.id)} style={{ padding: "5px 9px", borderRadius: 14, border: editAccountId === a.id ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: editAccountId === a.id ? T.good + "22" : "transparent", color: T.ink, fontSize: 13, cursor: "pointer" }}>{a.name}</button>
             ))}
           </div>
         )
@@ -2065,7 +2074,7 @@ function LedgerView({ ctx }) {
       <input type="date" value={editDate} onChange={(ev) => setEditDate(ev.target.value)} style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}`, marginBottom: 8 }} />
       <input value={editMemo} onChange={(ev) => setEditMemo(ev.target.value)} placeholder="표기내역" style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}`, marginBottom: 8 }} />
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={cancelEdit} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.ink, fontSize: 12.5, cursor: "pointer" }}>취소</button>
+        <button onClick={cancelEdit} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.ink, fontSize: 14, cursor: "pointer" }}>취소</button>
         <button onClick={() => saveEdit(e)} style={{ flex: 2, ...primaryBtn(T), padding: "9px 0" }}>저장</button>
       </div>
     </div>
@@ -2078,7 +2087,7 @@ function LedgerView({ ctx }) {
         <div style={{ display: "flex", background: T.bg2, borderRadius: 8, padding: 3, flexWrap: "wrap" }}>
           {[["cycle", "이번달"], ["all", "전체"], ["range", "기간"], ["card", "카드"], ["receivable", "대리결제"], ["balance", "입출금"], ["trash", "휴지통"]].map(([k, l]) => (
             <button key={k} onClick={() => setFilter(k)}
-              style={{ border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 12.5, fontWeight: 600,
+              style={{ border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 14, fontWeight: 600,
                 background: filter === k ? T.gold : "transparent", color: filter === k ? "#23190C" : T.muted, cursor: "pointer" }}>
               {l}
             </button>
@@ -2087,21 +2096,21 @@ function LedgerView({ ctx }) {
       </div>
 
       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="메모나 카테고리로 검색"
-        style={{ ...inputSty(T), marginBottom: 14, fontSize: 14.5 }} />
+        style={{ ...inputSty(T), marginBottom: 14, fontSize: 16 }} />
 
       {filter === "range" && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-          <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} style={{ ...inputSty(T), fontSize: 12.5, padding: "8px 10px" }} />
-          <span style={{ color: T.muted, fontSize: 12 }}>~</span>
-          <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} style={{ ...inputSty(T), fontSize: 12.5, padding: "8px 10px" }} />
+          <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} style={{ ...inputSty(T), fontSize: 14, padding: "8px 10px" }} />
+          <span style={{ color: T.muted, fontSize: 13.5 }}>~</span>
+          <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} style={{ ...inputSty(T), fontSize: 14, padding: "8px 10px" }} />
         </div>
       )}
 
       {filter === "trash" ? (
         <>
-          <div style={{ color: T.muted, fontSize: 11.5, marginBottom: 8 }}>21일이 지나면 자동으로 삭제돼요.</div>
+          <div style={{ color: T.muted, fontSize: 13, marginBottom: 8 }}>21일이 지나면 자동으로 삭제돼요.</div>
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-            <button onClick={emptyTrash} style={{ background: "transparent", border: `1px solid ${T.danger}`, color: T.danger, borderRadius: 8, padding: "6px 10px", fontSize: 13, cursor: "pointer" }}>
+            <button onClick={emptyTrash} style={{ background: "transparent", border: `1px solid ${T.danger}`, color: T.danger, borderRadius: 8, padding: "6px 10px", fontSize: 14.5, cursor: "pointer" }}>
               휴지통 비우기
             </button>
           </div>
@@ -2112,11 +2121,11 @@ function LedgerView({ ctx }) {
               {[...data.trash].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)).map((t) => (
                 <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: T.ink, fontSize: 14.5, fontWeight: 600 }}>{trashLabel(t, catMap)}</div>
-                    <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 12.5 }}>{t.deletedAt} 삭제됨</div>
+                    <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>{trashLabel(t, catMap)}</div>
+                    <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14 }}>{t.deletedAt} 삭제됨</div>
                   </div>
-                  <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 14.5 }}>{fmtWon(trashAmount(t))}</div>
-                  <button onClick={() => restoreTrash(t)} style={{ background: T.good, border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", color: "#fff", fontSize: 12.5, fontWeight: 700 }}>복원</button>
+                  <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(trashAmount(t))}</div>
+                  <button onClick={() => restoreTrash(t)} style={{ background: T.good, border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 700 }}>복원</button>
                   <button onClick={() => purgeTrash(t.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
                 </div>
               ))}
@@ -2125,23 +2134,23 @@ function LedgerView({ ctx }) {
         </>
       ) : filter === "card" ? (
         <>
-          <div style={{ color: T.goldSoft, fontSize: 12.5, marginBottom: 8 }}>결제하기는 홈 화면에서 할 수 있어요. 여기서는 기록만 확인해요.</div>
+          <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 8 }}>결제하기는 홈 화면에서 할 수 있어요. 여기서는 기록만 확인해요.</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
             {ctx.cardTotals.map((c) => (
               <div key={c.id} style={{ ...paperCard(T), display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px" }}>
                 <div>
-                  <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 12.5 }}>{c.name}</div>
+                  <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14 }}>{c.name}</div>
                   <div style={{ color: T.ink, fontFamily: F.mono, fontSize: 18.5, fontWeight: 700 }}>{fmtWon(c.total)}</div>
-                  {c.fixedPortion > 0 && <div style={{ color: T.goldSoft, fontSize: 11.5 }}>할부 {fmtWon(c.fixedPortion)} 포함</div>}
+                  {c.fixedPortion > 0 && <div style={{ color: T.goldSoft, fontSize: 13 }}>할부 {fmtWon(c.fixedPortion)} 포함</div>}
                 </div>
               </div>
             ))}
           </div>
           {ctx.fixedCardActive.length > 0 && (
             <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px", marginBottom: 12 }}>
-              <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 6 }}>카드별 정기결제(할부)</div>
+              <div style={{ color: T.muted, fontSize: 14, marginBottom: 6 }}>카드별 정기결제(할부)</div>
               {ctx.fixedCardActive.map((f) => (
-                <div key={f.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: T.cream, padding: "2px 0" }}>
+                <div key={f.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 15, color: T.cream, padding: "2px 0" }}>
                   <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""} · {data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드"}</span>
                   <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
                 </div>
@@ -2157,14 +2166,14 @@ function LedgerView({ ctx }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                     <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: T.ink, fontSize: 14.5, fontWeight: 600 }}>
+                      <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
                         {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
-                        <span style={{ fontSize: 11.5, marginLeft: 6, color: T.goldSoft, fontWeight: 700 }}>{data.cards.find((c) => c.id === (e.cardId || data.cards[0]?.id))?.name || "카드"}</span>
+                        <span style={{ fontSize: 13, marginLeft: 6, color: T.goldSoft, fontWeight: 700 }}>{data.cards.find((c) => c.id === (e.cardId || data.cards[0]?.id))?.name || "카드"}</span>
                       </div>
-                      {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 12.5 }}>{e.memo}</div>}
+                      {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14 }}>{e.memo}</div>}
                     </div>
-                    <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date.slice(5)}</div>
-                    <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 14.5 }}>{fmtWon(e.amount)}</div>
+                    <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 14, fontFamily: F.mono }}>{e.date.slice(5)}</div>
+                    <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</div>
                     <button onClick={() => startEdit(e)} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>
                     <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
                   </div>
@@ -2183,10 +2192,10 @@ function LedgerView({ ctx }) {
               <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                 {b.type === "in" ? <ArrowDownCircle size={15} color={T.good} /> : <ArrowUpCircle size={15} color={T.danger} />}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: T.ink, fontSize: 14.5, fontWeight: 600 }}>{b.type === "in" ? "입금" : "출금"}{b.memo ? ` · ${b.memo}` : ""}</div>
+                  <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>{b.type === "in" ? "입금" : "출금"}{b.memo ? ` · ${b.memo}` : ""}</div>
                 </div>
-                <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{b.date.slice(5)}</div>
-                <div style={{ color: b.type === "in" ? T.good : T.danger, fontFamily: F.mono, fontWeight: 700, fontSize: 14.5 }}>
+                <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 14, fontFamily: F.mono }}>{b.date.slice(5)}</div>
+                <div style={{ color: b.type === "in" ? T.good : T.danger, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>
                   {b.type === "in" ? "+" : "-"}{fmtWon(b.amount)}
                 </div>
                 <button onClick={() => removeBalance(b.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
@@ -2199,18 +2208,18 @@ function LedgerView({ ctx }) {
           <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>대리결제 기록이 없어요.</div>
         ) : (
           <div style={paperCard(T)}>
-            <div style={{ color: T.goldSoft, fontSize: 12.5, marginBottom: 8 }}>정산은 홈 화면에서 할 수 있어요. 여기서는 기록만 확인해요.</div>
+            <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 8 }}>정산은 홈 화면에서 할 수 있어요. 여기서는 기록만 확인해요.</div>
             {list.map((e) => (
               <div key={e.id} style={{ padding: "10px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: T.ink, fontSize: 14.5, fontWeight: 600 }}>
+                    <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
                       {e.memo || catMap[e.categoryId]?.name || "대리결제"}
-                      <span style={{ color: e.settled ? T.good : T.warn, fontSize: 11.5, marginLeft: 6, fontWeight: 700 }}>{e.settled ? "정산완료" : "미정산"}</span>
+                      <span style={{ color: e.settled ? T.good : T.warn, fontSize: 13, marginLeft: 6, fontWeight: 700 }}>{e.settled ? "정산완료" : "미정산"}</span>
                     </div>
-                    <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 12.5 }}>{e.date}{e.settled ? ` · 상환 ${fmtWon(e.repaidAmount)}` : ""}</div>
+                    <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14 }}>{e.date}{e.settled ? ` · 상환 ${fmtWon(e.repaidAmount)}` : ""}</div>
                   </div>
-                  <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 14.5 }}>{fmtWon(e.amount)}</div>
+                  <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</div>
                   <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
                 </div>
               </div>
@@ -2222,7 +2231,7 @@ function LedgerView({ ctx }) {
           {grouped.length === 0 && <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>기록이 없어요.</div>}
           {grouped.map(([date, items]) => (
             <div key={date} style={{ marginBottom: 12 }}>
-              <div style={{ color: T.goldSoft, fontSize: 12.5, marginBottom: 6, paddingLeft: 2 }}>
+              <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 6, paddingLeft: 2 }}>
                 {date} · {fmtWon(items.reduce((s, e) => s + Number(e.amount), 0))}
               </div>
               <div style={paperCard(T)}>
@@ -2231,15 +2240,15 @@ function LedgerView({ ctx }) {
                     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                       <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: T.ink, fontSize: 14.5, fontWeight: 600 }}>
+                        <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
                           {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
-                          <span style={{ fontSize: 11.5, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
+                          <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
                             {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
                           </span>
                         </div>
-                        {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 12.5 }}>{e.memo}</div>}
+                        {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14 }}>{e.memo}</div>}
                       </div>
-                      <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 14.5 }}>{fmtWon(e.amount)}</div>
+                      <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</div>
                       <button onClick={() => startEdit(e)} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>
                       <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
                     </div>
@@ -2324,9 +2333,9 @@ function CalendarView({ ctx }) {
       </div>
 
       <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 26, fontWeight: 700, marginBottom: 4 }}>{fmtWon(monthTotal)}</div>
-      {topCategory && <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 6 }}>이번 달 <span style={{ color: T.gold, fontWeight: 700 }}>{topCategory}</span>에서 가장 많이 썼어요</div>}
+      {topCategory && <div style={{ color: T.muted, fontSize: 14, marginBottom: 6 }}>이번 달 <span style={{ color: T.gold, fontWeight: 700 }}>{topCategory}</span>에서 가장 많이 썼어요</div>}
       {compareBadge && (
-        <div style={{ display: "inline-block", color: compareBadge.up ? T.danger : T.good, background: (compareBadge.up ? T.danger : T.good) + "1A", borderRadius: 8, padding: "3px 8px", fontSize: 11.5, fontWeight: 700, marginBottom: 14 }}>
+        <div style={{ display: "inline-block", color: compareBadge.up ? T.danger : T.good, background: (compareBadge.up ? T.danger : T.good) + "1A", borderRadius: 8, padding: "3px 8px", fontSize: 13, fontWeight: 700, marginBottom: 14 }}>
           지난달 이맘때보다 {compareBadge.up ? "+" : ""}{compareBadge.pct}%
         </div>
       )}
@@ -2334,7 +2343,7 @@ function CalendarView({ ctx }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", marginBottom: 6 }}>
         {["일", "월", "화", "수", "목", "금", "토"].map((d) => (
-          <div key={d} style={{ color: T.muted, fontSize: 11.5, padding: "4px 0" }}>{d}</div>
+          <div key={d} style={{ color: T.muted, fontSize: 13, padding: "4px 0" }}>{d}</div>
         ))}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", rowGap: 12 }}>
@@ -2353,7 +2362,7 @@ function CalendarView({ ctx }) {
               style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "2px 0" }}>
               <span style={{
                 position: "relative", width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 13, fontWeight: isToday ? 700 : 500,
+                fontSize: 14.5, fontWeight: isToday ? 700 : 500,
                 background: isToday ? T.ink : isSelected ? T.gold + "33" : amt ? `${T.danger}${heatAlpha}` : "transparent",
                 color: isToday ? T.paper : isSelected ? T.gold : T.cream,
                 border: isTop ? `1.5px solid ${T.gold}` : isSelected && !isToday ? `1.5px solid ${T.gold}` : "none",
@@ -2363,14 +2372,14 @@ function CalendarView({ ctx }) {
                   <span style={{ position: "absolute", top: -2, right: -2, width: 7, height: 7, borderRadius: "50%", background: T.good, border: `1px solid ${T.bg}` }} />
                 )}
               </span>
-              <span style={{ fontSize: 9.5, color: amt ? T.muted : "transparent", fontFamily: F.mono }}>
+              <span style={{ fontSize: 11, color: amt ? T.muted : "transparent", fontFamily: F.mono }}>
                 {amt ? (amt >= 10000 ? `${Math.round(amt / 1000) / 10}만` : amt.toLocaleString("ko-KR")) : "-"}
               </span>
             </button>
           );
         })}
       </div>
-      <div style={{ display: "flex", gap: 14, marginTop: 14, fontSize: 10.5, color: T.muted }}>
+      <div style={{ display: "flex", gap: 14, marginTop: 14, fontSize: 12, color: T.muted }}>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: "50%", background: `${T.danger}70` }} /> 많이 쓴 날</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: T.good }} /> 입금일</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: "50%", border: `1.5px solid ${T.gold}` }} /> 최고 지출일</span>
@@ -2378,7 +2387,7 @@ function CalendarView({ ctx }) {
 
       {selectedDate && (
         <div style={{ marginTop: 20 }}>
-          <div style={{ color: T.goldSoft, fontSize: 12.5, marginBottom: 8 }}>{selectedDate} 내역</div>
+          <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 8 }}>{selectedDate} 내역</div>
           {selectedList.length === 0 ? (
             <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "24px 14px" }}>이 날 기록이 없어요.</div>
           ) : (
@@ -2387,15 +2396,15 @@ function CalendarView({ ctx }) {
                 <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                   <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: T.ink, fontSize: 13.5, fontWeight: 600 }}>
+                    <div style={{ color: T.ink, fontSize: 15, fontWeight: 600 }}>
                       {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
-                      <span style={{ fontSize: 11, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
+                      <span style={{ fontSize: 12.5, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
                         {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
                       </span>
                     </div>
-                    {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 11.5 }}>{e.memo}</div>}
+                    {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 13 }}>{e.memo}</div>}
                   </div>
-                  <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 13.5 }}>{fmtWon(e.amount)}</div>
+                  <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 15 }}>{fmtWon(e.amount)}</div>
                 </div>
               ))}
             </div>
@@ -2507,12 +2516,12 @@ function SettingsView({ ctx }) {
                   boxShadow: active ? `0 0 0 2px ${T.bg2}` : "none",
                   display: "block",
                 }} />
-                <span style={{ color: active ? T.gold : T.muted, fontSize: 10.5, fontWeight: active ? 700 : 500 }}>{th.label}</span>
+                <span style={{ color: active ? T.gold : T.muted, fontSize: 12, fontWeight: active ? 700 : 500 }}>{th.label}</span>
               </button>
             );
           })}
         </div>
-        <div style={{ color: T.muted, fontSize: 12, marginTop: 10 }}>현재 테마: {THEMES[data.theme]?.label || "검정"}</div>
+        <div style={{ color: T.muted, fontSize: 13.5, marginTop: 10 }}>현재 테마: {THEMES[data.theme]?.label || "검정"}</div>
       </Field>
 
       <SectionLabel>예산</SectionLabel>
@@ -2522,18 +2531,18 @@ function SettingsView({ ctx }) {
           <button onClick={saveSpendingGoal} style={{ ...primaryBtn(T), width: 72 }}>저장</button>
         </div>
         <QuickAmountButtons amount={spendingGoalInput} setAmount={setSpendingGoalInput} />
-        <div style={{ color: T.muted, fontSize: 12.5, marginTop: 6 }}>홈 화면의 원형 게이지는 이 금액에서 고정지출·카드값·대출 등 총지출을 뺀 값을 보여줘요.</div>
+        <div style={{ color: T.muted, fontSize: 14, marginTop: 6 }}>홈 화면의 원형 게이지는 이 금액에서 고정지출·카드값·대출 등 총지출을 뺀 값을 보여줘요.</div>
       </Field>
 
       <SectionLabel>보안</SectionLabel>
       <Field label="화면 잠금 (PIN)">
         {data.pinLock?.enabled ? (
           <div>
-            <div style={{ color: T.good, fontSize: 13.5, marginBottom: 8, fontWeight: 700 }}>잠금 사용 중</div>
-            <button onClick={disableLock} style={{ width: "100%", padding: "9px 0", borderRadius: 8, border: `1px solid ${T.danger}`, background: "transparent", color: T.danger, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>
+            <div style={{ color: T.good, fontSize: 15, marginBottom: 8, fontWeight: 700 }}>잠금 사용 중</div>
+            <button onClick={disableLock} style={{ width: "100%", padding: "9px 0", borderRadius: 8, border: `1px solid ${T.danger}`, background: "transparent", color: T.danger, fontSize: 15.5, cursor: "pointer", marginBottom: 10 }}>
               잠금 끄기
             </button>
-            <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 6 }}>PIN 변경</div>
+            <div style={{ color: T.muted, fontSize: 14, marginBottom: 6 }}>PIN 변경</div>
             <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
               <input type="password" inputMode="numeric" maxLength={4} value={pin1} onChange={(e) => setPin1(e.target.value.replace(/\D/g, ""))} placeholder="새 PIN 4자리" style={{ ...inputSty(T), fontFamily: F.mono, letterSpacing: 4 }} />
               <input type="password" inputMode="numeric" maxLength={4} value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, ""))} placeholder="확인" style={{ ...inputSty(T), fontFamily: F.mono, letterSpacing: 4 }} />
@@ -2542,7 +2551,7 @@ function SettingsView({ ctx }) {
           </div>
         ) : (
           <div>
-            <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 8 }}>켜두면 앱을 열 때마다 4자리 PIN을 입력해야 해요.</div>
+            <div style={{ color: T.muted, fontSize: 14, marginBottom: 8 }}>켜두면 앱을 열 때마다 4자리 PIN을 입력해야 해요.</div>
             <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
               <input type="password" inputMode="numeric" maxLength={4} value={pin1} onChange={(e) => setPin1(e.target.value.replace(/\D/g, ""))} placeholder="PIN 4자리" style={{ ...inputSty(T), fontFamily: F.mono, letterSpacing: 4 }} />
               <input type="password" inputMode="numeric" maxLength={4} value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, ""))} placeholder="PIN 확인" style={{ ...inputSty(T), fontFamily: F.mono, letterSpacing: 4 }} />
@@ -2557,7 +2566,7 @@ function SettingsView({ ctx }) {
         <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
           {(data.accounts || []).map((a) => (
             <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
-              <span style={{ flex: 1, color: T.cream, fontSize: 14.5 }}>{a.name}</span>
+              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{a.name}</span>
               <button onClick={() => removeAccount(a.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={15} /></button>
             </div>
           ))}
@@ -2574,8 +2583,8 @@ function SettingsView({ ctx }) {
         <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
           {(data.cards || []).map((c) => (
             <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
-              <span style={{ flex: 1, color: T.cream, fontSize: 14.5 }}>{c.name}</span>
-              <span style={{ color: T.muted, fontFamily: F.mono, fontSize: 12.5 }}>{fmtWon(c.bill || 0)}</span>
+              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
+              <span style={{ color: T.muted, fontFamily: F.mono, fontSize: 14 }}>{fmtWon(c.bill || 0)}</span>
               <button onClick={() => removeCard(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={15} /></button>
             </div>
           ))}
@@ -2591,7 +2600,7 @@ function SettingsView({ ctx }) {
           {(data.cards || []).map((c) => (
             <button key={c.id} onClick={() => setSelectedCardId(c.id)}
               style={{ padding: "7px 12px", borderRadius: 20, border: selectedCardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                background: selectedCardId === c.id ? T.gold + "22" : "transparent", color: selectedCardId === c.id ? T.cream : T.muted, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                background: selectedCardId === c.id ? T.gold + "22" : "transparent", color: selectedCardId === c.id ? T.cream : T.muted, fontSize: 15.5, fontWeight: 600, cursor: "pointer" }}>
               {c.name}
             </button>
           ))}
@@ -2601,7 +2610,7 @@ function SettingsView({ ctx }) {
           <button onClick={addCardBill} style={{ ...primaryBtn(T), width: 72 }}>추가</button>
         </div>
         <QuickAmountButtons amount={cardAddInput} setAmount={setCardAddInput} />
-        <button onClick={resetCardBill} style={{ marginTop: 8, background: "transparent", border: `1px solid ${T.danger}`, color: T.danger, borderRadius: 8, padding: "6px 10px", fontSize: 13, cursor: "pointer" }}>
+        <button onClick={resetCardBill} style={{ marginTop: 8, background: "transparent", border: `1px solid ${T.danger}`, color: T.danger, borderRadius: 8, padding: "6px 10px", fontSize: 14.5, cursor: "pointer" }}>
           선택한 카드 초기화 (결제 처리)
         </button>
       </Field>
@@ -2612,31 +2621,31 @@ function SettingsView({ ctx }) {
           {data.categories.map((c) => (
             <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
               <span style={{ width: 10, height: 10, borderRadius: "50%", background: c.color }} />
-              <span style={{ flex: 1, color: T.cream, fontSize: 14.5 }}>{c.name}</span>
+              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
               <button onClick={() => removeCategory(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={15} /></button>
             </div>
           ))}
-          {data.categories.length === 0 && <div style={{ color: T.muted, fontSize: 13.5, textAlign: "center", padding: "10px 0" }}>카테고리가 없어요. &lsquo;기록&rsquo; 탭에서 추가할 수 있어요.</div>}
+          {data.categories.length === 0 && <div style={{ color: T.muted, fontSize: 15, textAlign: "center", padding: "10px 0" }}>카테고리가 없어요. &lsquo;기록&rsquo; 탭에서 추가할 수 있어요.</div>}
         </div>
-        <div style={{ color: T.muted, fontSize: 12, marginTop: 8 }}>카테고리별 예산은 &lsquo;기록&rsquo; 탭에서 설정해요.</div>
+        <div style={{ color: T.muted, fontSize: 13.5, marginTop: 8 }}>카테고리별 예산은 &lsquo;기록&rsquo; 탭에서 설정해요.</div>
       </Field>
 
       <SectionLabel>데이터</SectionLabel>
       <Field label="데이터 백업">
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-          <button onClick={doExport} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 14, cursor: "pointer" }}>내보내기</button>
-          <button onClick={() => { setShowImport(!showImport); setShowExport(false); }} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 14, cursor: "pointer" }}>가져오기</button>
+          <button onClick={doExport} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 15.5, cursor: "pointer" }}>내보내기</button>
+          <button onClick={() => { setShowImport(!showImport); setShowExport(false); }} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 15.5, cursor: "pointer" }}>가져오기</button>
         </div>
         {showExport && (
           <div>
-            <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 6 }}>클립보드에 복사됐어요. 안 됐다면 아래 텍스트를 직접 복사해서 보관하세요.</div>
-            <textarea readOnly value={exportJson} onFocus={(e) => e.target.select()} style={{ ...inputSty(T), height: 120, fontFamily: F.mono, fontSize: 11.5 }} />
+            <div style={{ color: T.muted, fontSize: 14, marginBottom: 6 }}>클립보드에 복사됐어요. 안 됐다면 아래 텍스트를 직접 복사해서 보관하세요.</div>
+            <textarea readOnly value={exportJson} onFocus={(e) => e.target.select()} style={{ ...inputSty(T), height: 120, fontFamily: F.mono, fontSize: 13 }} />
           </div>
         )}
         {showImport && (
           <div>
-            <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 6 }}>백업해둔 JSON 텍스트를 붙여넣고 불러오기를 누르세요. 현재 데이터를 덮어써요.</div>
-            <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="여기에 백업 JSON 붙여넣기" style={{ ...inputSty(T), height: 120, fontFamily: F.mono, fontSize: 11.5, marginBottom: 8 }} />
+            <div style={{ color: T.muted, fontSize: 14, marginBottom: 6 }}>백업해둔 JSON 텍스트를 붙여넣고 불러오기를 누르세요. 현재 데이터를 덮어써요.</div>
+            <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="여기에 백업 JSON 붙여넣기" style={{ ...inputSty(T), height: 120, fontFamily: F.mono, fontSize: 13, marginBottom: 8 }} />
             <button onClick={doImport} style={primaryBtn(T)}>불러오기</button>
           </div>
         )}
