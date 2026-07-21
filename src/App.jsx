@@ -900,6 +900,8 @@ function HomeView({ ctx }) {
 
       <CardsBlock ctx={ctx} cardTotals={cardTotals} />
 
+      <TransitQuickAdd ctx={ctx} />
+
       {(fixedActive.length > 0 || fixedCardActive.length > 0 || receivables.length > 0 || data.categories.some((c) => c.budget > 0)) && (
         <>
           <SectionLabel>예산 관리</SectionLabel>
@@ -1096,11 +1098,13 @@ function reconcileAccount(ctx, account, actualBalance) {
   showToast(`${account.name} 잔액을 실제와 맞췄어요 (${diff > 0 ? "+" : "-"}${fmtWon(Math.abs(diff))})`);
 }
 
-function reconcileCard(ctx, card, actualBill) {
+function reconcileCard(ctx, card, actualTotal) {
   const { data, persist, showToast } = ctx;
-  const actual = Number(actualBill);
+  const actual = Number(actualTotal);
   if (Number.isNaN(actual) || actual < 0) { showToast("올바른 금액을 입력해주세요"); return; }
-  const next = data.cards.map((c) => (c.id === card.id ? { ...c, bill: actual } : c));
+  const fixedPortion = Number(card.fixedPortion || 0);
+  const newBill = Math.max(0, actual - fixedPortion);
+  const next = data.cards.map((c) => (c.id === card.id ? { ...c, bill: newBill } : c));
   persist({ ...data, cards: next });
   showToast(`${card.name} 카드값을 ${fmtWon(actual)}로 맞췄어요`);
 }
@@ -1153,7 +1157,7 @@ function CardsBlock({ ctx, cardTotals }) {
               <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 15.5, fontWeight: 700 }}>{fmtWon(c.total)}</div>
               {c.fixedPortion > 0 && <div style={{ color: T.goldSoft, fontSize: 11.5 }}>이번 달 할부 {fmtWon(c.fixedPortion)} 포함</div>}
             </div>
-            <button onClick={() => { setReconcileId(reconcileId === c.id ? null : c.id); setReconcileInput(String(c.bill || "")); }}
+            <button onClick={() => { setReconcileId(reconcileId === c.id ? null : c.id); setReconcileInput(String(c.total || "")); }}
               style={{ padding: "7px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, fontSize: 12, cursor: "pointer" }}>
               맞추기
             </button>
@@ -1164,7 +1168,7 @@ function CardsBlock({ ctx, cardTotals }) {
           </div>
           {reconcileId === c.id && (
             <div style={{ marginTop: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
-              <div style={{ color: T.muted, fontSize: 10.5, marginBottom: 5 }}>카드 앱에 찍힌 실제 청구액(직접 등록분)을 입력하면 맞춰요. 할부는 자동 포함돼요.</div>
+              <div style={{ color: T.muted, fontSize: 10.5, marginBottom: 5 }}>카드 앱에 찍힌 이번 달 청구 총액(할부 포함)을 그대로 입력하면 맞춰요.</div>
               <MoneyInput value={reconcileInput} onChange={setReconcileInput} />
               <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                 <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 11.5, cursor: "pointer" }}>취소</button>
@@ -1174,6 +1178,50 @@ function CardsBlock({ ctx, cardTotals }) {
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+function TransitQuickAdd({ ctx }) {
+  const T = useTheme();
+  const { data, persist, showToast } = ctx;
+  const [amount, setAmount] = useState("");
+  const [cardId, setCardId] = useState(data.cards?.[0]?.id || "");
+  if (!data.cards || data.cards.length === 0) return null;
+
+  const transitCat = data.categories.find((c) => c.name.includes("교통")) || data.categories[0];
+
+  const submit = () => {
+    const n = Number(amount);
+    if (!n || n <= 0) return showToast("금액을 입력해주세요");
+    if (!cardId) return showToast("카드를 선택해주세요");
+    const expense = { id: "e" + Date.now(), amount: n, categoryId: transitCat?.id || null, date: todayISO(), memo: "대중교통", isReceivable: false, settled: false, repaidAmount: null, paymentMethod: "card", cardId, linkedBalanceId: null };
+    const next = {
+      ...data,
+      expenses: [...data.expenses, expense],
+      cards: data.cards.map((c) => (c.id === cardId ? { ...c, bill: Number(c.bill || 0) + n } : c)),
+    };
+    persist(next);
+    setAmount("");
+    showToast(`대중교통비 ${fmtWon(n)}을 카드값에 반영했어요`);
+  };
+
+  return (
+    <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px", marginBottom: 14 }}>
+      <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 8 }}>대중교통비 빠른입력</div>
+      <MoneyInput value={amount} onChange={setAmount} placeholder="오늘 이용 금액" />
+      {data.cards.length > 1 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+          {data.cards.map((c) => (
+            <button key={c.id} onClick={() => setCardId(c.id)}
+              style={{ padding: "6px 10px", borderRadius: 16, border: cardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
+                background: cardId === c.id ? T.gold + "22" : "transparent", color: cardId === c.id ? T.cream : T.muted, fontSize: 12.5, cursor: "pointer" }}>
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+      <button onClick={submit} style={{ ...primaryBtn(T), marginTop: 8, padding: "9px 0", fontSize: 13 }}>카드값에 추가</button>
     </div>
   );
 }
