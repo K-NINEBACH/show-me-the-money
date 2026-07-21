@@ -17,6 +17,7 @@ const QUICK_AMOUNTS = [
 const defaultData = () => ({
   theme: "dark",
   onboarded: false,
+  lastSeenMonth: null,
   spendingGoal: 0,
   accounts: [{ id: "acc1", name: "통장", initialBalance: 0 }],
   cards: [{ id: "card1", name: "카드", bill: 0 }],
@@ -35,6 +36,7 @@ const defaultData = () => ({
 function migrate(raw) {
   const d = { ...defaultData(), ...raw };
   d.onboarded = raw.onboarded !== false;
+  d.lastSeenMonth = raw.lastSeenMonth || monthKey(new Date());
   if (raw.theme === "light") d.theme = "beige";
   if (!THEMES[d.theme]) d.theme = "dark";
   if (Array.isArray(raw.cards) && raw.cards.length) {
@@ -429,6 +431,15 @@ export default function App() {
     );
   }
 
+  const nowMonthKey = monthKey(new Date());
+  if (data.lastSeenMonth && data.lastSeenMonth !== nowMonthKey) {
+    return (
+      <ThemeContext.Provider value={T}>
+        <MonthWrapUp data={data} persist={persist} wrapKey={data.lastSeenMonth} />
+      </ThemeContext.Provider>
+    );
+  }
+
   const today = new Date();
   const todayStr = todayISO();
   const curKey = monthKey(today);
@@ -436,6 +447,7 @@ export default function App() {
   const dayIntoCycle = today.getDate();
 
   const cycleExpenses = data.expenses.filter((e) => e.date.slice(0, 7) === curKey && !e.isReceivable);
+  const todaySpent = cycleExpenses.filter((e) => e.date === todayISO()).reduce((s, e) => s + Number(e.amount), 0);
   const normalSpent = cycleExpenses.filter((e) => (e.paymentMethod || "cash") !== "card").reduce((s, e) => s + Number(e.amount), 0);
   const cardSpentThisCycle = cycleExpenses.filter((e) => (e.paymentMethod || "cash") === "card").reduce((s, e) => s + Number(e.amount), 0);
 
@@ -488,7 +500,7 @@ export default function App() {
   const ctx = {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, categorySpentThisMonth,
-    spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio,
+    spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,
   };
 
   const S = {
@@ -554,6 +566,7 @@ function Onboarding({ data, persist }) {
     persist({
       ...data,
       onboarded: true,
+      lastSeenMonth: monthKey(new Date()),
       cards,
       accounts,
       categories,
@@ -746,6 +759,61 @@ function Onboarding({ data, persist }) {
   );
 }
 
+function MonthWrapUp({ data, persist, wrapKey }) {
+  const T = useTheme();
+  const monthExpenses = data.expenses.filter((e) => !e.isReceivable && e.date.slice(0, 7) === wrapKey);
+  const total = monthExpenses.reduce((s, e) => s + Number(e.amount), 0);
+  const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
+  const catTotals = {};
+  monthExpenses.forEach((e) => { catTotals[e.categoryId] = (catTotals[e.categoryId] || 0) + Number(e.amount); });
+  const topCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const unpaidCount = data.fixedExpenses.filter((f) => {
+    const info = fixedInfo(f, wrapKey);
+    const isRealInstallment = (f.paymentMethod || "cash") === "card" && f.totalMonths > 0;
+    return info.active && !isRealInstallment && !(f.paidMonths && f.paidMonths[wrapKey]);
+  }).length;
+  const unsettledCount = data.expenses.filter((e) => e.isReceivable && !e.settled).length;
+
+  const dismiss = () => persist({ ...data, lastSeenMonth: monthKey(new Date()) });
+
+  return (
+    <div style={{ background: T.bg, minHeight: "100vh", display: "flex", flexDirection: "column", fontFamily: F.body }}>
+      <GoogleFonts />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 24px 60px" }}>
+        <div style={{ color: T.gold, fontFamily: F.display, fontSize: 15, letterSpacing: 1, marginBottom: 6 }}>{monthLabel(wrapKey)} 마무리</div>
+        <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 30, fontWeight: 700, marginBottom: 4 }}>{fmtWon(total)}</div>
+        <div style={{ color: T.muted, fontSize: 13, marginBottom: 24 }}>총 지출</div>
+
+        {topCats.length > 0 && (
+          <div style={{ width: "100%", background: T.bg2, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+            <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 8 }}>많이 쓴 카테고리</div>
+            {topCats.map(([catId, amt]) => (
+              <div key={catId} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
+                <span style={{ color: T.cream, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[catId]?.color || T.muted }} />
+                  {catMap[catId]?.name || "미분류"}
+                </span>
+                <span style={{ color: T.muted, fontFamily: F.mono, fontSize: 14 }}>{fmtWon(amt)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {(unpaidCount > 0 || unsettledCount > 0) && (
+          <div style={{ width: "100%", background: T.warn + "18", border: `1px solid ${T.warn}66`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+            {unpaidCount > 0 && <div style={{ color: T.warn, fontSize: 13.5, marginBottom: unsettledCount > 0 ? 4 : 0 }}>지난달 출금처리 안 된 고정지출 {unpaidCount}건이 있어요</div>}
+            {unsettledCount > 0 && <div style={{ color: T.warn, fontSize: 13.5 }}>미정산 대리결제 {unsettledCount}건이 있어요</div>}
+          </div>
+        )}
+
+        <button onClick={dismiss} style={{ ...primaryBtn(T), padding: "14px 32px", fontSize: 15, width: "auto", marginTop: 10 }}>
+          {monthLabel(monthKey(new Date()))}로 넘어가기
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function LockScreen({ data, onUnlock }) {
   const T = useTheme();
   const [entered, setEntered] = useState("");
@@ -838,12 +906,13 @@ function Field({ label, children }) {
 function HomeView({ ctx }) {
   const T = useTheme();
   const { data, curKey, dayIntoCycle, cycleLen, remaining, budgetRatio,
-    fixedSum, fixedSumAll, normalSpent, fixedActive, fixedCardActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal, unpaidFixed, unpaidFixedSum, realRemaining } = ctx;
+    fixedSum, fixedSumAll, normalSpent, fixedActive, fixedCardActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal, unpaidFixed, unpaidFixedSum, realRemaining, todaySpent } = ctx;
   const over = remaining < 0;
   const ringColor = budgetRatio < 0.7 ? T.good : budgetRatio < 1 ? T.warn : T.danger;
   const dashArray = 2 * Math.PI * 54;
   const dashOffset = dashArray * (1 - Math.min(budgetRatio, 1));
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
+  const [budgetOpen, setBudgetOpen] = useState(false);
 
   return (
     <div>
@@ -863,6 +932,7 @@ function HomeView({ ctx }) {
         <div style={{ color: T.cream, fontFamily: F.display, fontSize: 21.5, fontWeight: 700, marginTop: 2 }}>
           {monthLabel(curKey)} · {dayIntoCycle}일차
         </div>
+        <div style={{ color: T.goldSoft, fontSize: 13, marginTop: 4 }}>오늘 지출 {fmtWon(todaySpent)}</div>
       </div>
 
       <SectionLabel>이번 달 목표 (계획)</SectionLabel>
@@ -890,15 +960,13 @@ function HomeView({ ctx }) {
           설정에서 이번 달 목표 지출액을 정해주세요
         </div>
       )}
-      <div style={{ textAlign: "center", color: T.muted, fontSize: 12.5, marginTop: -4, marginBottom: 4, padding: "0 24px" }}>
-        카드값·고정지출·대중교통비를 아직 출금처리 안 했어도 전부 미리 반영한 금액이에요
-      </div>
-      {unpaidFixedSum > 0 && (
+      {unpaidFixedSum > 0 ? (
         <div style={{ textAlign: "center", color: T.muted, fontSize: 12.5, marginBottom: 14 }}>
-          그중 아직 출금처리 안 한 건 {fmtWon(unpaidFixedSum)} · 처리 전 실제 여유는 {fmtWon(Math.abs(realRemaining))}{realRemaining < 0 ? " 초과" : ""}
+          미처리 {fmtWon(unpaidFixedSum)} · 실제 여유 {fmtWon(Math.abs(realRemaining))}{realRemaining < 0 ? " 초과" : ""}
         </div>
+      ) : (
+        <div style={{ marginBottom: 14 }} />
       )}
-      {unpaidFixedSum <= 0 && <div style={{ marginBottom: 14 }} />}
 
       <SummaryCard ctx={ctx} />
 
@@ -914,14 +982,20 @@ function HomeView({ ctx }) {
 
       {(fixedActive.length > 0 || fixedCardActive.length > 0 || receivables.length > 0 || data.categories.some((c) => c.budget > 0)) && (
         <>
-          <SectionLabel>예산 관리</SectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-            <CategoryBudgetCard ctx={ctx} />
-            {(fixedActive.length > 0 || fixedCardActive.length > 0) && (
-              <FixedDetailCard ctx={ctx} fixedActive={fixedActive} fixedCardActive={fixedCardActive} />
-            )}
-            {receivables.length > 0 && <ReceivablesCard ctx={ctx} receivables={receivables} catMap={catMap} />}
-          </div>
+          <button onClick={() => setBudgetOpen(!budgetOpen)}
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: "8px 2px", marginBottom: budgetOpen ? 8 : 4 }}>
+            <span style={{ color: T.goldSoft, fontSize: 13, fontWeight: 700 }}>예산 관리</span>
+            <span style={{ color: T.muted, fontSize: 12 }}>{budgetOpen ? "접기 ▲" : "펼치기 ▼"}</span>
+          </button>
+          {budgetOpen && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+              <CategoryBudgetCard ctx={ctx} />
+              {(fixedActive.length > 0 || fixedCardActive.length > 0) && (
+                <FixedDetailCard ctx={ctx} fixedActive={fixedActive} fixedCardActive={fixedCardActive} />
+              )}
+              {receivables.length > 0 && <ReceivablesCard ctx={ctx} receivables={receivables} catMap={catMap} />}
+            </div>
+          )}
         </>
       )}
     </div>
