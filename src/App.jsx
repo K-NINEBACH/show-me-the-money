@@ -962,7 +962,7 @@ function HomeView({ ctx }) {
       )}
       {unpaidFixedSum > 0 ? (
         <div style={{ textAlign: "center", color: T.muted, fontSize: 12.5, marginBottom: 14 }}>
-          미처리 {fmtWon(unpaidFixedSum)} · 실제 여유 {fmtWon(Math.abs(realRemaining))}{realRemaining < 0 ? " 초과" : ""}
+          미처리 {fmtWon(unpaidFixedSum)} · 반영 전 여유 {fmtWon(Math.abs(realRemaining))}{realRemaining < 0 ? " 초과" : ""}
         </div>
       ) : (
         <div style={{ marginBottom: 14 }} />
