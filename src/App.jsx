@@ -444,12 +444,14 @@ export default function App() {
   const fixedActiveAll = data.fixedExpenses.map((f) => ({ ...f, info: fixedInfo(f, curKey) })).filter((f) => f.info.active);
   const fixedActive = fixedActiveAll.filter((f) => (f.paymentMethod || "cash") !== "card");
   const fixedCardActive = fixedActiveAll.filter((f) => (f.paymentMethod || "cash") === "card");
-  const fixedSum = fixedActive.reduce((s, f) => s + Number(f.info.amount), 0);
+  const fixedCardInstallment = fixedCardActive.filter((f) => f.totalMonths > 0);
+  const fixedCardRecurring = fixedCardActive.filter((f) => !f.totalMonths);
+  const fixedSum = fixedActive.reduce((s, f) => s + Number(f.info.amount), 0) + fixedCardRecurring.reduce((s, f) => s + Number(f.info.amount), 0);
   const fixedSumAll = fixedActiveAll.reduce((s, f) => s + Number(f.info.amount), 0);
   const totalSpentThisMonth = normalSpent + cardSpentThisCycle + fixedSumAll;
 
   const cardTotals = cards.map((c) => {
-    const fixedPortion = fixedCardActive.filter((f) => (f.cardId || cards[0]?.id) === c.id).reduce((s, f) => s + Number(f.info.amount), 0);
+    const fixedPortion = fixedCardInstallment.filter((f) => (f.cardId || cards[0]?.id) === c.id).reduce((s, f) => s + Number(f.info.amount), 0);
     return { ...c, fixedPortion, total: Number(c.bill || 0) + fixedPortion };
   });
   const cardBillTotal = cardTotals.reduce((s, c) => s + c.total, 0);
@@ -478,11 +480,11 @@ export default function App() {
   });
   const accountBalance = accountTotals.reduce((s, a) => s + a.balance, 0);
 
-  const unpaidFixed = fixedActive.filter((f) => (f.paymentMethod || "cash") === "cash" && !(f.paidMonths && f.paidMonths[curKey]));
+  const unpaidFixed = [...fixedActive, ...fixedCardRecurring].filter((f) => !(f.paidMonths && f.paidMonths[curKey]));
 
   const ctx = {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
-    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, categorySpentThisMonth,
+    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, categorySpentThisMonth,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed,
   };
 
@@ -1009,6 +1011,8 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
       <FixedSortTabs sortKey={sortKey} setSortKey={setSortKey} />
       {sorted.map((f) => {
         const isCard = (f.paymentMethod || "cash") === "card";
+        const isRealInstallment = isCard && f.totalMonths > 0;
+        const needsAction = !isRealInstallment;
         const paidId = f.paidMonths?.[curKey];
         return (
           <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, color: T.cream, padding: "4px 0" }}>
@@ -1019,11 +1023,11 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
-              {!isCard && (
+              {needsAction && (
                 paidId ? (
-                  <button onClick={() => unmarkFixedPaid(ctx, f)} style={{ background: "none", border: `1px solid ${T.good}`, borderRadius: 6, padding: "3px 6px", cursor: "pointer", color: T.good, fontSize: 10, fontWeight: 700 }}>출금완료</button>
+                  <button onClick={() => unmarkFixedPaid(ctx, f)} style={{ background: "none", border: `1px solid ${T.good}`, borderRadius: 6, padding: "3px 6px", cursor: "pointer", color: T.good, fontSize: 10, fontWeight: 700 }}>{isCard ? "반영완료" : "출금완료"}</button>
                 ) : (
-                  <button onClick={() => markFixedPaid(ctx, f, f.info)} style={{ background: T.good, border: "none", borderRadius: 6, padding: "3px 7px", cursor: "pointer", color: "#fff", fontSize: 10, fontWeight: 700 }}>출금처리</button>
+                  <button onClick={() => markFixedPaid(ctx, f, f.info)} style={{ background: T.good, border: "none", borderRadius: 6, padding: "3px 7px", cursor: "pointer", color: "#fff", fontSize: 10, fontWeight: 700 }}>{isCard ? "카드반영" : "출금처리"}</button>
                 )
               )}
             </span>
@@ -1111,17 +1115,35 @@ function reconcileCard(ctx, card, actualTotal) {
 
 function markFixedPaid(ctx, f, info) {
   const { data, persist, showToast, curKey } = ctx;
-  const aid = f.accountId || data.accounts[0]?.id;
-  const entry = { id: "b" + Date.now(), type: "out", amount: info.amount, date: todayISO(), memo: `${f.name} 자동이체`, accountId: aid, linkedFixedId: f.id, linkedFixedMonth: curKey };
-  const updatedFixed = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, paidMonths: { ...(x.paidMonths || {}), [curKey]: entry.id } } : x));
-  persist({ ...data, fixedExpenses: updatedFixed, balanceEntries: [...(data.balanceEntries || []), entry] });
-  showToast(`${fmtWon(info.amount)} 출금 처리했어요`);
+  const isCard = (f.paymentMethod || "cash") === "card";
+  let next = { ...data };
+  let marker;
+  if (isCard) {
+    const cid = f.cardId || data.cards[0]?.id;
+    next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Number(c.bill || 0) + Number(info.amount) } : c));
+    marker = true;
+  } else {
+    const aid = f.accountId || data.accounts[0]?.id;
+    const entry = { id: "b" + Date.now(), type: "out", amount: info.amount, date: todayISO(), memo: `${f.name} 자동이체`, accountId: aid, linkedFixedId: f.id, linkedFixedMonth: curKey };
+    next.balanceEntries = [...(data.balanceEntries || []), entry];
+    marker = entry.id;
+  }
+  next.fixedExpenses = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, paidMonths: { ...(x.paidMonths || {}), [curKey]: marker } } : x));
+  persist(next);
+  showToast(isCard ? `${fmtWon(info.amount)} 카드값에 반영했어요` : `${fmtWon(info.amount)} 출금 처리했어요`);
 }
 function unmarkFixedPaid(ctx, f) {
   const { data, persist, showToast, curKey } = ctx;
-  const entryId = f.paidMonths?.[curKey];
+  const isCard = (f.paymentMethod || "cash") === "card";
+  const marker = f.paidMonths?.[curKey];
   let next = { ...data };
-  if (entryId) next.balanceEntries = (data.balanceEntries || []).filter((b) => b.id !== entryId);
+  if (isCard) {
+    const info = fixedInfo(f, curKey);
+    const cid = f.cardId || data.cards[0]?.id;
+    next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Math.max(0, Number(c.bill || 0) - Number(info.amount)) } : c));
+  } else if (marker) {
+    next.balanceEntries = (data.balanceEntries || []).filter((b) => b.id !== marker);
+  }
   const updatedFixed = data.fixedExpenses.map((x) => {
     if (x.id !== f.id) return x;
     const pm = { ...(x.paidMonths || {}) };
@@ -1130,7 +1152,7 @@ function unmarkFixedPaid(ctx, f) {
   });
   next.fixedExpenses = updatedFixed;
   persist(next);
-  showToast("출금 처리를 취소했어요");
+  showToast("처리를 취소했어요");
 }
 
 function payCard(ctx, card) {
@@ -1184,32 +1206,55 @@ function CardsBlock({ ctx, cardTotals }) {
 
 function TransitQuickAdd({ ctx }) {
   const T = useTheme();
-  const { data, persist, showToast } = ctx;
-  const [amount, setAmount] = useState("");
-  const [cardId, setCardId] = useState(data.cards?.[0]?.id || "");
+  const { data, persist, showToast, curKey } = ctx;
   if (!data.cards || data.cards.length === 0) return null;
 
   const transitCat = data.categories.find((c) => c.name.includes("교통")) || data.categories[0];
+  const existing = data.expenses.find((e) => e.linkedTransitMonth === curKey);
+
+  const [amount, setAmount] = useState(existing ? String(existing.amount) : "");
+  const [cardId, setCardId] = useState(existing ? existing.cardId : (data.cards?.[0]?.id || ""));
+
+  useEffect(() => {
+    setAmount(existing ? String(existing.amount) : "");
+    setCardId(existing ? existing.cardId : (data.cards?.[0]?.id || ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [curKey, existing?.amount, existing?.cardId]);
 
   const submit = () => {
     const n = Number(amount);
     if (!n || n <= 0) return showToast("금액을 입력해주세요");
     if (!cardId) return showToast("카드를 선택해주세요");
-    const expense = { id: "e" + Date.now(), amount: n, categoryId: transitCat?.id || null, date: todayISO(), memo: "대중교통", isReceivable: false, settled: false, repaidAmount: null, paymentMethod: "card", cardId, linkedBalanceId: null };
-    const next = {
-      ...data,
-      expenses: [...data.expenses, expense],
-      cards: data.cards.map((c) => (c.id === cardId ? { ...c, bill: Number(c.bill || 0) + n } : c)),
-    };
+    let next = { ...data };
+    if (existing) {
+      const oldAmount = Number(existing.amount);
+      const oldCardId = existing.cardId;
+      next.expenses = data.expenses.map((e) => (e.id === existing.id ? { ...e, amount: n, cardId, date: todayISO() } : e));
+      if (oldCardId === cardId) {
+        const delta = n - oldAmount;
+        next.cards = data.cards.map((c) => (c.id === cardId ? { ...c, bill: Math.max(0, Number(c.bill || 0) + delta) } : c));
+      } else {
+        next.cards = data.cards.map((c) => {
+          if (c.id === oldCardId) return { ...c, bill: Math.max(0, Number(c.bill || 0) - oldAmount) };
+          if (c.id === cardId) return { ...c, bill: Number(c.bill || 0) + n };
+          return c;
+        });
+      }
+      showToast(`이번 달 대중교통 누적을 ${fmtWon(n)}으로 갱신했어요`);
+    } else {
+      const expense = { id: "e" + Date.now(), amount: n, categoryId: transitCat?.id || null, date: todayISO(), memo: "대중교통", isReceivable: false, settled: false, repaidAmount: null, paymentMethod: "card", cardId, linkedBalanceId: null, linkedTransitMonth: curKey };
+      next.expenses = [...data.expenses, expense];
+      next.cards = data.cards.map((c) => (c.id === cardId ? { ...c, bill: Number(c.bill || 0) + n } : c));
+      showToast(`대중교통비 ${fmtWon(n)}을 카드값에 반영했어요`);
+    }
     persist(next);
-    setAmount("");
-    showToast(`대중교통비 ${fmtWon(n)}을 카드값에 반영했어요`);
   };
 
   return (
     <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px", marginBottom: 14 }}>
-      <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 8 }}>대중교통비 빠른입력</div>
-      <MoneyInput value={amount} onChange={setAmount} placeholder="오늘 이용 금액" />
+      <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 2 }}>대중교통비 빠른입력</div>
+      <div style={{ color: T.muted, fontSize: 10.5, marginBottom: 8 }}>계기판에 뜨는 이번 달 누적 금액을 그대로 입력하면, 이전 값을 대체해서 갱신돼요 (더해지지 않아요).</div>
+      <MoneyInput value={amount} onChange={setAmount} placeholder="이번 달 누적 금액" />
       {data.cards.length > 1 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
           {data.cards.map((c) => (
@@ -1221,7 +1266,7 @@ function TransitQuickAdd({ ctx }) {
           ))}
         </div>
       )}
-      <button onClick={submit} style={{ ...primaryBtn(T), marginTop: 8, padding: "9px 0", fontSize: 13 }}>카드값에 추가</button>
+      <button onClick={submit} style={{ ...primaryBtn(T), marginTop: 8, padding: "9px 0", fontSize: 13 }}>{existing ? "누적 금액 갱신" : "카드값에 반영"}</button>
     </div>
   );
 }
@@ -1787,6 +1832,9 @@ function InstallmentForm({ ctx }) {
           ) : (
             <div style={{ color: T.warn, fontSize: 12.5, marginTop: 8 }}>등록된 카드가 없어요. 설정에서 먼저 카드를 등록해주세요.</div>
           )
+        )}
+        {fixedPaymentMethod === "card" && !isInstallment && (
+          <div style={{ color: T.muted, fontSize: 11, marginTop: 8 }}>할부가 아닌 매달 반복 결제(구독 등)는 자동으로 카드값에 안 잡혀요. 실제 결제되면 홈에서 &lsquo;카드반영&rsquo; 버튼을 눌러야 카드값에 반영돼요.</div>
         )}
         {fixedPaymentMethod === "cash" && (data.accounts || []).length > 1 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
