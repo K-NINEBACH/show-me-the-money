@@ -182,7 +182,6 @@ function fixedInfo(f, curKey) {
 }
 
 const FIXED_SORTS = [
-  { key: "default", label: "입력순" },
   { key: "amountDesc", label: "금액 높은순" },
   { key: "amountAsc", label: "금액 낮은순" },
   { key: "installment", label: "할부 우선" },
@@ -839,13 +838,12 @@ function Field({ label, children }) {
 function HomeView({ ctx }) {
   const T = useTheme();
   const { data, curKey, dayIntoCycle, cycleLen, remaining, budgetRatio,
-    fixedSum, fixedSumAll, normalSpent, fixedActive, fixedCardActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal, unpaidFixed, unpaidFixedSum, realRemaining, realBudgetRatio } = ctx;
-  const over = realRemaining < 0;
-  const ringColor = realBudgetRatio < 0.7 ? T.good : realBudgetRatio < 1 ? T.warn : T.danger;
+    fixedSum, fixedSumAll, normalSpent, fixedActive, fixedCardActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal, unpaidFixed, unpaidFixedSum, realRemaining } = ctx;
+  const over = remaining < 0;
+  const ringColor = budgetRatio < 0.7 ? T.good : budgetRatio < 1 ? T.warn : T.danger;
   const dashArray = 2 * Math.PI * 54;
-  const dashOffset = dashArray * (1 - Math.min(realBudgetRatio, 1));
+  const dashOffset = dashArray * (1 - Math.min(budgetRatio, 1));
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
-  const recent = [...cycleExpenses].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
 
   return (
     <div>
@@ -877,9 +875,9 @@ function HomeView({ ctx }) {
               style={{ transition: "stroke-dashoffset 0.6s ease, stroke 0.4s" }} />
           </svg>
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ color: T.muted, fontSize: 13, marginBottom: 2 }}>{over ? "목표 초과" : "지금 실제 사용 가능"}</div>
+            <div style={{ color: T.muted, fontSize: 13, marginBottom: 2 }}>{over ? "목표 초과" : "이번 달 운용 가능"}</div>
             <div style={{ color: over ? T.danger : T.cream, fontFamily: F.mono, fontWeight: 600, fontSize: 19.5, lineHeight: 1.15, textAlign: "center" }}>
-              {over ? "-" : ""}{fmtWon(Math.abs(realRemaining))}
+              {over ? "-" : ""}{fmtWon(Math.abs(remaining))}
             </div>
             <div style={{ color: T.goldSoft, fontSize: 13, marginTop: 4 }}>
               {cycleLen - dayIntoCycle >= 0 ? `${cycleLen - dayIntoCycle}일 남음` : ""}
@@ -892,14 +890,15 @@ function HomeView({ ctx }) {
           설정에서 이번 달 목표 지출액을 정해주세요
         </div>
       )}
+      <div style={{ textAlign: "center", color: T.muted, fontSize: 12.5, marginTop: -4, marginBottom: 4, padding: "0 24px" }}>
+        카드값·고정지출·대중교통비를 아직 출금처리 안 했어도 전부 미리 반영한 금액이에요
+      </div>
       {unpaidFixedSum > 0 && (
-        <div style={{ textAlign: "center", color: T.warn, fontSize: 13, marginTop: -4, marginBottom: 6 }}>
-          곧 빠질 예정 {fmtWon(unpaidFixedSum)} 별도 (출금처리 전)
+        <div style={{ textAlign: "center", color: T.muted, fontSize: 12.5, marginBottom: 14 }}>
+          그중 아직 출금처리 안 한 건 {fmtWon(unpaidFixedSum)} · 처리 전 실제 여유는 {fmtWon(Math.abs(realRemaining))}{realRemaining < 0 ? " 초과" : ""}
         </div>
       )}
-      <div style={{ textAlign: "center", color: T.muted, fontSize: 12.5, marginTop: -4, marginBottom: 14, padding: "0 24px" }}>
-        고정지출을 아직 출금처리 안 했으면 그만큼 빼고 계산해요 · 전부 포함한 계획상 잔여는 {fmtWon(Math.abs(remaining))}{remaining < 0 ? " 초과" : ""}
-      </div>
+      {unpaidFixedSum <= 0 && <div style={{ marginBottom: 14 }} />}
 
       <SummaryCard ctx={ctx} />
 
@@ -925,20 +924,6 @@ function HomeView({ ctx }) {
           </div>
         </>
       )}
-
-      <div style={paperCard(T)}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-          <div style={{ fontFamily: F.display, color: T.ink, fontSize: 16.5, fontWeight: 700 }}>최근 기록</div>
-          <div style={{ fontSize: 14, color: T.goldSoft }}>이번 달 {cycleExpenses.length}건</div>
-        </div>
-        {recent.length === 0 ? (
-          <div style={{ color: T.muted, fontSize: 16, textAlign: "center", padding: "18px 0" }}>
-            아직 이번 달 기록이 없어요.<br />지출이 생기면 &lsquo;기록&rsquo; 탭에서 남겨보세요.
-          </div>
-        ) : (
-          recent.map((e) => <LedgerRow key={e.id} e={e} cat={catMap[e.categoryId]} />)
-        )}
-      </div>
     </div>
   );
 }
@@ -1011,7 +996,7 @@ function SummaryCard({ ctx }) {
 function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
   const T = useTheme();
   const { data, curKey } = ctx;
-  const [sortKey, setSortKey] = useState("default");
+  const [sortKey, setSortKey] = useState("amountDesc");
   const combined = [...fixedActive, ...fixedCardActive];
   const sorted = sortFixedList(combined, sortKey);
   return (
@@ -1687,7 +1672,7 @@ function InstallmentForm({ ctx }) {
   const [autoPayDay, setAutoPayDay] = useState("");
   const [overrideEditId, setOverrideEditId] = useState(null);
   const [overrideInput, setOverrideInput] = useState("");
-  const [sortKey, setSortKey] = useState("default");
+  const [sortKey, setSortKey] = useState("amountDesc");
   const [reassignEditId, setReassignEditId] = useState(null);
 
   const reassignFixed = (f, newId) => {
@@ -1880,6 +1865,7 @@ function LedgerView({ ctx }) {
   const { data, persist, showToast, curKey } = ctx;
   const [filter, setFilter] = useState("cycle");
   const [search, setSearch] = useState("");
+  const [amountSort, setAmountSort] = useState("date"); // date | amountDesc | amountAsc
   const [rangeStart, setRangeStart] = useState(dateStrFor(monthKeyOffset(curKey, -2), 1));
   const [rangeEnd, setRangeEnd] = useState(todayISO());
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
@@ -1888,6 +1874,11 @@ function LedgerView({ ctx }) {
     if (!searchLower) return true;
     const catName = (catMap[e.categoryId]?.name || "").toLowerCase();
     return (e.memo || "").toLowerCase().includes(searchLower) || catName.includes(searchLower);
+  };
+  const applyAmountSort = (arr) => {
+    if (amountSort === "amountDesc") return [...arr].sort((a, b) => Number(b.amount) - Number(a.amount));
+    if (amountSort === "amountAsc") return [...arr].sort((a, b) => Number(a.amount) - Number(b.amount));
+    return arr;
   };
 
   const list = useMemo(() => {
@@ -1904,12 +1895,14 @@ function LedgerView({ ctx }) {
     }
     return arr.filter(matchesSearch);
   }, [data.expenses, filter, curKey, searchLower, rangeStart, rangeEnd]);
+  const sortedList = useMemo(() => applyAmountSort(list), [list, amountSort]);
 
   const balanceList = useMemo(() => {
     const arr = [...(data.balanceEntries || [])].sort((a, b) => b.date.localeCompare(a.date));
     if (!searchLower) return arr;
     return arr.filter((b) => (b.memo || "").toLowerCase().includes(searchLower));
   }, [data.balanceEntries, searchLower]);
+  const sortedBalanceList = useMemo(() => applyAmountSort(balanceList), [balanceList, amountSort]);
 
   const remove = (id) => {
     const exp = data.expenses.find((e) => e.id === id);
@@ -2032,10 +2025,11 @@ function LedgerView({ ctx }) {
 
 
   const grouped = useMemo(() => {
+    if (amountSort !== "date") return null;
     const map = {};
     list.forEach((e) => { (map[e.date] = map[e.date] || []).push(e); });
     return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [list]);
+  }, [list, amountSort]);
 
   const renderEditForm = (e) => (
     <div style={{ marginTop: 8, marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 10, padding: 10 }}>
@@ -2106,6 +2100,18 @@ function LedgerView({ ctx }) {
         </div>
       )}
 
+      {filter !== "trash" && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+          {[["date", "최신순"], ["amountDesc", "높은금액순"], ["amountAsc", "낮은금액순"]].map(([k, l]) => (
+            <button key={k} onClick={() => setAmountSort(k)}
+              style={{ border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                background: amountSort === k ? T.gold : T.bg2, color: amountSort === k ? "#23190C" : T.muted }}>
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
+
       {filter === "trash" ? (
         <>
           <div style={{ color: T.muted, fontSize: 13, marginBottom: 8 }}>21일이 지나면 자동으로 삭제돼요.</div>
@@ -2161,7 +2167,7 @@ function LedgerView({ ctx }) {
             <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>카드로 기록한 지출이 없어요.</div>
           ) : (
             <div style={paperCard(T)}>
-              {list.map((e) => (
+              {sortedList.map((e) => (
                 <div key={e.id}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                     <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
@@ -2188,7 +2194,7 @@ function LedgerView({ ctx }) {
           <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>입출금 기록이 없어요.</div>
         ) : (
           <div style={paperCard(T)}>
-            {balanceList.map((b) => (
+            {sortedBalanceList.map((b) => (
               <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                 {b.type === "in" ? <ArrowDownCircle size={15} color={T.good} /> : <ArrowUpCircle size={15} color={T.danger} />}
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -2209,7 +2215,7 @@ function LedgerView({ ctx }) {
         ) : (
           <div style={paperCard(T)}>
             <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 8 }}>정산은 홈 화면에서 할 수 있어요. 여기서는 기록만 확인해요.</div>
-            {list.map((e) => (
+            {sortedList.map((e) => (
               <div key={e.id} style={{ padding: "10px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -2228,14 +2234,12 @@ function LedgerView({ ctx }) {
         )
       ) : (
         <>
-          {grouped.length === 0 && <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>기록이 없어요.</div>}
-          {grouped.map(([date, items]) => (
-            <div key={date} style={{ marginBottom: 12 }}>
-              <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 6, paddingLeft: 2 }}>
-                {date} · {fmtWon(items.reduce((s, e) => s + Number(e.amount), 0))}
-              </div>
+          {grouped === null ? (
+            sortedList.length === 0 ? (
+              <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>기록이 없어요.</div>
+            ) : (
               <div style={paperCard(T)}>
-                {items.map((e) => (
+                {sortedList.map((e) => (
                   <div key={e.id}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                       <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
@@ -2247,6 +2251,7 @@ function LedgerView({ ctx }) {
                           </span>
                         </div>
                         {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14 }}>{e.memo}</div>}
+                        <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date}</div>
                       </div>
                       <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</div>
                       <button onClick={() => startEdit(e)} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>
@@ -2256,8 +2261,41 @@ function LedgerView({ ctx }) {
                   </div>
                 ))}
               </div>
-            </div>
-          ))}
+            )
+          ) : (
+            <>
+              {grouped.length === 0 && <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>기록이 없어요.</div>}
+              {grouped.map(([date, items]) => (
+                <div key={date} style={{ marginBottom: 12 }}>
+                  <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 6, paddingLeft: 2 }}>
+                    {date} · {fmtWon(items.reduce((s, e) => s + Number(e.amount), 0))}
+                  </div>
+                  <div style={paperCard(T)}>
+                    {items.map((e) => (
+                      <div key={e.id}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
+                              {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
+                              <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
+                                {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
+                              </span>
+                            </div>
+                            {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14 }}>{e.memo}</div>}
+                          </div>
+                          <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</div>
+                          <button onClick={() => startEdit(e)} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>
+                          <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
+                        </div>
+                        {editingId === e.id && renderEditForm(e)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </>
       )}
     </div>
