@@ -1226,10 +1226,13 @@ function unmarkFixedPaid(ctx, f) {
 function payCard(ctx, card) {
   const { data, persist, showToast } = ctx;
   const billOnly = Number(card.bill || 0);
-  if (!billOnly || billOnly <= 0) return showToast("직접 등록한 카드 지출이 없어요");
+  const fixedPortion = Number(card.fixedPortion || 0);
+  const total = billOnly + fixedPortion;
+  if (!total || total <= 0) return showToast("결제할 금액이 없어요");
   const nextCards = data.cards.map((c) => (c.id === card.id ? { ...c, bill: 0 } : c));
-  persist({ ...data, cards: nextCards, balanceEntries: [...(data.balanceEntries || []), { id: "b" + Date.now(), type: "out", amount: billOnly, date: todayISO(), memo: `${card.name} 카드값 결제` }] });
-  showToast(`${fmtWon(billOnly)} 결제 처리 · 통장에서 출금됐어요`);
+  const aid = data.accounts?.[0]?.id;
+  persist({ ...data, cards: nextCards, balanceEntries: [...(data.balanceEntries || []), { id: "b" + Date.now(), type: "out", amount: total, date: todayISO(), memo: `${card.name} 카드값 결제`, accountId: aid }] });
+  showToast(`${fmtWon(total)} 결제 처리 · 통장에서 출금됐어요`);
 }
 
 function CardsBlock({ ctx, cardTotals }) {
@@ -1251,8 +1254,8 @@ function CardsBlock({ ctx, cardTotals }) {
               style={{ padding: "7px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, fontSize: 13.5, cursor: "pointer" }}>
               맞추기
             </button>
-            <button onClick={() => payCard(ctx, c)} disabled={!c.bill}
-              style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: c.bill ? T.gold : T.border, color: c.bill ? "#23190C" : T.muted, fontSize: 14.5, fontWeight: 700, cursor: c.bill ? "pointer" : "default" }}>
+            <button onClick={() => payCard(ctx, c)} disabled={!c.total}
+              style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: c.total ? T.gold : T.border, color: c.total ? "#23190C" : T.muted, fontSize: 14.5, fontWeight: 700, cursor: c.total ? "pointer" : "default" }}>
               결제하기
             </button>
           </div>
@@ -1352,11 +1355,26 @@ function BalanceCard({ ctx, accountBalance }) {
   const [pasteText, setPasteText] = useState("");
   const [reconcileId, setReconcileId] = useState(null);
   const [reconcileInput, setReconcileInput] = useState("");
+  const [toAccountId, setToAccountId] = useState("");
 
   const submit = () => {
     const n = Number(amount);
     if (!n || n <= 0) return showToast("금액을 입력해주세요");
     if (!accountId) return showToast("통장을 먼저 선택해주세요");
+    if (mode === "transfer") {
+      if (!toAccountId) return showToast("받는 통장을 선택해주세요");
+      if (toAccountId === accountId) return showToast("보내는 통장과 받는 통장이 같아요");
+      const fromName = data.accounts.find((a) => a.id === accountId)?.name || "통장";
+      const toName = data.accounts.find((a) => a.id === toAccountId)?.name || "통장";
+      const tid = "t" + Date.now();
+      const memoText = memo.trim();
+      const outEntry = { id: "b" + Date.now(), type: "out", amount: n, date: todayISO(), memo: memoText || `${toName}(으)로 이체`, accountId, transferId: tid };
+      const inEntry = { id: "b" + (Date.now() + 1), type: "in", amount: n, date: todayISO(), memo: memoText || `${fromName}에서 이체`, accountId: toAccountId, transferId: tid };
+      persist({ ...data, balanceEntries: [...(data.balanceEntries || []), outEntry, inEntry] });
+      setAmount(""); setMemo(""); setMode(null); setToAccountId("");
+      showToast(`${fromName} → ${toName} ${fmtWon(n)} 이체했어요`);
+      return;
+    }
     const entry = { id: "b" + Date.now(), type: mode, amount: n, date: todayISO(), memo: memo.trim(), accountId };
     persist({ ...data, balanceEntries: [...(data.balanceEntries || []), entry] });
     setAmount(""); setMemo(""); setMode(null);
@@ -1437,37 +1455,64 @@ function BalanceCard({ ctx, accountBalance }) {
           style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.danger}`, background: mode === "out" ? T.danger + "22" : "transparent", color: T.danger, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
           <ArrowUpCircle size={14} /> 출금
         </button>
+        {(data.accounts || []).length > 1 && (
+          <button onClick={() => setMode(mode === "transfer" ? null : "transfer")}
+            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.gold}`, background: mode === "transfer" ? T.gold + "22" : "transparent", color: T.gold, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
+            <Repeat size={14} /> 이체
+          </button>
+        )}
       </div>
       {mode && (
         <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-          <button onClick={() => setShowPaste(!showPaste)}
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 0", borderRadius: 8,
-              border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-            <ClipboardPaste size={13} /> 입출금 문자 붙여넣기로 채우기
-          </button>
-          {showPaste && (
-            <div>
-              <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="예: 국민은행 입금 500,000원 07/20 14:23"
-                style={{ ...inputSty(T), height: 70, fontSize: 14, marginBottom: 6 }} />
-              <button onClick={applyParse} style={primaryBtn(T)}>읽어오기</button>
-            </div>
+          {mode !== "transfer" && (
+            <>
+              <button onClick={() => setShowPaste(!showPaste)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 0", borderRadius: 8,
+                  border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                <ClipboardPaste size={13} /> 입출금 문자 붙여넣기로 채우기
+              </button>
+              {showPaste && (
+                <div>
+                  <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="예: 국민은행 입금 500,000원 07/20 14:23"
+                    style={{ ...inputSty(T), height: 70, fontSize: 14, marginBottom: 6 }} />
+                  <button onClick={applyParse} style={primaryBtn(T)}>읽어오기</button>
+                </div>
+              )}
+            </>
           )}
           {(data.accounts || []).length > 1 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {data.accounts.map((a) => (
-                <button key={a.id} onClick={() => setAccountId(a.id)}
-                  style={{ padding: "6px 10px", borderRadius: 16, border: accountId === a.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                    background: accountId === a.id ? T.gold + "22" : "transparent", color: accountId === a.id ? T.cream : T.muted, fontSize: 14.5, cursor: "pointer" }}>
-                  {a.name}
-                </button>
-              ))}
+            <div>
+              {mode === "transfer" && <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 4 }}>보내는 통장</div>}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {data.accounts.map((a) => (
+                  <button key={a.id} onClick={() => setAccountId(a.id)}
+                    style={{ padding: "6px 10px", borderRadius: 16, border: accountId === a.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
+                      background: accountId === a.id ? T.gold + "22" : "transparent", color: accountId === a.id ? T.cream : T.muted, fontSize: 14.5, cursor: "pointer" }}>
+                    {a.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {mode === "transfer" && (
+            <div>
+              <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 4 }}>받는 통장</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {data.accounts.filter((a) => a.id !== accountId).map((a) => (
+                  <button key={a.id} onClick={() => setToAccountId(a.id)}
+                    style={{ padding: "6px 10px", borderRadius: 16, border: toAccountId === a.id ? `2px solid ${T.good}` : `1px solid ${T.border}`,
+                      background: toAccountId === a.id ? T.good + "22" : "transparent", color: toAccountId === a.id ? T.cream : T.muted, fontSize: 14.5, cursor: "pointer" }}>
+                    {a.name}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           <MoneyInput value={amount} onChange={setAmount} placeholder="금액" autoFocus />
           <QuickAmountButtons amount={amount} setAmount={setAmount} />
           <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" style={{ ...inputSty(T), marginTop: 4 }} />
-          <button onClick={submit} style={{ ...primaryBtn(T), background: mode === "in" ? T.good : T.danger, color: "#fff", marginTop: 4 }}>
-            {mode === "in" ? "입금 기록" : "출금 기록"}
+          <button onClick={submit} style={{ ...primaryBtn(T), background: mode === "in" ? T.good : mode === "transfer" ? T.gold : T.danger, color: mode === "transfer" ? "#23190C" : "#fff", marginTop: 4 }}>
+            {mode === "in" ? "입금 기록" : mode === "transfer" ? "이체 기록" : "출금 기록"}
           </button>
         </div>
       )}
@@ -2068,6 +2113,13 @@ function LedgerView({ ctx }) {
   const removeBalance = (id) => {
     const b = data.balanceEntries.find((x) => x.id === id);
     if (!b) return;
+    if (b.transferId) {
+      const pair = data.balanceEntries.filter((x) => x.transferId === b.transferId);
+      const trashItem = { id: "t" + Date.now(), type: "balance", deletedAt: todayISO(), payload: b, transferPair: pair };
+      persist({ ...data, balanceEntries: data.balanceEntries.filter((x) => x.transferId !== b.transferId), trash: [...(data.trash || []), trashItem] });
+      showToast("이체 기록(양쪽)을 휴지통으로 이동했어요");
+      return;
+    }
     const trashItem = { id: "t" + Date.now(), type: "balance", deletedAt: todayISO(), payload: b };
     persist({ ...data, balanceEntries: data.balanceEntries.filter((x) => x.id !== id), trash: [...(data.trash || []), trashItem] });
     showToast("휴지통으로 이동했어요");
@@ -2082,7 +2134,7 @@ function LedgerView({ ctx }) {
         next.cards = (next.cards || data.cards).map((c) => (c.id === cid ? { ...c, bill: Number(c.bill || 0) + t.cardBillDelta } : c));
       }
     } else if (t.type === "balance") {
-      next.balanceEntries = [...(next.balanceEntries || data.balanceEntries || []), t.payload];
+      next.balanceEntries = [...(next.balanceEntries || data.balanceEntries || []), ...(t.transferPair || [t.payload])];
     } else if (t.type === "fixed") {
       next.fixedExpenses = [...(data.fixedExpenses || []), t.payload];
     }
