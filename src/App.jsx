@@ -121,6 +121,10 @@ function autoProcessFixed(d) {
 
 
 function fmtWon(n) { return Math.round(n).toLocaleString("ko-KR") + "원"; }
+function createdTime(item) {
+  const digits = String(item?.id || "").replace(/\D/g, "");
+  return digits ? Number(digits) : 0;
+}
 
 function parsePaymentText(text) {
   const amountMatch = text.match(/([\d,]{3,})\s*원/);
@@ -2001,23 +2005,24 @@ function LedgerView({ ctx }) {
   };
 
   const list = useMemo(() => {
+    const byCreated = (a, b) => createdTime(b) - createdTime(a);
     let arr;
-    if (filter === "receivable") arr = [...data.expenses.filter((e) => e.isReceivable)].sort((a, b) => (a.settled === b.settled ? b.date.localeCompare(a.date) : a.settled ? 1 : -1));
-    else if (filter === "card") arr = [...data.expenses.filter((e) => !e.isReceivable && (e.paymentMethod || "cash") === "card")].sort((a, b) => b.date.localeCompare(a.date));
+    if (filter === "receivable") arr = [...data.expenses.filter((e) => e.isReceivable)].sort((a, b) => (a.settled === b.settled ? byCreated(a, b) : a.settled ? 1 : -1));
+    else if (filter === "card") arr = [...data.expenses.filter((e) => !e.isReceivable && (e.paymentMethod || "cash") === "card")].sort(byCreated);
     else if (filter === "range") {
       arr = data.expenses.filter((e) => !e.isReceivable && e.date >= rangeStart && e.date <= rangeEnd);
-      arr = [...arr].sort((a, b) => b.date.localeCompare(a.date));
+      arr = [...arr].sort(byCreated);
     } else {
       arr = data.expenses.filter((e) => !e.isReceivable);
       if (filter === "cycle") arr = arr.filter((e) => e.date.slice(0, 7) === curKey);
-      arr = [...arr].sort((a, b) => b.date.localeCompare(a.date));
+      arr = [...arr].sort(byCreated);
     }
     return arr.filter(matchesSearch);
   }, [data.expenses, filter, curKey, searchLower, rangeStart, rangeEnd]);
   const sortedList = useMemo(() => applyAmountSort(list), [list, amountSort]);
 
   const balanceList = useMemo(() => {
-    const arr = [...(data.balanceEntries || [])].sort((a, b) => b.date.localeCompare(a.date));
+    const arr = [...(data.balanceEntries || [])].sort((a, b) => createdTime(b) - createdTime(a));
     if (!searchLower) return arr;
     return arr.filter((b) => (b.memo || "").toLowerCase().includes(searchLower));
   }, [data.balanceEntries, searchLower]);
@@ -2150,12 +2155,7 @@ function LedgerView({ ctx }) {
 
 
 
-  const grouped = useMemo(() => {
-    if (amountSort !== "date") return null;
-    const map = {};
-    list.forEach((e) => { (map[e.date] = map[e.date] || []).push(e); });
-    return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [list, amountSort]);
+  const grouped = null;
 
   const renderEditForm = (e) => (
     <div style={{ marginTop: 8, marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 10, padding: 10 }}>
