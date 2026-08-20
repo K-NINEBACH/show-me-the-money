@@ -374,7 +374,43 @@ function QuickAmountButtons({ amount, setAmount }) {
   );
 }
 
+// Catches render-time errors anywhere below it so a bug doesn't just show a blank
+// white screen — data in localStorage is untouched either way, only the UI crashed.
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("App crashed:", error, info);
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    const T = DARK;
+    return (
+      <div style={{ background: T.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: F.body, padding: 24, textAlign: "center" }}>
+        <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18, fontWeight: 700, marginBottom: 10 }}>문제가 생겼어요</div>
+        <div style={{ color: T.muted, fontSize: 14.5, lineHeight: 1.6, marginBottom: 24 }}>
+          화면을 표시하는 중 오류가 발생했어요.<br />기록해둔 데이터는 그대로 남아있어요.
+        </div>
+        <button onClick={() => window.location.reload()} style={{ ...primaryBtn(T), padding: "12px 26px", width: "auto" }}>새로고침</button>
+      </div>
+    );
+  }
+}
+
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
+  );
+}
+
+function AppInner() {
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState("home");
@@ -1534,22 +1570,25 @@ function StatCard({ label, value }) {
   );
 }
 
-function LedgerRow({ e, cat }) {
+// Shared row renderer for the ledger list — used by the default/전체/기간 view
+// and the card-filtered view, which used to each carry their own copy of this markup.
+function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, onDelete }) {
   const T = useTheme();
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
       <div style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
           {cat ? cat.name : "미분류"}
-          <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
-            {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
-          </span>
+          <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: methodColor }}>{methodLabel}</span>
         </div>
         {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.memo}</div>}
+        {dateNode}
       </div>
-      <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 14, fontFamily: F.mono }}>{e.date.slice(5)}</div>
+      {!dateNode && <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 14, fontFamily: F.mono }}>{e.date.slice(5)}</div>}
       <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16, minWidth: 74, textAlign: "right" }}>{fmtWon(e.amount)}</div>
+      {onEdit && <button onClick={onEdit} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>}
+      {onDelete && <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>}
     </div>
   );
 }
@@ -2154,9 +2193,6 @@ function LedgerView({ ctx }) {
   };
 
 
-
-  const grouped = null;
-
   const renderEditForm = (e) => (
     <div style={{ marginTop: 8, marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 10, padding: 10 }}>
       <div style={{ marginBottom: 8 }}>
@@ -2295,20 +2331,9 @@ function LedgerView({ ctx }) {
             <div style={paperCard(T)}>
               {sortedList.map((e) => (
                 <div key={e.id}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
-                        {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
-                        <span style={{ fontSize: 13, marginLeft: 6, color: T.goldSoft, fontWeight: 700 }}>{data.cards.find((c) => c.id === (e.cardId || data.cards[0]?.id))?.name || "카드"}</span>
-                      </div>
-                      {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14 }}>{e.memo}</div>}
-                    </div>
-                    <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 14, fontFamily: F.mono }}>{e.date.slice(5)}</div>
-                    <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</div>
-                    <button onClick={() => startEdit(e)} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>
-                    <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
-                  </div>
+                  <LedgerRow e={e} cat={catMap[e.categoryId]}
+                    methodLabel={data.cards.find((c) => c.id === (e.cardId || data.cards[0]?.id))?.name || "카드"} methodColor={T.goldSoft}
+                    onEdit={() => startEdit(e)} onDelete={() => remove(e.id)} />
                   {editingId === e.id && renderEditForm(e)}
                 </div>
               ))}
@@ -2358,71 +2383,20 @@ function LedgerView({ ctx }) {
             ))}
           </div>
         )
+      ) : sortedList.length === 0 ? (
+        <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>기록이 없어요.</div>
       ) : (
-        <>
-          {grouped === null ? (
-            sortedList.length === 0 ? (
-              <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>기록이 없어요.</div>
-            ) : (
-              <div style={paperCard(T)}>
-                {sortedList.map((e) => (
-                  <div key={e.id}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
-                          {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
-                          <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
-                            {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
-                          </span>
-                        </div>
-                        {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14 }}>{e.memo}</div>}
-                        <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date}</div>
-                      </div>
-                      <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</div>
-                      <button onClick={() => startEdit(e)} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>
-                      <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
-                    </div>
-                    {editingId === e.id && renderEditForm(e)}
-                  </div>
-                ))}
-              </div>
-            )
-          ) : (
-            <>
-              {grouped.length === 0 && <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>기록이 없어요.</div>}
-              {grouped.map(([date, items]) => (
-                <div key={date} style={{ marginBottom: 12 }}>
-                  <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 6, paddingLeft: 2 }}>
-                    {date} · {fmtWon(items.reduce((s, e) => s + Number(e.amount), 0))}
-                  </div>
-                  <div style={paperCard(T)}>
-                    {items.map((e) => (
-                      <div key={e.id}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
-                              {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
-                              <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
-                                {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
-                              </span>
-                            </div>
-                            {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14 }}>{e.memo}</div>}
-                          </div>
-                          <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</div>
-                          <button onClick={() => startEdit(e)} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>
-                          <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
-                        </div>
-                        {editingId === e.id && renderEditForm(e)}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </>
-          )}
-        </>
+        <div style={paperCard(T)}>
+          {sortedList.map((e) => (
+            <div key={e.id}>
+              <LedgerRow e={e} cat={catMap[e.categoryId]}
+                methodLabel={(e.paymentMethod || "cash") === "card" ? "카드" : "현금"} methodColor={(e.paymentMethod || "cash") === "card" ? T.gold : T.good}
+                dateNode={<div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date}</div>}
+                onEdit={() => startEdit(e)} onDelete={() => remove(e.id)} />
+              {editingId === e.id && renderEditForm(e)}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
