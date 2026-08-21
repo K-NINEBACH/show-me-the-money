@@ -80,6 +80,12 @@ export function LedgerView({ ctx }) {
   }, [data.balanceEntries, searchLower]);
   const sortedBalanceList = useMemo(() => applyAmountSort(balanceList), [balanceList, amountSort]);
 
+  // Totals for whichever list is currently shown, so switching filters answers
+  // "이번 달/이 카드/이 필터로 총 얼마" without having to add it up by eye.
+  const listTotal = useMemo(() => sortedList.reduce((s, e) => s + Number(e.amount), 0), [sortedList]);
+  const balanceInTotal = useMemo(() => sortedBalanceList.filter((b) => b.type === "in").reduce((s, b) => s + Number(b.amount), 0), [sortedBalanceList]);
+  const balanceOutTotal = useMemo(() => sortedBalanceList.filter((b) => b.type === "out").reduce((s, b) => s + Number(b.amount), 0), [sortedBalanceList]);
+
   // Returns whether the delete actually happened, so callers (like the edit-form's
   // 삭제 button) know whether to also close the form or leave it open on cancel.
   const remove = (id) => {
@@ -301,6 +307,7 @@ export function LedgerView({ ctx }) {
             <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>카드로 기록한 지출이 없어요.</div>
           ) : (
             <div style={paperCard(T)}>
+              <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>기록된 카드 지출 합계 {fmtWon(listTotal)} · {sortedList.length}건</div>
               {sortedList.map((e) => (
                 <div key={e.id}>
                   <LedgerRow e={e} cat={catMap[e.categoryId]}
@@ -317,6 +324,9 @@ export function LedgerView({ ctx }) {
           <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>입출금 기록이 없어요.</div>
         ) : (
           <div style={paperCard(T)}>
+            <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>
+              <span style={{ color: T.good }}>입금 합계 {fmtWon(balanceInTotal)}</span> · <span style={{ color: T.danger }}>출금 합계 {fmtWon(balanceOutTotal)}</span>
+            </div>
             {sortedBalanceList.map((b) => (
               <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                 {b.type === "in" ? <ArrowDownCircle size={15} color={T.good} /> : <ArrowUpCircle size={15} color={T.danger} />}
@@ -337,7 +347,8 @@ export function LedgerView({ ctx }) {
           <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>대리결제 기록이 없어요.</div>
         ) : (
           <div style={paperCard(T)}>
-            <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 8 }}>정산은 홈 화면에서 할 수 있어요. 여기서는 기록만 확인해요.</div>
+            <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 4 }}>정산은 홈 화면에서 할 수 있어요. 여기서는 기록만 확인해요.</div>
+            <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 8 }}>합계 {fmtWon(listTotal)} · {sortedList.length}건</div>
             {sortedList.map((e) => (
               <div key={e.id} style={{ padding: "10px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -359,6 +370,7 @@ export function LedgerView({ ctx }) {
         <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>기록이 없어요.</div>
       ) : (
         <div style={paperCard(T)}>
+          <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>합계 {fmtWon(listTotal)} · {sortedList.length}건</div>
           {sortedList.map((e) => (
             <div key={e.id}>
               <LedgerRow e={e} cat={catMap[e.categoryId]}

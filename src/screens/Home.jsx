@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Repeat, ClipboardPaste } from "lucide-react";
 import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, monthLabel, todayISO, parsePaymentText, sortFixedList, fixedInfo } from "../lib/data";
-import { MoneyInput, QuickAmountButtons, FixedSortTabs } from "../components/common";
+import { MoneyInput, QuickAmountButtons } from "../components/common";
 
 export function HomeView({ ctx }) {
   const T = useTheme();
@@ -157,35 +157,34 @@ function SummaryCard({ ctx }) {
 }
 
 
+// Sort UI was dropped here — this list is usually short, so a fixed "큰 금액 먼저"
+// order is enough and it saves a whole row of sort buttons every time you open it.
 function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
   const T = useTheme();
   const { data, curKey } = ctx;
-  const [sortKey, setSortKey] = useState("amountDesc");
   const combined = [...fixedActive, ...fixedCardActive];
-  const sorted = sortFixedList(combined, sortKey);
+  const sorted = sortFixedList(combined, "amountDesc");
   return (
     <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px" }}>
-      <div style={{ color: T.muted, fontSize: 14, marginBottom: 6 }}>이번달 고정지출 상세내역</div>
-      <FixedSortTabs sortKey={sortKey} setSortKey={setSortKey} />
+      <div style={{ color: T.muted, fontSize: 14, marginBottom: 4 }}>이번달 고정지출 상세내역</div>
       {sorted.map((f) => {
         const isCard = (f.paymentMethod || "cash") === "card";
         const isRealInstallment = isCard && f.totalMonths > 0;
         const needsAction = !isRealInstallment;
         const paidId = f.paidMonths?.[curKey];
+        const sourceName = isCard ? (data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장");
         return (
-          <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 15, color: T.cream, padding: "4px 0" }}>
-            <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""}
-              <span style={{ color: isCard ? T.gold : T.muted, fontSize: 13 }}>
-                {" · "}{isCard ? (data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장")}
-              </span>
+          <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14.5, color: T.cream, padding: "3px 0" }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {f.name}{f.info.label ? ` ${f.info.label}` : ""} <span style={{ color: T.muted, fontSize: 12.5 }}>· {sourceName}</span>
             </span>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 6 }}>
+              <span style={{ fontFamily: F.mono, color: T.muted, fontSize: 13.5 }}>{fmtWon(f.info.amount)}</span>
               {needsAction && (
                 paidId ? (
-                  <button onClick={() => unmarkFixedPaid(ctx, f)} style={{ background: "none", border: `1px solid ${T.good}`, borderRadius: 6, padding: "3px 6px", cursor: "pointer", color: T.good, fontSize: 11.5, fontWeight: 700 }}>{isCard ? "반영완료" : "출금완료"}</button>
+                  <button onClick={() => unmarkFixedPaid(ctx, f)} style={{ background: "none", border: `1px solid ${T.good}`, borderRadius: 6, padding: "3px 6px", cursor: "pointer", color: T.good, fontSize: 11, fontWeight: 700 }}>완료</button>
                 ) : (
-                  <button onClick={() => markFixedPaid(ctx, f, f.info)} style={{ background: T.good, border: "none", borderRadius: 6, padding: "3px 7px", cursor: "pointer", color: "#fff", fontSize: 11.5, fontWeight: 700 }}>{isCard ? "카드반영" : "출금처리"}</button>
+                  <button onClick={() => markFixedPaid(ctx, f, f.info)} style={{ background: T.good, border: "none", borderRadius: 6, padding: "3px 6px", cursor: "pointer", color: "#fff", fontSize: 11, fontWeight: 700 }}>{isCard ? "카드반영" : "출금처리"}</button>
                 )
               )}
             </span>
