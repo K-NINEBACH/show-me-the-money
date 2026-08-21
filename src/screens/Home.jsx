@@ -248,7 +248,14 @@ function markFixedPaid(ctx, f, info) {
   if (isCard) {
     const cid = f.cardId || data.cards[0]?.id;
     next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Number(c.bill || 0) + Number(info.amount) } : c));
-    marker = true;
+    // "카드반영"은 예전엔 bill만 조용히 늘리고 아무 기록도 안 남겼음 — 그래서 내역
+    // 탭에서 카드값이 어디서 늘었는지 추적이 안 됐음. 이제 카드 지출 항목을 하나
+    // 남겨서 내역에 보이게 하되, isCardAdjustment로 표시해 예산 집계(fixedSumAll이
+    // 이미 매달 이 금액을 미리 반영하고 있음)에서는 이중 계산되지 않게 함.
+    const adjId = "e" + Date.now();
+    const adjExpense = { id: adjId, amount: Number(info.amount), categoryId: null, date: todayISO(), memo: `${f.name} · 정기결제 카드반영`, isReceivable: false, settled: false, repaidAmount: null, paymentMethod: "card", cardId: cid, linkedBalanceId: null, isCardAdjustment: true };
+    next.expenses = [...data.expenses, adjExpense];
+    marker = adjId;
   } else {
     const aid = f.accountId || data.accounts[0]?.id;
     const entry = { id: "b" + Date.now(), type: "out", amount: info.amount, date: todayISO(), memo: `${f.name} 자동이체`, accountId: aid, linkedFixedId: f.id, linkedFixedMonth: curKey };
@@ -257,7 +264,7 @@ function markFixedPaid(ctx, f, info) {
   }
   next.fixedExpenses = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, paidMonths: { ...(x.paidMonths || {}), [curKey]: marker } } : x));
   persist(next);
-  showToast(isCard ? `${fmtWon(info.amount)} 카드값에 반영했어요` : `${fmtWon(info.amount)} 출금 처리했어요`);
+  showToast(isCard ? `${fmtWon(info.amount)} 카드값에 반영했어요 · 내역에서 확인할 수 있어요` : `${fmtWon(info.amount)} 출금 처리했어요`);
 }
 function unmarkFixedPaid(ctx, f) {
   const { data, persist, showToast, curKey } = ctx;
@@ -265,9 +272,13 @@ function unmarkFixedPaid(ctx, f) {
   const marker = f.paidMonths?.[curKey];
   let next = { ...data };
   if (isCard) {
-    const info = fixedInfo(f, curKey);
+    const adjExpense = typeof marker === "string" ? data.expenses.find((x) => x.id === marker && x.isCardAdjustment) : null;
+    // adjExpense가 있으면(2026-08-21 이후 반영분) 그 금액 그대로 되돌리고 기록도 지움.
+    // 없으면(그 이전에 반영해서 marker가 true뿐인 옛 데이터) 예전 방식대로 다시 계산.
+    const amt = adjExpense ? Number(adjExpense.amount) : Number(fixedInfo(f, curKey).amount);
     const cid = f.cardId || data.cards[0]?.id;
-    next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Math.max(0, Number(c.bill || 0) - Number(info.amount)) } : c));
+    next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Math.max(0, Number(c.bill || 0) - amt) } : c));
+    if (adjExpense) next.expenses = data.expenses.filter((x) => x.id !== marker);
   } else if (marker) {
     next.balanceEntries = (data.balanceEntries || []).filter((b) => b.id !== marker);
   }

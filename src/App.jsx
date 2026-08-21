@@ -89,7 +89,9 @@ function AppInner() {
   const cycleExpenses = data.expenses.filter((e) => e.date.slice(0, 7) === curKey && !e.isReceivable);
   const todaySpent = cycleExpenses.filter((e) => e.date === todayISO()).reduce((s, e) => s + Number(e.amount), 0);
   const normalSpent = cycleExpenses.filter((e) => (e.paymentMethod || "cash") !== "card").reduce((s, e) => s + Number(e.amount), 0);
-  const cardSpentThisCycle = cycleExpenses.filter((e) => (e.paymentMethod || "cash") === "card").reduce((s, e) => s + Number(e.amount), 0);
+  // isCardAdjustment 항목(정기결제 "카드반영")은 제외 — fixedSumAll이 이 금액을 매달
+  // 이미 반영 여부와 무관하게 미리 포함하고 있어서, 여기서도 더하면 이중 계산됨.
+  const cardSpentThisCycle = cycleExpenses.filter((e) => (e.paymentMethod || "cash") === "card" && !e.isCardAdjustment).reduce((s, e) => s + Number(e.amount), 0);
 
   const cards = data.cards && data.cards.length ? data.cards : [{ id: "card1", name: "카드", bill: 0 }];
   const fixedActiveAll = data.fixedExpenses.map((f) => ({ ...f, info: fixedInfo(f, curKey) })).filter((f) => f.info.active);

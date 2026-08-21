@@ -94,6 +94,9 @@ const STORAGE_KEY = "passbook-data-v4";
   settled, repaidAmount, settledAt,
   settlementCardDelta, settlementCardId, settlementBalanceId,  // 정산 시 되돌리기용
   linkedTransitMonth,        // 대중교통 누적 항목 표시 (예: "2026-07")
+  isCardAdjustment,          // 카드값에 흔적 남기기용(2026-08-21). "카드반영"/카드값 수동
+                              // 추가로 생긴 항목 표시. cardSpentThisCycle 집계에서는 제외
+                              // (fixedSumAll이 이미 매달 반영하고 있어서 이중계산 방지)
 }
 ```
 
@@ -239,6 +242,11 @@ realRemaining  = spendingGoal - processedSpent   // 서브 "반영 전 여유"
 - **기록 속도 개선** — 자주 쓰는 카테고리/카드 기본값, 즐겨찾기 원터치 재등록 (사용자가 "나중에" 하기로 함)
 - **할부 종료 알림** — "이번 달이 마지막 회차" 안내 미착수
 - **다른 카드사/은행 문자 파싱** — 현대카드만 검증. 실제 케이스 나오면 그때 다듬기로 함
+- **(미확정) `spent`/`remaining` 이중계산 의심** — 2026-08-21에 카드 추적성 작업을 하다가 발견.
+  `fixedSum`이 "카드 매달반복" 항목을 `info.active`면 매달 자동으로 누적하는데(카드반영 클릭 여부와
+  무관), 실제로 카드반영을 누르면 `cardBillTotal`(=`c.bill`)에도 같은 금액이 더해짐 — `spent = normalSpent
+  + fixedSum + cardBillTotal`이라 클릭한 달은 그 항목이 두 번 잡힐 수 있음. 사용자에게 확인 안 하고
+  손대지 않았음. 건드리려면 먼저 사용자한테 물어볼 것.
 
 ### 구조적 제약 (해결 불가)
 - **푸시 알림 불가** — 웹앱이라 "오늘 기록 안 하셨어요" 같은 리마인드 못 보냄

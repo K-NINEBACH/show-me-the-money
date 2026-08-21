@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn } from "../lib/theme";
-import { fmtWon, migrate } from "../lib/data";
+import { fmtWon, migrate, todayISO } from "../lib/data";
 import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../components/common";
 
 export function SettingsView({ ctx }) {
@@ -51,9 +51,14 @@ export function SettingsView({ ctx }) {
     const n = Number(cardAddInput);
     if (!n || n <= 0) return showToast("금액을 입력해주세요");
     if (!selectedCardId) return showToast("카드를 먼저 선택하세요");
-    persist({ ...data, cards: data.cards.map((c) => (c.id === selectedCardId ? { ...c, bill: Number(c.bill || 0) + n } : c)) });
+    // 그냥 bill만 늘리면 이 추가분이 내역 어디에도 안 남아서 나중에 "왜 카드값이
+    // 이렇게 됐지" 싶을 때 확인할 방법이 없었음. 카드 지출 하나로 남겨서 내역·이번
+    // 달 총 지출에도 정상적으로 잡히게 함(기록 탭에서 카드로 등록한 것과 동일하게).
+    const card = data.cards.find((c) => c.id === selectedCardId);
+    const expense = { id: "e" + Date.now(), amount: n, categoryId: null, date: todayISO(), memo: "카드값 수동 추가", isReceivable: false, settled: false, repaidAmount: null, paymentMethod: "card", cardId: selectedCardId, linkedBalanceId: null };
+    persist({ ...data, expenses: [...data.expenses, expense], cards: data.cards.map((c) => (c.id === selectedCardId ? { ...c, bill: Number(c.bill || 0) + n } : c)) });
     setCardAddInput("");
-    showToast("카드값에 더했어요");
+    showToast(`${card?.name || "카드"}값에 더했어요 · 내역에서 확인할 수 있어요`);
   };
   const resetCardBill = () => {
     if (!selectedCardId) return;

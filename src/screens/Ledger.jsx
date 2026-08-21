@@ -97,6 +97,16 @@ export function LedgerView({ ctx }) {
       if ((exp.paymentMethod || "cash") === "card") {
         const cid = exp.cardId || data.cards[0]?.id;
         next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Math.max(0, Number(c.bill || 0) - Number(exp.amount)) } : c));
+        // "정기결제 카드반영" 항목을 홈의 완료취소 대신 여기서 바로 지우면, 원래 고정지출의
+        // paidMonths가 이미 없어진 이 항목을 계속 가리키게 됨 — 그 연결을 같이 끊어줌.
+        if (exp.isCardAdjustment) {
+          next.fixedExpenses = data.fixedExpenses.map((x) => {
+            if (!(x.paidMonths && x.paidMonths[curKey] === id)) return x;
+            const pm = { ...x.paidMonths };
+            delete pm[curKey];
+            return { ...x, paidMonths: pm };
+          });
+        }
       } else if (exp.linkedBalanceId) {
         next.balanceEntries = (next.balanceEntries || data.balanceEntries || []).filter((b) => b.id !== exp.linkedBalanceId);
       }
