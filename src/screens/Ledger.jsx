@@ -87,6 +87,13 @@ export function LedgerView({ ctx }) {
   }, [data.expenses, filter, curKey, searchLower, rangeStart, rangeEnd]);
   const sortedList = useMemo(() => applyAmountSort(list), [list, amountSort]);
 
+  // Every receivable originally paid by card, regardless of how settlement went —
+  // for the "카드" filter's context block (실제 카드값 계산과는 별개, 그냥 전체 이력용).
+  const cardReceivables = useMemo(
+    () => data.expenses.filter((e) => e.isReceivable && (e.paymentMethod || "cash") === "card").sort((a, b) => createdTime(b) - createdTime(a)),
+    [data.expenses]
+  );
+
   const balanceList = useMemo(() => {
     const arr = [...(data.balanceEntries || [])].sort((a, b) => createdTime(b) - createdTime(a));
     if (!searchLower) return arr;
@@ -327,11 +334,32 @@ export function LedgerView({ ctx }) {
               ))}
             </div>
           )}
+          {cardReceivables.length > 0 && (
+            <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px", marginBottom: 12 }}>
+              <div style={{ color: T.muted, fontSize: 14, marginBottom: 2 }}>카드로 결제한 대리결제</div>
+              <div style={{ color: T.muted, fontSize: 12, marginBottom: 6 }}>정산 결과에 따라 카드값·통장에 반영된 부분만 아래 목록·합계에 잡혀요.</div>
+              {cardReceivables.map((e) => {
+                const diff = e.settled ? Number(e.repaidAmount) - Number(e.amount) : null;
+                return (
+                  <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 15, color: T.cream, padding: "4px 0", gap: 8 }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{catMap[e.categoryId]?.name || "대리결제"}{e.memo ? ` · ${e.memo}` : ""}</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                      <span style={{ fontFamily: F.mono, color: T.muted, fontSize: 13.5 }}>{fmtWon(e.amount)}</span>
+                      {!e.settled && <span style={{ color: T.warn, fontSize: 11, fontWeight: 700 }}>미정산</span>}
+                      {e.settled && diff === 0 && <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>정산완료</span>}
+                      {e.settled && diff < 0 && <span style={{ color: T.danger, fontSize: 11, fontWeight: 700 }}>부족분 {fmtWon(-diff)} 카드값 반영</span>}
+                      {e.settled && diff > 0 && <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>초과분 {fmtWon(diff)} 통장 반영</span>}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {list.length === 0 ? (
             <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>카드로 기록한 지출이 없어요.</div>
           ) : (
             <div style={paperCard(T)}>
-              <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>기록된 카드 지출 합계 {fmtWon(listTotal)} · {sortedList.length}건</div>
+              <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>카드값에 반영된 지출 합계 {fmtWon(listTotal)} · {sortedList.length}건</div>
               {sortedList.map((e) => (
                 <div key={e.id}>
                   <LedgerRow e={e} cat={catMap[e.categoryId]}
