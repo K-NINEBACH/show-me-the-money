@@ -214,6 +214,7 @@ export function LedgerView({ ctx }) {
   const [editCardId, setEditCardId] = useState("");
   const [editAccountId, setEditAccountId] = useState("");
   const [reimburseInput, setReimburseInput] = useState("");
+  const [reimburseOpen, setReimburseOpen] = useState(false);
 
   // 대신 내준 돈을 나중에 돌려받았을 때 여기서 바로 기록 — 카드/현금 상관없이 아무
   // 지출에나 쓸 수 있음. 원래 지출 금액은 그대로 두고(카드값/통장 차감은 실제로 있었던
@@ -232,6 +233,7 @@ export function LedgerView({ ctx }) {
       expenses: data.expenses.map((x) => (x.id === exp.id ? { ...x, reimbursedAmount: n, reimbursedAt: todayISO(), reimbursementBalanceId: entryId } : x)),
     });
     setReimburseInput("");
+    setReimburseOpen(false);
     showToast(`${fmtWon(n)} 받은 걸로 기록했어요`);
   };
   const cancelReimburse = (exp) => {
@@ -255,6 +257,7 @@ export function LedgerView({ ctx }) {
     const linked = e.linkedBalanceId ? (data.balanceEntries || []).find((b) => b.id === e.linkedBalanceId) : null;
     setEditAccountId(linked?.accountId || data.accounts[0]?.id || "");
     setReimburseInput(String(e.amount));
+    setReimburseOpen(false);
   };
   const cancelEdit = () => setEditingId(null);
 
@@ -306,64 +309,59 @@ export function LedgerView({ ctx }) {
     showToast("삭제했어요");
   };
 
+  // 셀렉트 하나로 눈에 잘 안 띄지만 다크 배경에서도 읽히게 최소한의 스타일만 입힌 것 —
+  // 원래 있던 카테고리/카드/통장 칩 버튼들을 이걸로 바꿔서 편집 폼 세로 길이를 크게 줄임.
+  const editSelectSty = { flex: 1, background: "#fff", border: `1px solid ${T.paperLine}`, borderRadius: 10, padding: "10px 12px", color: T.ink, fontSize: 15, outline: "none" };
+
   const renderEditForm = (e) => (
     <div style={{ marginTop: 8, marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 10, padding: 10 }}>
-      <div style={{ marginBottom: 8 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
         <MoneyInput value={editAmount} onChange={setEditAmount} />
-        <QuickAmountButtons amount={editAmount} setAmount={setEditAmount} />
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-        {data.categories.map((c) => (
-          <button key={c.id} onClick={() => setEditCategoryId(c.id)}
-            style={{ padding: "6px 10px", borderRadius: 16, border: editCategoryId === c.id ? `2px solid ${c.color}` : `1px solid ${T.border}`,
-              background: editCategoryId === c.id ? c.color + "22" : "transparent", color: T.ink, fontSize: 13.5, cursor: "pointer" }}>
-            {c.name}
-          </button>
-        ))}
+        <select value={editPaymentMethod} onChange={(ev) => setEditPaymentMethod(ev.target.value)} style={{ ...editSelectSty, flex: "0 0 84px" }}>
+          <option value="card">카드</option>
+          <option value="cash">현금</option>
+        </select>
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-        <button onClick={() => setEditPaymentMethod("card")} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: editPaymentMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: editPaymentMethod === "card" ? T.gold + "22" : "transparent", color: T.ink, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>카드</button>
-        <button onClick={() => setEditPaymentMethod("cash")} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: editPaymentMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: editPaymentMethod === "cash" ? T.good + "22" : "transparent", color: T.ink, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>현금(통장)</button>
+        <select value={editCategoryId} onChange={(ev) => setEditCategoryId(ev.target.value)} style={editSelectSty}>
+          {data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        {editPaymentMethod === "card" ? (
+          <select value={editCardId} onChange={(ev) => setEditCardId(ev.target.value)} style={editSelectSty}>
+            {data.cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        ) : data.accounts.length > 1 ? (
+          <select value={editAccountId} onChange={(ev) => setEditAccountId(ev.target.value)} style={editSelectSty}>
+            {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        ) : null}
       </div>
-      {editPaymentMethod === "card" ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-          {data.cards.map((c) => (
-            <button key={c.id} onClick={() => setEditCardId(c.id)} style={{ padding: "5px 9px", borderRadius: 14, border: editCardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: editCardId === c.id ? T.gold + "22" : "transparent", color: T.ink, fontSize: 13, cursor: "pointer" }}>{c.name}</button>
-          ))}
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        <input type="date" value={editDate} onChange={(ev) => setEditDate(ev.target.value)} style={{ ...inputSty(T), flex: "0 0 132px", background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}` }} />
+        <input value={editMemo} onChange={(ev) => setEditMemo(ev.target.value)} placeholder="표기내역" style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}` }} />
+      </div>
+
+      {e.reimbursedAmount != null ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ color: T.good, fontSize: 13, fontWeight: 700 }}>정산받음 {fmtWon(e.reimbursedAmount)}</span>
+          <button onClick={() => cancelReimburse(e)} style={{ background: "none", border: "none", cursor: "pointer", color: T.ink, fontSize: 12, textDecoration: "underline" }}>취소</button>
         </div>
+      ) : !reimburseOpen ? (
+        <button onClick={() => setReimburseOpen(true)}
+          style={{ width: "100%", padding: "7px 0", borderRadius: 8, border: `1px dashed ${T.good}`, background: "transparent", color: T.good, fontSize: 13, fontWeight: 700, marginBottom: 8, cursor: "pointer" }}>
+          미리정산하기
+        </button>
       ) : (
-        data.accounts.length > 1 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-            {data.accounts.map((a) => (
-              <button key={a.id} onClick={() => setEditAccountId(a.id)} style={{ padding: "5px 9px", borderRadius: 14, border: editAccountId === a.id ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: editAccountId === a.id ? T.good + "22" : "transparent", color: T.ink, fontSize: 13, cursor: "pointer" }}>{a.name}</button>
-            ))}
-          </div>
-        )
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <MoneyInput value={reimburseInput} onChange={setReimburseInput} placeholder="받은 금액" />
+          <button onClick={() => confirmReimburse(e)} style={{ ...primaryBtn(T), width: 60, background: T.good }}>확인</button>
+        </div>
       )}
-      <input type="date" value={editDate} onChange={(ev) => setEditDate(ev.target.value)} style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}`, marginBottom: 8 }} />
-      <input value={editMemo} onChange={(ev) => setEditMemo(ev.target.value)} placeholder="표기내역" style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}`, marginBottom: 8 }} />
 
-      <div style={{ borderTop: `1px dashed ${T.paperLine}`, marginTop: 4, paddingTop: 8, marginBottom: 8 }}>
-        {e.reimbursedAmount != null ? (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ color: T.good, fontSize: 13.5, fontWeight: 700 }}>대신 낸 돈 {fmtWon(e.reimbursedAmount)} 받음</span>
-            <button onClick={() => cancelReimburse(e)} style={{ background: "none", border: "none", cursor: "pointer", color: T.ink, fontSize: 12.5, textDecoration: "underline" }}>취소</button>
-          </div>
-        ) : (
-          <>
-            <div style={{ color: T.ink, fontSize: 12.5, marginBottom: 5 }}>이거 대신 내준 돈이라 나중에 받았으면 여기 입력</div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <MoneyInput value={reimburseInput} onChange={setReimburseInput} placeholder="받은 금액" />
-              <button onClick={() => confirmReimburse(e)} style={{ ...primaryBtn(T), width: 66, background: T.good }}>받음</button>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button onClick={cancelEdit} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.ink, fontSize: 14, cursor: "pointer" }}>취소</button>
-        <button onClick={() => { if (remove(e.id)) setEditingId(null); }} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.danger}`, background: "transparent", color: T.danger, fontSize: 14, cursor: "pointer" }}>삭제</button>
         <button onClick={() => saveEdit(e)} style={{ flex: 2, ...primaryBtn(T), padding: "9px 0" }}>저장</button>
+        <button onClick={() => { if (remove(e.id)) setEditingId(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 6, flexShrink: 0 }}><Trash2 size={18} /></button>
       </div>
     </div>
   );
