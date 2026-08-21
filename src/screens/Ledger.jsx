@@ -17,6 +17,7 @@ export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, 
         <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
           {cat ? cat.name : "미분류"}
           <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: methodColor }}>{methodLabel}</span>
+          {e.reimbursedAmount != null && <span style={{ fontSize: 11.5, marginLeft: 6, fontWeight: 700, color: T.good }}>정산받음 {fmtWon(e.reimbursedAmount)}</span>}
         </div>
         {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.memo}</div>}
         {dateNode}
@@ -174,6 +175,9 @@ export function LedgerView({ ctx }) {
     if (!window.confirm("이 기록을 삭제할까요? 연결된 카드값/통장 반영분도 함께 되돌아가요.")) return false;
     let next = { ...data, expenses: data.expenses.filter((e) => e.id !== id) };
     if (!exp.isReceivable) {
+      if (exp.reimbursementBalanceId) {
+        next.balanceEntries = (next.balanceEntries || data.balanceEntries || []).filter((b) => b.id !== exp.reimbursementBalanceId);
+      }
       if ((exp.paymentMethod || "cash") === "card") {
         const cid = exp.cardId || data.cards[0]?.id;
         next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Math.max(0, Number(c.bill || 0) - Number(exp.amount)) } : c));
@@ -209,6 +213,36 @@ export function LedgerView({ ctx }) {
   const [editPaymentMethod, setEditPaymentMethod] = useState("cash");
   const [editCardId, setEditCardId] = useState("");
   const [editAccountId, setEditAccountId] = useState("");
+  const [reimburseInput, setReimburseInput] = useState("");
+
+  // 대신 내준 돈을 나중에 돌려받았을 때 여기서 바로 기록 — 카드/현금 상관없이 아무
+  // 지출에나 쓸 수 있음. 원래 지출 금액은 그대로 두고(카드값/통장 차감은 실제로 있었던
+  // 일이니까), 돌려받은 돈만 순수 입금으로 남김. 그래서 부족분/초과분 나눌 필요가 없음 —
+  // 얼마를 돌려받든 그냥 그만큼 입금.
+  const confirmReimburse = (exp) => {
+    const n = Number(reimburseInput);
+    if (!n || n <= 0) return showToast("받은 금액을 입력해주세요");
+    const aid = data.accounts?.[0]?.id;
+    const entryId = "b" + Date.now();
+    const catName = data.categories.find((c) => c.id === exp.categoryId)?.name || "지출";
+    const entry = { id: entryId, type: "in", amount: n, date: todayISO(), memo: `${exp.memo || catName} 대리결제 정산`, accountId: aid };
+    persist({
+      ...data,
+      balanceEntries: [...(data.balanceEntries || []), entry],
+      expenses: data.expenses.map((x) => (x.id === exp.id ? { ...x, reimbursedAmount: n, reimbursedAt: todayISO(), reimbursementBalanceId: entryId } : x)),
+    });
+    setReimburseInput("");
+    showToast(`${fmtWon(n)} 받은 걸로 기록했어요`);
+  };
+  const cancelReimburse = (exp) => {
+    if (!window.confirm("정산 기록을 취소할까요? 통장에 들어온 입금 기록도 같이 삭제돼요.")) return;
+    persist({
+      ...data,
+      balanceEntries: (data.balanceEntries || []).filter((b) => b.id !== exp.reimbursementBalanceId),
+      expenses: data.expenses.map((x) => (x.id === exp.id ? { ...x, reimbursedAmount: null, reimbursedAt: null, reimbursementBalanceId: null } : x)),
+    });
+    showToast("정산 기록을 취소했어요");
+  };
 
   const startEdit = (e) => {
     setEditingId(e.id);
@@ -220,6 +254,7 @@ export function LedgerView({ ctx }) {
     setEditCardId(e.cardId || data.cards[0]?.id || "");
     const linked = e.linkedBalanceId ? (data.balanceEntries || []).find((b) => b.id === e.linkedBalanceId) : null;
     setEditAccountId(linked?.accountId || data.accounts[0]?.id || "");
+    setReimburseInput(String(e.amount));
   };
   const cancelEdit = () => setEditingId(null);
 
@@ -307,6 +342,24 @@ export function LedgerView({ ctx }) {
       )}
       <input type="date" value={editDate} onChange={(ev) => setEditDate(ev.target.value)} style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}`, marginBottom: 8 }} />
       <input value={editMemo} onChange={(ev) => setEditMemo(ev.target.value)} placeholder="표기내역" style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}`, marginBottom: 8 }} />
+
+      <div style={{ borderTop: `1px dashed ${T.paperLine}`, marginTop: 4, paddingTop: 8, marginBottom: 8 }}>
+        {e.reimbursedAmount != null ? (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ color: T.good, fontSize: 13.5, fontWeight: 700 }}>대신 낸 돈 {fmtWon(e.reimbursedAmount)} 받음</span>
+            <button onClick={() => cancelReimburse(e)} style={{ background: "none", border: "none", cursor: "pointer", color: T.ink, fontSize: 12.5, textDecoration: "underline" }}>취소</button>
+          </div>
+        ) : (
+          <>
+            <div style={{ color: T.ink, fontSize: 12.5, marginBottom: 5 }}>이거 대신 내준 돈이라 나중에 받았으면 여기 입력</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <MoneyInput value={reimburseInput} onChange={setReimburseInput} placeholder="받은 금액" />
+              <button onClick={() => confirmReimburse(e)} style={{ ...primaryBtn(T), width: 66, background: T.good }}>받음</button>
+            </div>
+          </>
+        )}
+      </div>
+
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={cancelEdit} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.ink, fontSize: 14, cursor: "pointer" }}>취소</button>
         <button onClick={() => { if (remove(e.id)) setEditingId(null); }} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.danger}`, background: "transparent", color: T.danger, fontSize: 14, cursor: "pointer" }}>삭제</button>

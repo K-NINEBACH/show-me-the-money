@@ -15,7 +15,6 @@ export function AddView({ ctx }) {
   const [categoryId, setCategoryId] = useState(data.categories[0]?.id || "");
   const [date, setDate] = useState(todayISO());
   const [memo, setMemo] = useState("");
-  const [isReceivable, setIsReceivable] = useState(false);
   const [cardId, setCardId] = useState(data.cards?.[0]?.id || "");
   const [accountId, setAccountId] = useState(data.accounts?.[0]?.id || "");
   const [newCatMode, setNewCatMode] = useState(false);
@@ -44,6 +43,9 @@ export function AddView({ ctx }) {
     setCategoryId(cat.id); setNewCatName(""); setNewCatMode(false);
   };
 
+  // 대신 내준 돈(대리결제)도 그냥 평범한 지출로 기록하면 됨 — 카드/현금 그대로 반영되고,
+  // 나중에 실제로 돈을 돌려받으면 내역에서 그 지출을 눌러 "정산받음"으로 표시하면 됨
+  // (2026-08-21 변경: 입력 시점에 미리 "대리결제" 체크할 필요 없어짐).
   const submit = () => {
     const n = Number(amount);
     if (!n || n <= 0) return showToast("금액을 입력해주세요");
@@ -51,19 +53,17 @@ export function AddView({ ctx }) {
     if (payMethod === "card" && !cardId) return showToast("설정에서 카드를 먼저 등록해주세요");
     if (payMethod === "cash" && !accountId) return showToast("설정에서 통장을 먼저 등록해주세요");
     const catName = data.categories.find((c) => c.id === categoryId)?.name || "지출";
-    const linkedBalanceId = !isReceivable && payMethod === "cash" ? "b" + Date.now() : null;
-    const expense = { id: "e" + Date.now(), amount: n, categoryId, date, memo: memo.trim(), isReceivable, settled: false, repaidAmount: null, paymentMethod: payMethod, cardId: payMethod === "card" ? cardId : null, linkedBalanceId };
+    const linkedBalanceId = payMethod === "cash" ? "b" + Date.now() : null;
+    const expense = { id: "e" + Date.now(), amount: n, categoryId, date, memo: memo.trim(), paymentMethod: payMethod, cardId: payMethod === "card" ? cardId : null, linkedBalanceId };
     let next = { ...data, expenses: [...data.expenses, expense] };
-    if (!isReceivable) {
-      if (payMethod === "card") {
-        next.cards = data.cards.map((c) => (c.id === cardId ? { ...c, bill: Number(c.bill || 0) + n } : c));
-      } else {
-        next.balanceEntries = [...(next.balanceEntries || []), { id: linkedBalanceId, type: "out", amount: n, date, memo: `${catName}${memo.trim() ? " · " + memo.trim() : ""}`, accountId }];
-      }
+    if (payMethod === "card") {
+      next.cards = data.cards.map((c) => (c.id === cardId ? { ...c, bill: Number(c.bill || 0) + n } : c));
+    } else {
+      next.balanceEntries = [...(next.balanceEntries || []), { id: linkedBalanceId, type: "out", amount: n, date, memo: `${catName}${memo.trim() ? " · " + memo.trim() : ""}`, accountId }];
     }
     persist(next);
-    setAmount(""); setMemo(""); setIsReceivable(false);
-    showToast(isReceivable ? "대리결제로 기록했어요" : payMethod === "card" ? "카드값에 반영했어요" : "통장에서 차감했어요");
+    setAmount(""); setMemo("");
+    showToast(payMethod === "card" ? "카드값에 반영했어요" : "통장에서 차감했어요");
   };
 
   return (
@@ -181,16 +181,6 @@ export function AddView({ ctx }) {
               <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
             </div>
           </div>
-
-          <button onClick={() => setIsReceivable(!isReceivable)}
-            style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: isReceivable ? T.good + "22" : T.bg2,
-              border: isReceivable ? `1px solid ${T.good}` : `1px solid ${T.border}`, borderRadius: 10, padding: "9px 12px", marginBottom: 16, cursor: "pointer" }}>
-            <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${isReceivable ? T.good : T.muted}`, background: isReceivable ? T.good : "transparent",
-              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              {isReceivable && <Check size={12} color="#fff" />}
-            </div>
-            <span style={{ color: isReceivable ? T.good : T.cream, fontSize: 15, fontWeight: 700 }}>대리결제 (추후 정산)</span>
-          </button>
 
           <button onClick={submit} style={{ ...primaryBtn(T), padding: "14px 0", fontSize: 16.5 }}>
             <Check size={16} style={{ marginRight: 6, verticalAlign: -3 }} />
