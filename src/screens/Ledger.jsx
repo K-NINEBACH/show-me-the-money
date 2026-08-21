@@ -60,7 +60,21 @@ export function LedgerView({ ctx }) {
     const byCreated = (a, b) => createdTime(b) - createdTime(a);
     let arr;
     if (filter === "receivable") arr = [...data.expenses.filter((e) => e.isReceivable)].sort((a, b) => (a.settled === b.settled ? byCreated(a, b) : a.settled ? 1 : -1));
-    else if (filter === "card") arr = [...data.expenses.filter((e) => !e.isReceivable && (e.paymentMethod || "cash") === "card")].sort(byCreated);
+    else if (filter === "card") {
+      const direct = data.expenses.filter((e) => !e.isReceivable && (e.paymentMethod || "cash") === "card");
+      // 대리결제 정산에서 부족하게 받으면 그 차액만큼 카드값이 늘어나는데(settleReceivable),
+      // 그동안은 그 흔적이 여기 안 보였음. data.expenses엔 안 남기고(원본 대리결제 항목이
+      // 이미 그 값을 갖고 있어 중복 저장하면 삭제/수정 때 꼬임) 여기서만 계산해서 보여줌 —
+      // 그래서 수정·삭제는 안 되고, 원본은 '대리결제' 탭에서 관리.
+      const settlementTraces = data.expenses
+        .filter((e) => e.isReceivable && e.settled && e.settlementCardDelta > 0 && e.settlementCardId)
+        .map((e) => ({
+          id: e.id + "-settle", amount: e.settlementCardDelta, categoryId: e.categoryId,
+          memo: `${e.memo || "대리결제"} · 정산 부족분`, date: e.settledAt || e.date,
+          paymentMethod: "card", cardId: e.settlementCardId, isSettlementTrace: true,
+        }));
+      arr = [...direct, ...settlementTraces].sort(byCreated);
+    }
     else if (filter === "range") {
       arr = data.expenses.filter((e) => !e.isReceivable && e.date >= rangeStart && e.date <= rangeEnd);
       arr = [...arr].sort(byCreated);
@@ -322,8 +336,8 @@ export function LedgerView({ ctx }) {
                 <div key={e.id}>
                   <LedgerRow e={e} cat={catMap[e.categoryId]}
                     methodLabel={data.cards.find((c) => c.id === (e.cardId || data.cards[0]?.id))?.name || "카드"} methodColor={T.goldSoft}
-                    onEdit={() => startEdit(e)} />
-                  {editingId === e.id && renderEditForm(e)}
+                    onEdit={e.isSettlementTrace ? undefined : () => startEdit(e)} />
+                  {!e.isSettlementTrace && editingId === e.id && renderEditForm(e)}
                 </div>
               ))}
             </div>
