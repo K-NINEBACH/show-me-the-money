@@ -6,6 +6,7 @@ import { Pencil, Trash2, ArrowDownCircle, ArrowUpCircle, Search } from "lucide-r
 import { useTheme, F, paperCard, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, createdTime, dateStrFor, monthKeyOffset, todayISO } from "../lib/data";
 import { MoneyInput, QuickAmountButtons } from "../components/common";
+import { settleReceivable } from "./Home";
 
 export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, onDelete }) {
   const T = useTheme();
@@ -29,30 +30,51 @@ export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, 
 }
 
 // 대리결제 한 줄 — 정산 상태(미정산/정산완료/부족분·초과분)를 태그로 붙여서,
-// 카드/현금 어느 쪽으로 결제했든 결과가 어떻게 됐는지 한눈에 보이게 함.
-function ReceivableRow({ e, cat, onDelete }) {
+// 카드/현금 어느 쪽으로 결제했든 결과가 어떻게 됐는지 한눈에 보이게 함. 미정산이면
+// 여기서 바로 정산까지 할 수 있음 — 홈 화면까지 갈 필요 없이.
+function ReceivableRow({ ctx, e, cat, onDelete }) {
   const T = useTheme();
+  const [settling, setSettling] = useState(false);
+  const [repaidInput, setRepaidInput] = useState("");
   const diff = e.settled ? Number(e.repaidAmount) - Number(e.amount) : null;
   const methodLabel = (e.paymentMethod || "cash") === "card" ? "카드" : "현금";
+  const openSettle = () => { setSettling(true); setRepaidInput(String(e.amount)); };
+  const confirmSettle = () => { settleReceivable(ctx, e, repaidInput); setSettling(false); setRepaidInput(""); };
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-      <div style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
-          {cat ? cat.name : "대리결제"}
-          <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: T.muted }}>대리결제 · {methodLabel}</span>
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
+            {cat ? cat.name : "대리결제"}
+            <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: T.muted }}>대리결제 · {methodLabel}</span>
+          </div>
+          {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.memo}</div>}
+          <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date}</div>
         </div>
-        {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.memo}</div>}
-        <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date}</div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
+          <span style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</span>
+          {!e.settled && <span style={{ color: T.warn, fontSize: 11, fontWeight: 700 }}>미정산</span>}
+          {e.settled && diff === 0 && <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>정산완료</span>}
+          {e.settled && diff < 0 && <span style={{ color: T.danger, fontSize: 11, fontWeight: 700 }}>부족분 {fmtWon(-diff)} 카드값</span>}
+          {e.settled && diff > 0 && <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>초과분 {fmtWon(diff)} 통장</span>}
+        </div>
+        {!e.settled && !settling && (
+          <button onClick={openSettle} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>
+        )}
+        <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
-        <span style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</span>
-        {!e.settled && <span style={{ color: T.warn, fontSize: 11, fontWeight: 700 }}>미정산</span>}
-        {e.settled && diff === 0 && <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>정산완료</span>}
-        {e.settled && diff < 0 && <span style={{ color: T.danger, fontSize: 11, fontWeight: 700 }}>부족분 {fmtWon(-diff)} 카드값</span>}
-        {e.settled && diff > 0 && <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>초과분 {fmtWon(diff)} 통장</span>}
-      </div>
-      <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
+      {settling && (
+        <div style={{ marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
+          <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 5 }}>실제 상환받은 금액 (부족분→카드값, 초과분→통장)</div>
+          <MoneyInput value={repaidInput} onChange={setRepaidInput} autoFocus />
+          <QuickAmountButtons amount={repaidInput} setAmount={setRepaidInput} />
+          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+            <button onClick={() => setSettling(false)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 14.5, cursor: "pointer" }}>취소</button>
+            <button onClick={confirmSettle} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>정산 확정</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -389,7 +411,7 @@ export function LedgerView({ ctx }) {
           {totalsLine}
           {combined.map(({ kind, item }) => {
             if (kind === "balance") return <BalanceRow key={item.id} b={item} onDelete={() => removeBalance(item.id)} />;
-            if (kind === "receivable") return <ReceivableRow key={item.id} e={item} cat={catMap[item.categoryId]} onDelete={() => remove(item.id)} />;
+            if (kind === "receivable") return <ReceivableRow key={item.id} ctx={ctx} e={item} cat={catMap[item.categoryId]} onDelete={() => remove(item.id)} />;
             return (
               <div key={item.id}>
                 <LedgerRow e={item} cat={catMap[item.categoryId]}

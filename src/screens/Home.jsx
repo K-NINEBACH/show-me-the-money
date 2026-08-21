@@ -195,7 +195,9 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
   );
 }
 
-function settleReceivable(ctx, exp, repaidAmount) {
+// Exported so Ledger.jsx can offer the same 정산 action inline from the 내역 화면,
+// instead of making the user come to 홈 → 예산 관리 every time.
+export function settleReceivable(ctx, exp, repaidAmount) {
   const { data, persist, showToast } = ctx;
   const repaid = Number(repaidAmount);
   if (repaidAmount === "" || Number.isNaN(repaid) || repaid < 0) { showToast("상환받은 금액을 입력해주세요"); return; }
