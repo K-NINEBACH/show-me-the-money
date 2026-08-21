@@ -213,11 +213,14 @@ realRemaining  = spendingGoal - processedSpent   // 서브 "반영 전 여유"
 - 대리결제(레거시, `isReceivable`)는 **미정산일 때만** 연필 버튼으로 그 자리에서 바로 정산(`settleReceivable`, Home.jsx에서 import) — 정산 끝나면 연필 사라지고 상태 태그로 바뀜. 정산완료 후엔 수정 UI 없음(다시 고치려면 삭제 후 재등록)
 - 입출금은 삭제만 가능(수정 UI 없음)
 - **일반 지출(카드/현금)의 정산받음**: `renderEditForm` 안에 "정산" 섹션이 따로 있음.
-  `reimbursedAmount`가 없으면 입력폼(받은 금액 → `confirmReimburse`), 있으면 "정산받음
-  N원 · 취소"(`cancelReimburse`)로 바뀜. 원래 지출 금액·카드값/통장 차감은 안 건드리고,
-  받은 돈만 `balanceEntries`에 순수 입금으로 추가 — 부족분/초과분 나눌 필요 없음(레거시
+  `reimbursedAmount`가 없으면 "미리정산하기" 버튼 하나만 보이다가(`reimburseOpen` 상태로
+  접힘/펼침) 누르면 입력폼(받은 금액 → `confirmReimburse`), 있으면 "정산받음 N원 · 취소"
+  (`cancelReimburse`)로 바뀜. 원래 지출 금액·카드값/통장 차감은 안 건드리고, 받은 돈만
+  `balanceEntries`에 순수 입금으로 추가 — 부족분/초과분 나눌 필요 없음(레거시
   `settleReceivable`과 다른 점). 목록 줄에는 "정산받음 N원" 태그로 표시(`LedgerRow`).
   삭제 시 연결된 입금 기록도 같이 삭제됨(`remove()`에서 `reimbursementBalanceId` 처리)
+- 2026-08-22: 수정 폼(`renderEditForm`) 컴팩트하게 정리 — 카테고리/카드/통장 칩버튼 →
+  셀렉트, 빠른금액 버튼 제거, 날짜+메모 한 줄. 삭제는 풀버튼 대신 휴지통 아이콘만
 - 삭제는 **되돌릴 수 없음** — `window.confirm()` 한 번만 물어보고 바로 지움 (2026-08-21에 21일 휴지통 보관 기능을 걷어냄)
 
 ### 달력 (`CalendarView`)
