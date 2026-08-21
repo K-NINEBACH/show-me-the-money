@@ -109,67 +109,52 @@ export function AddView({ ctx }) {
             <QuickAmountButtons amount={amount} setAmount={setAmount} />
           </Field>
 
-          {payMethod === "card" ? (
-            (data.cards || []).length > 0 ? (
-              <Field label="카드">
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {data.cards.map((c) => (
-                    <button key={c.id} onClick={() => setCardId(c.id)}
-                      style={{ padding: "7px 12px", borderRadius: 20, border: cardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                        background: cardId === c.id ? T.gold + "22" : "transparent", color: cardId === c.id ? T.cream : T.muted, fontSize: 15.5, fontWeight: 600, cursor: "pointer" }}>
-                      {c.name}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            ) : (
-              <div style={{ color: T.warn, fontSize: 14, marginBottom: 16 }}>등록된 카드가 없어요. 설정에서 먼저 카드를 등록해주세요.</div>
-            )
-          ) : (
-            (data.accounts || []).length > 1 && (
-              <Field label="통장">
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {data.accounts.map((a) => (
-                    <button key={a.id} onClick={() => setAccountId(a.id)}
-                      style={{ padding: "7px 12px", borderRadius: 20, border: accountId === a.id ? `2px solid ${T.good}` : `1px solid ${T.border}`,
-                        background: accountId === a.id ? T.good + "22" : "transparent", color: accountId === a.id ? T.cream : T.muted, fontSize: 15.5, fontWeight: 600, cursor: "pointer" }}>
-                      {a.name}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            )
-          )}
-
-          <Field label="카테고리">
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {data.categories.map((c) => (
-                <button key={c.id} onClick={() => setCategoryId(c.id)}
-                  style={{ padding: "8px 14px", borderRadius: 20, border: categoryId === c.id ? `2px solid ${c.color}` : `1px solid ${T.border}`,
-                    background: categoryId === c.id ? c.color + "22" : "transparent", color: categoryId === c.id ? T.cream : T.muted,
-                    fontSize: 16, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.color }} />
-                  {c.name}
-                </button>
-              ))}
-              <button onClick={() => setNewCatMode(!newCatMode)}
-                style={{ padding: "8px 12px", borderRadius: 20, border: `1px dashed ${T.gold}`, background: "transparent", color: T.gold, fontSize: 16, cursor: "pointer" }}>
-                + 새 카테고리
-              </button>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: T.muted, fontSize: 15, marginBottom: 7 }}>카테고리</div>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 9, height: 9, borderRadius: "50%", background: data.categories.find((c) => c.id === categoryId)?.color || T.muted, pointerEvents: "none" }} />
+                <select value={categoryId}
+                  onChange={(e) => { if (e.target.value === "__new__") setNewCatMode(true); else { setCategoryId(e.target.value); setNewCatMode(false); } }}
+                  style={{ ...inputSty(T), paddingLeft: 28, appearance: "auto" }}>
+                  {data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <option value="__new__">+ 새 카테고리</option>
+                </select>
+              </div>
             </div>
-            {newCatMode && (
-              <div style={{ marginTop: 10, background: T.bg2, borderRadius: 10, padding: 12 }}>
-                <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="표기내역" style={{ ...inputSty(T), marginBottom: 8 }} />
-                <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                  {PALETTE.map((col) => (
-                    <button key={col} onClick={() => setNewCatColor(col)}
-                      style={{ width: 24, height: 24, borderRadius: "50%", background: col, border: newCatColor === col ? `2px solid ${T.cream}` : "2px solid transparent", cursor: "pointer" }} />
-                  ))}
-                </div>
-                <button onClick={addCategory} style={primaryBtn(T)}>카테고리 추가</button>
+            {payMethod === "card" && (data.cards || []).length > 0 && (
+              <div style={{ flex: 1 }}>
+                <div style={{ color: T.muted, fontSize: 15, marginBottom: 7 }}>카드</div>
+                <select value={cardId} onChange={(e) => setCardId(e.target.value)} style={inputSty(T)}>
+                  {data.cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
               </div>
             )}
-          </Field>
+            {payMethod === "cash" && (data.accounts || []).length > 1 && (
+              <div style={{ flex: 1 }}>
+                <div style={{ color: T.muted, fontSize: 15, marginBottom: 7 }}>통장</div>
+                <select value={accountId} onChange={(e) => setAccountId(e.target.value)} style={inputSty(T)}>
+                  {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+          {payMethod === "card" && (data.cards || []).length === 0 && (
+            <div style={{ color: T.warn, fontSize: 14, marginTop: -10, marginBottom: 16 }}>등록된 카드가 없어요. 설정에서 먼저 카드를 등록해주세요.</div>
+          )}
+
+          {newCatMode && (
+            <div style={{ marginTop: -8, marginBottom: 16, background: T.bg2, borderRadius: 10, padding: 12 }}>
+              <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="표기내역" style={{ ...inputSty(T), marginBottom: 8 }} autoFocus />
+              <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                {PALETTE.map((col) => (
+                  <button key={col} onClick={() => setNewCatColor(col)}
+                    style={{ width: 24, height: 24, borderRadius: "50%", background: col, border: newCatColor === col ? `2px solid ${T.cream}` : "2px solid transparent", cursor: "pointer" }} />
+                ))}
+              </div>
+              <button onClick={addCategory} style={primaryBtn(T)}>카테고리 추가</button>
+            </div>
+          )}
 
           <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
             <div style={{ flex: 1 }}>
@@ -358,15 +343,9 @@ function InstallmentForm({ ctx }) {
         </div>
         {fixedPaymentMethod === "card" && (
           (data.cards || []).length > 0 ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-              {data.cards.map((c) => (
-                <button key={c.id} onClick={() => setFixedCardId(c.id)}
-                  style={{ padding: "6px 10px", borderRadius: 16, border: fixedCardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                    background: fixedCardId === c.id ? T.gold + "22" : "transparent", color: fixedCardId === c.id ? T.cream : T.muted, fontSize: 14.5, cursor: "pointer" }}>
-                  {c.name}
-                </button>
-              ))}
-            </div>
+            <select value={fixedCardId} onChange={(e) => setFixedCardId(e.target.value)} style={{ ...inputSty(T), marginTop: 8 }}>
+              {data.cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
           ) : (
             <div style={{ color: T.warn, fontSize: 14, marginTop: 8 }}>등록된 카드가 없어요. 설정에서 먼저 카드를 등록해주세요.</div>
           )
@@ -375,15 +354,9 @@ function InstallmentForm({ ctx }) {
           <div style={{ color: T.muted, fontSize: 12.5, marginTop: 8 }}>할부가 아닌 매달 반복 결제(구독 등)는 자동으로 카드값에 안 잡혀요. 실제 결제되면 홈에서 &lsquo;카드반영&rsquo; 버튼을 눌러야 카드값에 반영돼요.</div>
         )}
         {fixedPaymentMethod === "cash" && (data.accounts || []).length > 1 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-            {data.accounts.map((a) => (
-              <button key={a.id} onClick={() => setFixedAccountId(a.id)}
-                style={{ padding: "6px 10px", borderRadius: 16, border: fixedAccountId === a.id ? `2px solid ${T.good}` : `1px solid ${T.border}`,
-                  background: fixedAccountId === a.id ? T.good + "22" : "transparent", color: fixedAccountId === a.id ? T.cream : T.muted, fontSize: 14.5, cursor: "pointer" }}>
-                {a.name}
-              </button>
-            ))}
-          </div>
+          <select value={fixedAccountId} onChange={(e) => setFixedAccountId(e.target.value)} style={{ ...inputSty(T), marginTop: 8 }}>
+            {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
         )}
         {fixedPaymentMethod === "cash" && (
           <div style={{ marginTop: 10 }}>
