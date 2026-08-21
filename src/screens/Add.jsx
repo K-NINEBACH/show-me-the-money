@@ -171,25 +171,25 @@ export function AddView({ ctx }) {
             )}
           </Field>
 
-          <Field label="날짜">
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputSty(T)} />
-          </Field>
-
-          <Field label="메모 (선택)">
-            <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
-          </Field>
+          <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: T.muted, fontSize: 15, marginBottom: 7 }}>날짜</div>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputSty(T)} />
+            </div>
+            <div style={{ flex: 1.4 }}>
+              <div style={{ color: T.muted, fontSize: 15, marginBottom: 7 }}>메모 (선택)</div>
+              <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+            </div>
+          </div>
 
           <button onClick={() => setIsReceivable(!isReceivable)}
-            style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: isReceivable ? T.good + "22" : T.bg2,
-              border: isReceivable ? `1px solid ${T.good}` : `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 16, cursor: "pointer" }}>
-            <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isReceivable ? T.good : T.muted}`, background: isReceivable ? T.good : "transparent",
+            style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: isReceivable ? T.good + "22" : T.bg2,
+              border: isReceivable ? `1px solid ${T.good}` : `1px solid ${T.border}`, borderRadius: 10, padding: "9px 12px", marginBottom: 16, cursor: "pointer" }}>
+            <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${isReceivable ? T.good : T.muted}`, background: isReceivable ? T.good : "transparent",
               display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              {isReceivable && <Check size={13} color="#fff" />}
+              {isReceivable && <Check size={12} color="#fff" />}
             </div>
-            <div style={{ textAlign: "left" }}>
-              <div style={{ color: isReceivable ? T.good : T.cream, fontSize: 16, fontWeight: 700 }}>대리결제 (추후 정산)</div>
-              <div style={{ color: T.muted, fontSize: 14 }}>예산에서 빠지고 홈 화면에서 바로 정산할 수 있어요.</div>
-            </div>
+            <span style={{ color: isReceivable ? T.good : T.cream, fontSize: 15, fontWeight: 700 }}>대리결제 (추후 정산)</span>
           </button>
 
           <button onClick={submit} style={{ ...primaryBtn(T), padding: "14px 0", fontSize: 16.5 }}>
@@ -218,6 +218,8 @@ function InstallmentForm({ ctx }) {
   const [overrideInput, setOverrideInput] = useState("");
   const [sortKey, setSortKey] = useState("amountDesc");
   const [reassignEditId, setReassignEditId] = useState(null);
+  const [listOpen, setListOpen] = useState(false);
+  const fixedList = data.fixedExpenses || [];
 
   const reassignFixed = (f, newId) => {
     const field = (f.paymentMethod || "cash") === "card" ? "cardId" : "accountId";
@@ -263,9 +265,19 @@ function InstallmentForm({ ctx }) {
 
   return (
     <div>
+      {fixedList.length > 0 ? (
+        <button onClick={() => setListOpen(!listOpen)}
+          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 10, cursor: "pointer", padding: "10px 12px", marginBottom: listOpen ? 8 : 16 }}>
+          <span style={{ color: T.cream, fontSize: 15, fontWeight: 700 }}>등록된 표기내역 {fixedList.length}개</span>
+          <span style={{ color: T.muted, fontSize: 13 }}>{listOpen ? "접기 ▲" : "보기 ▼"}</span>
+        </button>
+      ) : (
+        <div style={{ color: T.muted, fontSize: 14, marginBottom: 16 }}>등록된 표기내역이 없어요. 아래에서 추가해보세요.</div>
+      )}
+      {listOpen && (
       <div style={{ background: T.bg2, borderRadius: 10, padding: 10, marginBottom: 16 }}>
         <FixedSortTabs sortKey={sortKey} setSortKey={setSortKey} />
-        {sortFixedList((data.fixedExpenses || []).map((f) => ({ ...f, info: fixedInfo(f, curKey) })), sortKey).map((f) => {
+        {sortFixedList(fixedList.map((f) => ({ ...f, info: fixedInfo(f, curKey) })), sortKey).map((f) => {
           const info = f.info;
           return (
             <div key={f.id} style={{ padding: "8px 4px", borderBottom: `1px solid ${T.border}` }}>
@@ -315,10 +327,8 @@ function InstallmentForm({ ctx }) {
             </div>
           );
         })}
-        {(!data.fixedExpenses || data.fixedExpenses.length === 0) && (
-          <div style={{ color: T.muted, fontSize: 15, textAlign: "center", padding: "8px 0 12px" }}>등록된 표기내역이 없어요.</div>
-        )}
       </div>
+      )}
 
       <Field label="표기내역">
         <input value={fixedName} onChange={(e) => setFixedName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />

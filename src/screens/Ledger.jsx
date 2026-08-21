@@ -1,10 +1,14 @@
 // History tab: filterable/sortable list of expenses and balance entries,
 // with inline edit. LedgerRow is the shared row renderer for two of the filters.
 import { useState, useMemo } from "react";
-import { Pencil, Trash2, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
+import { Pencil, Trash2, ArrowDownCircle, ArrowUpCircle, Search } from "lucide-react";
 import { useTheme, F, paperCard, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, createdTime, dateStrFor, monthKeyOffset, todayISO } from "../lib/data";
 import { MoneyInput, QuickAmountButtons } from "../components/common";
+
+// Filters shown up front are just 이번달/전체; the rest live behind the "더보기" dropdown
+// so the header doesn't turn into a row of six buttons every time you open this tab.
+const MORE_FILTERS = ["range", "card", "receivable", "balance"];
 
 // Shared row renderer for the ledger list — used by the default/전체/기간 view
 // and the card-filtered view, which used to each carry their own copy of this markup.
@@ -35,6 +39,7 @@ export function LedgerView({ ctx }) {
   const { data, persist, showToast, curKey } = ctx;
   const [filter, setFilter] = useState("cycle");
   const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [amountSort, setAmountSort] = useState("date"); // date | amountDesc | amountAsc
   const [rangeStart, setRangeStart] = useState(dateStrFor(monthKeyOffset(curKey, -2), 1));
   const [rangeEnd, setRangeEnd] = useState(todayISO());
@@ -75,10 +80,12 @@ export function LedgerView({ ctx }) {
   }, [data.balanceEntries, searchLower]);
   const sortedBalanceList = useMemo(() => applyAmountSort(balanceList), [balanceList, amountSort]);
 
+  // Returns whether the delete actually happened, so callers (like the edit-form's
+  // 삭제 button) know whether to also close the form or leave it open on cancel.
   const remove = (id) => {
     const exp = data.expenses.find((e) => e.id === id);
-    if (!exp) return;
-    if (!window.confirm("이 기록을 삭제할까요? 연결된 카드값/통장 반영분도 함께 되돌아가요.")) return;
+    if (!exp) return false;
+    if (!window.confirm("이 기록을 삭제할까요? 연결된 카드값/통장 반영분도 함께 되돌아가요.")) return false;
     let next = { ...data, expenses: data.expenses.filter((e) => e.id !== id) };
     if (!exp.isReceivable) {
       if ((exp.paymentMethod || "cash") === "card") {
@@ -96,6 +103,7 @@ export function LedgerView({ ctx }) {
     }
     persist(next);
     showToast("삭제했어요");
+    return true;
   };
   const [editingId, setEditingId] = useState(null);
   const [editAmount, setEditAmount] = useState("");
@@ -205,6 +213,7 @@ export function LedgerView({ ctx }) {
       <input value={editMemo} onChange={(ev) => setEditMemo(ev.target.value)} placeholder="표기내역" style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}`, marginBottom: 8 }} />
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={cancelEdit} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.ink, fontSize: 14, cursor: "pointer" }}>취소</button>
+        <button onClick={() => { if (remove(e.id)) setEditingId(null); }} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.danger}`, background: "transparent", color: T.danger, fontSize: 14, cursor: "pointer" }}>삭제</button>
         <button onClick={() => saveEdit(e)} style={{ flex: 2, ...primaryBtn(T), padding: "9px 0" }}>저장</button>
       </div>
     </div>
@@ -212,21 +221,38 @@ export function LedgerView({ ctx }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
         <div style={{ color: T.cream, fontFamily: F.display, fontSize: 20.5, fontWeight: 700 }}>전체 내역</div>
-        <div style={{ display: "flex", background: T.bg2, borderRadius: 8, padding: 3, flexWrap: "wrap" }}>
-          {[["cycle", "이번달"], ["all", "전체"], ["range", "기간"], ["card", "카드"], ["receivable", "대리결제"], ["balance", "입출금"]].map(([k, l]) => (
-            <button key={k} onClick={() => setFilter(k)}
-              style={{ border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 14, fontWeight: 600,
-                background: filter === k ? T.gold : "transparent", color: filter === k ? "#23190C" : T.muted, cursor: "pointer" }}>
-              {l}
-            </button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ display: "flex", background: T.bg2, borderRadius: 8, padding: 3 }}>
+            {[["cycle", "이번달"], ["all", "전체"]].map(([k, l]) => (
+              <button key={k} onClick={() => setFilter(k)}
+                style={{ border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 14, fontWeight: 600,
+                  background: filter === k ? T.gold : "transparent", color: filter === k ? "#23190C" : T.muted, cursor: "pointer" }}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <select value={MORE_FILTERS.includes(filter) ? filter : ""} onChange={(e) => setFilter(e.target.value)}
+            style={{ border: "none", borderRadius: 8, padding: "6px 8px", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+              background: MORE_FILTERS.includes(filter) ? T.gold : T.bg2, color: MORE_FILTERS.includes(filter) ? "#23190C" : T.muted }}>
+            <option value="" disabled>더보기</option>
+            <option value="range">기간</option>
+            <option value="card">카드</option>
+            <option value="receivable">대리결제</option>
+            <option value="balance">입출금</option>
+          </select>
+          <button onClick={() => { setSearchOpen(!searchOpen); if (searchOpen) setSearch(""); }}
+            style={{ border: "none", borderRadius: 8, padding: "6px 8px", cursor: "pointer", background: searchOpen ? T.gold : T.bg2, color: searchOpen ? "#23190C" : T.muted, display: "flex" }}>
+            <Search size={16} />
+          </button>
         </div>
       </div>
 
-      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="메모나 카테고리로 검색"
-        style={{ ...inputSty(T), marginBottom: 14, fontSize: 16 }} />
+      {searchOpen && (
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="메모나 카테고리로 검색" autoFocus
+          style={{ ...inputSty(T), marginBottom: 14, fontSize: 16 }} />
+      )}
 
       {filter === "range" && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
@@ -279,7 +305,7 @@ export function LedgerView({ ctx }) {
                 <div key={e.id}>
                   <LedgerRow e={e} cat={catMap[e.categoryId]}
                     methodLabel={data.cards.find((c) => c.id === (e.cardId || data.cards[0]?.id))?.name || "카드"} methodColor={T.goldSoft}
-                    onEdit={() => startEdit(e)} onDelete={() => remove(e.id)} />
+                    onEdit={() => startEdit(e)} />
                   {editingId === e.id && renderEditForm(e)}
                 </div>
               ))}
@@ -338,7 +364,7 @@ export function LedgerView({ ctx }) {
               <LedgerRow e={e} cat={catMap[e.categoryId]}
                 methodLabel={(e.paymentMethod || "cash") === "card" ? "카드" : "현금"} methodColor={(e.paymentMethod || "cash") === "card" ? T.gold : T.good}
                 dateNode={<div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date}</div>}
-                onEdit={() => startEdit(e)} onDelete={() => remove(e.id)} />
+                onEdit={() => startEdit(e)} />
               {editingId === e.id && renderEditForm(e)}
             </div>
           ))}

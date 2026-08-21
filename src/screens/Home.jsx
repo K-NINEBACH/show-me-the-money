@@ -4,12 +4,12 @@ import { useState, useEffect } from "react";
 import { HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Repeat, ClipboardPaste } from "lucide-react";
 import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, monthLabel, todayISO, parsePaymentText, sortFixedList, fixedInfo } from "../lib/data";
-import { SectionLabel, StatCard, MoneyInput, QuickAmountButtons, FixedSortTabs } from "../components/common";
+import { MoneyInput, QuickAmountButtons, FixedSortTabs } from "../components/common";
 
 export function HomeView({ ctx }) {
   const T = useTheme();
   const { data, curKey, dayIntoCycle, cycleLen, remaining, budgetRatio,
-    fixedSum, fixedSumAll, normalSpent, fixedActive, fixedCardActive, cardTotals, receivables, cycleExpenses, accountBalance, hasGoal, unpaidFixed, unpaidFixedSum, realRemaining, todaySpent } = ctx;
+    fixedActive, fixedCardActive, cardTotals, receivables, accountBalance, hasGoal, unpaidFixed, unpaidFixedSum, realRemaining, todaySpent } = ctx;
   const over = remaining < 0;
   const ringColor = budgetRatio < 0.7 ? T.good : budgetRatio < 1 ? T.warn : T.danger;
   const dashArray = 2 * Math.PI * 54;
@@ -28,17 +28,13 @@ export function HomeView({ ctx }) {
         </div>
       )}
 
-      <div style={{ height: 1, background: `linear-gradient(90deg, transparent, ${T.border}, transparent)`, margin: "26px 0 0" }} />
-
-      <div style={{ textAlign: "center", marginBottom: 6, marginTop: 20 }}>
-        <div style={{ color: T.muted, fontSize: 15, letterSpacing: 1 }}>내 돈 챙겨줘</div>
-        <div style={{ color: T.cream, fontFamily: F.display, fontSize: 21.5, fontWeight: 700, marginTop: 2 }}>
+      <div style={{ textAlign: "center", marginBottom: 4, marginTop: 22 }}>
+        <div style={{ color: T.cream, fontFamily: F.display, fontSize: 21.5, fontWeight: 700 }}>
           {monthLabel(curKey)} · {dayIntoCycle}일차
         </div>
         <div style={{ color: T.goldSoft, fontSize: 13, marginTop: 4 }}>오늘 지출 {fmtWon(todaySpent)}</div>
       </div>
 
-      <SectionLabel>이번 달 목표 (계획)</SectionLabel>
       <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 8px" }}>
         <div style={{ position: "relative", width: 176, height: 176 }}>
           <svg width="176" height="176" viewBox="0 0 120 120">
@@ -72,12 +68,6 @@ export function HomeView({ ctx }) {
       )}
 
       <SummaryCard ctx={ctx} />
-
-      <SectionLabel>지출 현황</SectionLabel>
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        <StatCard label="고정지출(대출/카드할부 등)" value={fmtWon(fixedSumAll)} />
-        <StatCard label="현금지출" value={fmtWon(normalSpent)} />
-      </div>
 
       <CardsBlock ctx={ctx} cardTotals={cardTotals} />
 
@@ -144,9 +134,11 @@ function ReceivablesCard({ ctx, receivables, catMap }) {
   );
 }
 
+// Combines what used to be two separate cards (월 요약 + 고정지출/현금지출 스탯카드) into
+// one, since they were just restating the same month's spend in different shapes.
 function SummaryCard({ ctx }) {
   const T = useTheme();
-  const { curKey, totalSpentThisMonth, prevTotalSpent, remaining, hasGoal } = ctx;
+  const { curKey, totalSpentThisMonth, prevTotalSpent, fixedSumAll, normalSpent } = ctx;
   const hasPrev = prevTotalSpent > 0;
   const pct = hasPrev ? Math.round(((totalSpentThisMonth - prevTotalSpent) / prevTotalSpent) * 100) : null;
   const up = pct != null && pct > 0;
@@ -159,11 +151,7 @@ function SummaryCard({ ctx }) {
           {pct == null ? "지난달 비교 데이터 없음" : `지난달 대비 ${up ? "+" : ""}${pct}%`}
         </div>
       </div>
-      {hasGoal && (
-        <div style={{ color: remaining >= 0 ? T.good : T.danger, fontSize: 15, marginTop: 4 }}>
-          {remaining >= 0 ? `목표 대비 여유 ${fmtWon(remaining)}` : `목표 초과 ${fmtWon(Math.abs(remaining))}`}
-        </div>
-      )}
+      <div style={{ color: T.muted, fontSize: 13.5, marginTop: 4 }}>고정지출 {fmtWon(fixedSumAll)} · 현금지출 {fmtWon(normalSpent)}</div>
     </div>
   );
 }
