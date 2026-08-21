@@ -284,19 +284,9 @@ function InstallmentForm({ ctx }) {
                   <div style={{ color: T.muted, fontSize: 13, marginBottom: 4 }}>
                     {(f.paymentMethod || "cash") === "card" ? "다른 카드로 변경" : "다른 통장으로 변경"}
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {((f.paymentMethod || "cash") === "card" ? data.cards : data.accounts).map((opt) => {
-                      const curId = (f.paymentMethod || "cash") === "card" ? f.cardId : f.accountId;
-                      const active = curId === opt.id;
-                      return (
-                        <button key={opt.id} onClick={() => reassignFixed(f, opt.id)}
-                          style={{ padding: "6px 10px", borderRadius: 16, border: active ? `2px solid ${T.good}` : `1px solid ${T.border}`,
-                            background: active ? T.good + "22" : "transparent", color: active ? T.cream : T.muted, fontSize: 14.5, cursor: "pointer" }}>
-                          {opt.name}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <select value={(f.paymentMethod || "cash") === "card" ? f.cardId : f.accountId} onChange={(e) => reassignFixed(f, e.target.value)} style={inputSty(T)}>
+                    {((f.paymentMethod || "cash") === "card" ? data.cards : data.accounts).map((opt) => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
+                  </select>
                 </div>
               )}
             </div>

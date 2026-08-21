@@ -8,8 +8,8 @@ import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../componen
 export function SettingsView({ ctx }) {
   const T = useTheme();
   const { data, persist, showToast } = ctx;
-  const [selectedCardId, setSelectedCardId] = useState(data.cards?.[0]?.id || "");
   const [newCardName, setNewCardName] = useState("");
+  const [adjustCardId, setAdjustCardId] = useState(null);
   const [cardAddInput, setCardAddInput] = useState("");
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountBalance, setNewAccountBalance] = useState("");
@@ -38,31 +38,28 @@ export function SettingsView({ ctx }) {
     if (!newCardName.trim()) return showToast("카드 이름을 입력하세요");
     const card = { id: "card" + Date.now(), name: newCardName.trim(), bill: 0 };
     persist({ ...data, cards: [...(data.cards || []), card] });
-    setSelectedCardId(card.id);
     setNewCardName("");
     showToast("카드를 등록했어요");
   };
   const removeCard = (id) => {
     if (data.cards.length <= 1) return showToast("카드가 최소 1개는 있어야 해요");
     persist({ ...data, cards: data.cards.filter((c) => c.id !== id) });
-    if (selectedCardId === id) setSelectedCardId(data.cards.find((c) => c.id !== id)?.id || "");
   };
-  const addCardBill = () => {
+  const addCardBill = (cardId) => {
     const n = Number(cardAddInput);
     if (!n || n <= 0) return showToast("금액을 입력해주세요");
-    if (!selectedCardId) return showToast("카드를 먼저 선택하세요");
     // 그냥 bill만 늘리면 이 추가분이 내역 어디에도 안 남아서 나중에 "왜 카드값이
     // 이렇게 됐지" 싶을 때 확인할 방법이 없었음. 카드 지출 하나로 남겨서 내역·이번
     // 달 총 지출에도 정상적으로 잡히게 함(기록 탭에서 카드로 등록한 것과 동일하게).
-    const card = data.cards.find((c) => c.id === selectedCardId);
-    const expense = { id: "e" + Date.now(), amount: n, categoryId: null, date: todayISO(), memo: "카드값 수동 추가", isReceivable: false, settled: false, repaidAmount: null, paymentMethod: "card", cardId: selectedCardId, linkedBalanceId: null };
-    persist({ ...data, expenses: [...data.expenses, expense], cards: data.cards.map((c) => (c.id === selectedCardId ? { ...c, bill: Number(c.bill || 0) + n } : c)) });
+    const card = data.cards.find((c) => c.id === cardId);
+    const expense = { id: "e" + Date.now(), amount: n, categoryId: null, date: todayISO(), memo: "카드값 수동 추가", isReceivable: false, settled: false, repaidAmount: null, paymentMethod: "card", cardId, linkedBalanceId: null };
+    persist({ ...data, expenses: [...data.expenses, expense], cards: data.cards.map((c) => (c.id === cardId ? { ...c, bill: Number(c.bill || 0) + n } : c)) });
     setCardAddInput("");
     showToast(`${card?.name || "카드"}값에 더했어요 · 내역에서 확인할 수 있어요`);
   };
-  const resetCardBill = () => {
-    if (!selectedCardId) return;
-    persist({ ...data, cards: data.cards.map((c) => (c.id === selectedCardId ? { ...c, bill: 0 } : c)) });
+  const resetCardBill = (cardId) => {
+    persist({ ...data, cards: data.cards.map((c) => (c.id === cardId ? { ...c, bill: 0 } : c)) });
+    setAdjustCardId(null);
     showToast("카드값을 초기화했어요");
   };
   const addAccount = () => {
@@ -138,10 +135,25 @@ export function SettingsView({ ctx }) {
       <Field label="카드 관리">
         <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
           {(data.cards || []).map((c) => (
-            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
-              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
-              <span style={{ color: T.muted, fontFamily: F.mono, fontSize: 14 }}>{fmtWon(c.bill || 0)}</span>
-              <button onClick={() => removeCard(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={15} /></button>
+            <div key={c.id} style={{ borderBottom: `1px solid ${T.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px" }}>
+                <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
+                <span style={{ color: T.muted, fontFamily: F.mono, fontSize: 14 }}>{fmtWon(c.bill || 0)}</span>
+                <button onClick={() => { setAdjustCardId(adjustCardId === c.id ? null : c.id); setCardAddInput(""); }}
+                  style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", color: T.muted, fontSize: 12.5 }}>조정</button>
+                <button onClick={() => removeCard(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={15} /></button>
+              </div>
+              {adjustCardId === c.id && (
+                <div style={{ padding: "0 8px 10px" }}>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                    <MoneyInput value={cardAddInput} onChange={setCardAddInput} placeholder="새로 결제한 금액" />
+                    <button onClick={() => addCardBill(c.id)} style={{ ...primaryBtn(T), width: 66 }}>추가</button>
+                  </div>
+                  <button onClick={() => resetCardBill(c.id)} style={{ width: "100%", background: "transparent", border: `1px solid ${T.danger}`, color: T.danger, borderRadius: 8, padding: "6px 0", fontSize: 13.5, cursor: "pointer" }}>
+                    카드값 초기화 (결제 처리)
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -149,26 +161,6 @@ export function SettingsView({ ctx }) {
           <input value={newCardName} onChange={(e) => setNewCardName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
           <button onClick={addCard} style={{ ...primaryBtn(T), width: 72 }}>추가</button>
         </div>
-      </Field>
-
-      <Field label="카드값 수동 추가 / 초기화">
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-          {(data.cards || []).map((c) => (
-            <button key={c.id} onClick={() => setSelectedCardId(c.id)}
-              style={{ padding: "7px 12px", borderRadius: 20, border: selectedCardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                background: selectedCardId === c.id ? T.gold + "22" : "transparent", color: selectedCardId === c.id ? T.cream : T.muted, fontSize: 15.5, fontWeight: 600, cursor: "pointer" }}>
-              {c.name}
-            </button>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <MoneyInput value={cardAddInput} onChange={setCardAddInput} placeholder="새로 결제한 금액" />
-          <button onClick={addCardBill} style={{ ...primaryBtn(T), width: 72 }}>추가</button>
-        </div>
-        <QuickAmountButtons amount={cardAddInput} setAmount={setCardAddInput} />
-        <button onClick={resetCardBill} style={{ marginTop: 8, background: "transparent", border: `1px solid ${T.danger}`, color: T.danger, borderRadius: 8, padding: "6px 10px", fontSize: 14.5, cursor: "pointer" }}>
-          선택한 카드 초기화 (결제 처리)
-        </button>
       </Field>
 
       <SectionLabel>카테고리</SectionLabel>

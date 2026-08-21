@@ -399,15 +399,9 @@ function TransitQuickAdd({ ctx }) {
       <div style={{ color: T.muted, fontSize: 12, marginBottom: 8 }}>계기판에 뜨는 이번 달 누적 금액을 그대로 입력하면, 이전 값을 대체해서 갱신돼요 (더해지지 않아요).</div>
       <MoneyInput value={amount} onChange={setAmount} placeholder="이번 달 누적 금액" />
       {data.cards.length > 1 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-          {data.cards.map((c) => (
-            <button key={c.id} onClick={() => setCardId(c.id)}
-              style={{ padding: "6px 10px", borderRadius: 16, border: cardId === c.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                background: cardId === c.id ? T.gold + "22" : "transparent", color: cardId === c.id ? T.cream : T.muted, fontSize: 14, cursor: "pointer" }}>
-              {c.name}
-            </button>
-          ))}
-        </div>
+        <select value={cardId} onChange={(e) => setCardId(e.target.value)} style={{ ...inputSty(T), marginTop: 8 }}>
+          {data.cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
       )}
       <button onClick={submit} style={{ ...primaryBtn(T), marginTop: 8, padding: "9px 0", fontSize: 14.5 }}>{existing ? "누적 금액 갱신" : "카드값에 반영"}</button>
     </div>
@@ -553,32 +547,22 @@ function BalanceCard({ ctx, accountBalance }) {
             </>
           )}
           {(data.accounts || []).length > 1 && (
-            <div>
-              {mode === "transfer" && <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 4 }}>보내는 통장</div>}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {data.accounts.map((a) => (
-                  <button key={a.id} onClick={() => setAccountId(a.id)}
-                    style={{ padding: "6px 10px", borderRadius: 16, border: accountId === a.id ? `2px solid ${T.gold}` : `1px solid ${T.border}`,
-                      background: accountId === a.id ? T.gold + "22" : "transparent", color: accountId === a.id ? T.cream : T.muted, fontSize: 14.5, cursor: "pointer" }}>
-                    {a.name}
-                  </button>
-                ))}
+            mode === "transfer" ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <select value={accountId} onChange={(e) => setAccountId(e.target.value)} style={inputSty(T)}>
+                  {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <span style={{ color: T.muted, fontSize: 13 }}>→</span>
+                <select value={toAccountId} onChange={(e) => setToAccountId(e.target.value)} style={inputSty(T)}>
+                  <option value="" disabled>받는 통장</option>
+                  {data.accounts.filter((a) => a.id !== accountId).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
               </div>
-            </div>
-          )}
-          {mode === "transfer" && (
-            <div>
-              <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 4 }}>받는 통장</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {data.accounts.filter((a) => a.id !== accountId).map((a) => (
-                  <button key={a.id} onClick={() => setToAccountId(a.id)}
-                    style={{ padding: "6px 10px", borderRadius: 16, border: toAccountId === a.id ? `2px solid ${T.good}` : `1px solid ${T.border}`,
-                      background: toAccountId === a.id ? T.good + "22" : "transparent", color: toAccountId === a.id ? T.cream : T.muted, fontSize: 14.5, cursor: "pointer" }}>
-                    {a.name}
-                  </button>
-                ))}
-              </div>
-            </div>
+            ) : (
+              <select value={accountId} onChange={(e) => setAccountId(e.target.value)} style={inputSty(T)}>
+                {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            )
           )}
           <MoneyInput value={amount} onChange={setAmount} placeholder="금액" autoFocus />
           <QuickAmountButtons amount={amount} setAmount={setAmount} />
