@@ -1,17 +1,12 @@
-// History tab: filterable/sortable list of expenses and balance entries,
-// with inline edit. LedgerRow is the shared row renderer for two of the filters.
+// History tab: one unified feed of everything money-related (card/cash expenses,
+// 대리결제, 입출금), scoped by time (이번달/전체/기간) and optionally narrowed by
+// category (카드/대리결제/입출금). LedgerRow renders the expense rows within that feed.
 import { useState, useMemo } from "react";
 import { Pencil, Trash2, ArrowDownCircle, ArrowUpCircle, Search } from "lucide-react";
 import { useTheme, F, paperCard, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, createdTime, dateStrFor, monthKeyOffset, todayISO } from "../lib/data";
 import { MoneyInput, QuickAmountButtons } from "../components/common";
 
-// Filters shown up front are just 이번달/전체; the rest live behind the "더보기" dropdown
-// so the header doesn't turn into a row of six buttons every time you open this tab.
-const MORE_FILTERS = ["range", "card", "receivable", "balance"];
-
-// Shared row renderer for the ledger list — used by the default/전체/기간 view
-// and the card-filtered view, which used to each carry their own copy of this markup.
 export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, onDelete }) {
   const T = useTheme();
   return (
@@ -33,11 +28,57 @@ export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, 
   );
 }
 
+// 대리결제 한 줄 — 정산 상태(미정산/정산완료/부족분·초과분)를 태그로 붙여서,
+// 카드/현금 어느 쪽으로 결제했든 결과가 어떻게 됐는지 한눈에 보이게 함.
+function ReceivableRow({ e, cat, onDelete }) {
+  const T = useTheme();
+  const diff = e.settled ? Number(e.repaidAmount) - Number(e.amount) : null;
+  const methodLabel = (e.paymentMethod || "cash") === "card" ? "카드" : "현금";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+      <div style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
+          {cat ? cat.name : "대리결제"}
+          <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: T.muted }}>대리결제 · {methodLabel}</span>
+        </div>
+        {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.memo}</div>}
+        <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date}</div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
+        <span style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</span>
+        {!e.settled && <span style={{ color: T.warn, fontSize: 11, fontWeight: 700 }}>미정산</span>}
+        {e.settled && diff === 0 && <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>정산완료</span>}
+        {e.settled && diff < 0 && <span style={{ color: T.danger, fontSize: 11, fontWeight: 700 }}>부족분 {fmtWon(-diff)} 카드값</span>}
+        {e.settled && diff > 0 && <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>초과분 {fmtWon(diff)} 통장</span>}
+      </div>
+      <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
+    </div>
+  );
+}
+
+function BalanceRow({ b, onDelete }) {
+  const T = useTheme();
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+      {b.type === "in" ? <ArrowDownCircle size={15} color={T.good} /> : <ArrowUpCircle size={15} color={T.danger} />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>{b.type === "in" ? "입금" : "출금"}{b.memo ? ` · ${b.memo}` : ""}</div>
+      </div>
+      <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 14, fontFamily: F.mono }}>{b.date.slice(5)}</div>
+      <div style={{ color: b.type === "in" ? T.good : T.danger, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>
+        {b.type === "in" ? "+" : "-"}{fmtWon(b.amount)}
+      </div>
+      <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
+    </div>
+  );
+}
 
 export function LedgerView({ ctx }) {
   const T = useTheme();
   const { data, persist, showToast, curKey } = ctx;
-  const [filter, setFilter] = useState("cycle");
+  const [timeScope, setTimeScope] = useState("cycle"); // cycle | all | range
+  const [category, setCategory] = useState("all"); // all | card | receivable | balance
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [amountSort, setAmountSort] = useState("date"); // date | amountDesc | amountAsc
@@ -50,62 +91,58 @@ export function LedgerView({ ctx }) {
     const catName = (catMap[e.categoryId]?.name || "").toLowerCase();
     return (e.memo || "").toLowerCase().includes(searchLower) || catName.includes(searchLower);
   };
-  const applyAmountSort = (arr) => {
-    if (amountSort === "amountDesc") return [...arr].sort((a, b) => Number(b.amount) - Number(a.amount));
-    if (amountSort === "amountAsc") return [...arr].sort((a, b) => Number(a.amount) - Number(b.amount));
-    return arr;
+  const dateInScope = (d) => {
+    if (timeScope === "cycle") return d.slice(0, 7) === curKey;
+    if (timeScope === "range") return d >= rangeStart && d <= rangeEnd;
+    return true; // "all"
   };
 
-  const list = useMemo(() => {
-    const byCreated = (a, b) => createdTime(b) - createdTime(a);
-    let arr;
-    if (filter === "receivable") arr = [...data.expenses.filter((e) => e.isReceivable)].sort((a, b) => (a.settled === b.settled ? byCreated(a, b) : a.settled ? 1 : -1));
-    else if (filter === "card") {
-      const direct = data.expenses.filter((e) => !e.isReceivable && (e.paymentMethod || "cash") === "card");
-      // 대리결제 정산에서 부족하게 받으면 그 차액만큼 카드값이 늘어나는데(settleReceivable),
-      // 그동안은 그 흔적이 여기 안 보였음. data.expenses엔 안 남기고(원본 대리결제 항목이
-      // 이미 그 값을 갖고 있어 중복 저장하면 삭제/수정 때 꼬임) 여기서만 계산해서 보여줌 —
-      // 그래서 수정·삭제는 안 되고, 원본은 '대리결제' 탭에서 관리.
-      const settlementTraces = data.expenses
-        .filter((e) => e.isReceivable && e.settled && e.settlementCardDelta > 0 && e.settlementCardId)
-        .map((e) => ({
-          id: e.id + "-settle", amount: e.settlementCardDelta, categoryId: e.categoryId,
-          memo: `${e.memo || "대리결제"} · 정산 부족분`, date: e.settledAt || e.date,
-          paymentMethod: "card", cardId: e.settlementCardId, isSettlementTrace: true,
-        }));
-      arr = [...direct, ...settlementTraces].sort(byCreated);
-    }
-    else if (filter === "range") {
-      arr = data.expenses.filter((e) => !e.isReceivable && e.date >= rangeStart && e.date <= rangeEnd);
-      arr = [...arr].sort(byCreated);
-    } else {
-      arr = data.expenses.filter((e) => !e.isReceivable);
-      if (filter === "cycle") arr = arr.filter((e) => e.date.slice(0, 7) === curKey);
-      arr = [...arr].sort(byCreated);
-    }
-    return arr.filter(matchesSearch);
-  }, [data.expenses, filter, curKey, searchLower, rangeStart, rangeEnd]);
-  const sortedList = useMemo(() => applyAmountSort(list), [list, amountSort]);
+  // 세 종류(카드·현금 지출/대리결제/입출금)를 시간 범위로 먼저 거르고,
+  const scopedExpenses = useMemo(() => data.expenses.filter((e) => !e.isReceivable && dateInScope(e.date)).filter(matchesSearch),
+    [data.expenses, timeScope, curKey, rangeStart, rangeEnd, searchLower]);
+  const scopedReceivables = useMemo(() => data.expenses.filter((e) => e.isReceivable && dateInScope(e.date)).filter(matchesSearch),
+    [data.expenses, timeScope, curKey, rangeStart, rangeEnd, searchLower]);
+  const scopedBalance = useMemo(() => (data.balanceEntries || []).filter((b) => dateInScope(b.date)).filter((b) => !searchLower || (b.memo || "").toLowerCase().includes(searchLower)),
+    [data.balanceEntries, timeScope, curKey, rangeStart, rangeEnd, searchLower]);
 
-  // Every receivable originally paid by card, regardless of how settlement went —
-  // for the "카드" filter's context block (실제 카드값 계산과는 별개, 그냥 전체 이력용).
-  const cardReceivables = useMemo(
-    () => data.expenses.filter((e) => e.isReceivable && (e.paymentMethod || "cash") === "card").sort((a, b) => createdTime(b) - createdTime(a)),
-    [data.expenses]
-  );
+  // ...그다음 카테고리로 좁힘. "전체 흐름"이면 셋 다, 아니면 해당하는 것만.
+  let categoryExpenses = [], categoryReceivables = [], categoryBalance = [];
+  if (category === "all") {
+    categoryExpenses = scopedExpenses; categoryReceivables = scopedReceivables; categoryBalance = scopedBalance;
+  } else if (category === "card") {
+    categoryExpenses = scopedExpenses.filter((e) => (e.paymentMethod || "cash") === "card");
+    categoryReceivables = scopedReceivables.filter((e) => (e.paymentMethod || "cash") === "card");
+  } else if (category === "receivable") {
+    categoryReceivables = scopedReceivables;
+  } else if (category === "balance") {
+    categoryBalance = scopedBalance;
+  }
 
-  const balanceList = useMemo(() => {
-    const arr = [...(data.balanceEntries || [])].sort((a, b) => createdTime(b) - createdTime(a));
-    if (!searchLower) return arr;
-    return arr.filter((b) => (b.memo || "").toLowerCase().includes(searchLower));
-  }, [data.balanceEntries, searchLower]);
-  const sortedBalanceList = useMemo(() => applyAmountSort(balanceList), [balanceList, amountSort]);
+  const combined = useMemo(() => {
+    const items = [
+      ...categoryExpenses.map((e) => ({ kind: "expense", item: e, sortTime: createdTime(e), sortAmt: Number(e.amount) })),
+      ...categoryReceivables.map((e) => ({ kind: "receivable", item: e, sortTime: createdTime(e), sortAmt: Number(e.amount) })),
+      ...categoryBalance.map((b) => ({ kind: "balance", item: b, sortTime: createdTime(b), sortAmt: Number(b.amount) })),
+    ];
+    if (amountSort === "amountDesc") items.sort((a, b) => b.sortAmt - a.sortAmt);
+    else if (amountSort === "amountAsc") items.sort((a, b) => a.sortAmt - b.sortAmt);
+    else items.sort((a, b) => b.sortTime - a.sortTime);
+    return items;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryExpenses, categoryReceivables, categoryBalance, amountSort]);
 
-  // Totals for whichever list is currently shown, so switching filters answers
-  // "이번 달/이 카드/이 필터로 총 얼마" without having to add it up by eye.
-  const listTotal = useMemo(() => sortedList.reduce((s, e) => s + Number(e.amount), 0), [sortedList]);
-  const balanceInTotal = useMemo(() => sortedBalanceList.filter((b) => b.type === "in").reduce((s, b) => s + Number(b.amount), 0), [sortedBalanceList]);
-  const balanceOutTotal = useMemo(() => sortedBalanceList.filter((b) => b.type === "out").reduce((s, b) => s + Number(b.amount), 0), [sortedBalanceList]);
+  const totalSpent = categoryExpenses.reduce((s, e) => s + Number(e.amount), 0);
+  const receivableTotal = categoryReceivables.reduce((s, e) => s + Number(e.amount), 0);
+  // 카드값 실제 구성 = 카드로 기록된 지출 전액 + 대리결제 정산에서 모자라게 받아 카드값에
+  // 얹힌 부분만(초과분·정산 전·정확히 받은 건은 카드값에 안 잡히므로 제외).
+  const cardSettledShortfall = categoryReceivables.reduce((s, e) => {
+    if (!e.settled) return s;
+    const diff = Number(e.repaidAmount) - Number(e.amount);
+    return s + (diff < 0 ? -diff : 0);
+  }, 0);
+  const cardListTotal = categoryExpenses.reduce((s, e) => s + Number(e.amount), 0) + cardSettledShortfall;
+  const balanceInTotal = categoryBalance.filter((b) => b.type === "in").reduce((s, b) => s + Number(b.amount), 0);
+  const balanceOutTotal = categoryBalance.filter((b) => b.type === "out").reduce((s, b) => s + Number(b.amount), 0);
 
   // Returns whether the delete actually happened, so callers (like the edit-form's
   // 삭제 button) know whether to also close the form or leave it open on cancel.
@@ -256,25 +293,34 @@ export function LedgerView({ ctx }) {
     </div>
   );
 
+  let totalsLine = null;
+  if (category === "card") totalsLine = <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>카드값에 반영된 지출 합계 {fmtWon(cardListTotal)} · {categoryExpenses.length}건</div>;
+  else if (category === "receivable") totalsLine = <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>합계 {fmtWon(receivableTotal)} · {categoryReceivables.length}건</div>;
+  else if (category === "balance") totalsLine = (
+    <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>
+      <span style={{ color: T.good }}>입금 합계 {fmtWon(balanceInTotal)}</span> · <span style={{ color: T.danger }}>출금 합계 {fmtWon(balanceOutTotal)}</span>
+    </div>
+  );
+  else totalsLine = <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>총 지출 {fmtWon(totalSpent)} · {combined.length}건</div>;
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
         <div style={{ color: T.cream, fontFamily: F.display, fontSize: 20.5, fontWeight: 700 }}>전체 내역</div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <div style={{ display: "flex", background: T.bg2, borderRadius: 8, padding: 3 }}>
-            {[["cycle", "이번달"], ["all", "전체"]].map(([k, l]) => (
-              <button key={k} onClick={() => setFilter(k)}
+            {[["cycle", "이번달"], ["all", "전체"], ["range", "기간"]].map(([k, l]) => (
+              <button key={k} onClick={() => setTimeScope(k)}
                 style={{ border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 14, fontWeight: 600,
-                  background: filter === k ? T.gold : "transparent", color: filter === k ? "#23190C" : T.muted, cursor: "pointer" }}>
+                  background: timeScope === k ? T.gold : "transparent", color: timeScope === k ? "#23190C" : T.muted, cursor: "pointer" }}>
                 {l}
               </button>
             ))}
           </div>
-          <select value={MORE_FILTERS.includes(filter) ? filter : ""} onChange={(e) => setFilter(e.target.value)}
+          <select value={category} onChange={(e) => setCategory(e.target.value)}
             style={{ border: "none", borderRadius: 8, padding: "6px 8px", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
-              background: MORE_FILTERS.includes(filter) ? T.gold : T.bg2, color: MORE_FILTERS.includes(filter) ? "#23190C" : T.muted }}>
-            <option value="" disabled>더보기</option>
-            <option value="range">기간</option>
+              background: category === "all" ? T.bg2 : T.gold, color: category === "all" ? T.muted : "#23190C" }}>
+            <option value="all">전체 흐름</option>
             <option value="card">카드</option>
             <option value="receivable">대리결제</option>
             <option value="balance">입출금</option>
@@ -291,7 +337,7 @@ export function LedgerView({ ctx }) {
           style={{ ...inputSty(T), marginBottom: 14, fontSize: 16 }} />
       )}
 
-      {filter === "range" && (
+      {timeScope === "range" && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
           <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} style={{ ...inputSty(T), fontSize: 14, padding: "8px 10px" }} />
           <span style={{ color: T.muted, fontSize: 13.5 }}>~</span>
@@ -309,9 +355,8 @@ export function LedgerView({ ctx }) {
         ))}
       </div>
 
-      {filter === "card" ? (
+      {category === "card" && (
         <>
-          <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 8 }}>결제하기는 홈 화면에서 할 수 있어요. 여기서는 기록만 확인해요.</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
             {ctx.cardTotals.map((c) => (
               <div key={c.id} style={{ ...paperCard(T), display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px" }}>
@@ -334,107 +379,30 @@ export function LedgerView({ ctx }) {
               ))}
             </div>
           )}
-          {cardReceivables.length > 0 && (
-            <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px", marginBottom: 12 }}>
-              <div style={{ color: T.muted, fontSize: 14, marginBottom: 2 }}>카드로 결제한 대리결제</div>
-              <div style={{ color: T.muted, fontSize: 12, marginBottom: 6 }}>정산 결과에 따라 카드값·통장에 반영된 부분만 아래 목록·합계에 잡혀요.</div>
-              {cardReceivables.map((e) => {
-                const diff = e.settled ? Number(e.repaidAmount) - Number(e.amount) : null;
-                return (
-                  <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 15, color: T.cream, padding: "4px 0", gap: 8 }}>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{catMap[e.categoryId]?.name || "대리결제"}{e.memo ? ` · ${e.memo}` : ""}</span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                      <span style={{ fontFamily: F.mono, color: T.muted, fontSize: 13.5 }}>{fmtWon(e.amount)}</span>
-                      {!e.settled && <span style={{ color: T.warn, fontSize: 11, fontWeight: 700 }}>미정산</span>}
-                      {e.settled && diff === 0 && <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>정산완료</span>}
-                      {e.settled && diff < 0 && <span style={{ color: T.danger, fontSize: 11, fontWeight: 700 }}>부족분 {fmtWon(-diff)} 카드값 반영</span>}
-                      {e.settled && diff > 0 && <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>초과분 {fmtWon(diff)} 통장 반영</span>}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {list.length === 0 ? (
-            <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>카드로 기록한 지출이 없어요.</div>
-          ) : (
-            <div style={paperCard(T)}>
-              <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>카드값에 반영된 지출 합계 {fmtWon(listTotal)} · {sortedList.length}건</div>
-              {sortedList.map((e) => (
-                <div key={e.id}>
-                  <LedgerRow e={e} cat={catMap[e.categoryId]}
-                    methodLabel={data.cards.find((c) => c.id === (e.cardId || data.cards[0]?.id))?.name || "카드"} methodColor={T.goldSoft}
-                    onEdit={e.isSettlementTrace ? undefined : () => startEdit(e)} />
-                  {!e.isSettlementTrace && editingId === e.id && renderEditForm(e)}
-                </div>
-              ))}
-            </div>
-          )}
         </>
-      ) : filter === "balance" ? (
-        balanceList.length === 0 ? (
-          <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>입출금 기록이 없어요.</div>
-        ) : (
-          <div style={paperCard(T)}>
-            <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>
-              <span style={{ color: T.good }}>입금 합계 {fmtWon(balanceInTotal)}</span> · <span style={{ color: T.danger }}>출금 합계 {fmtWon(balanceOutTotal)}</span>
-            </div>
-            {sortedBalanceList.map((b) => (
-              <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-                {b.type === "in" ? <ArrowDownCircle size={15} color={T.good} /> : <ArrowUpCircle size={15} color={T.danger} />}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>{b.type === "in" ? "입금" : "출금"}{b.memo ? ` · ${b.memo}` : ""}</div>
-                </div>
-                <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 14, fontFamily: F.mono }}>{b.date.slice(5)}</div>
-                <div style={{ color: b.type === "in" ? T.good : T.danger, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>
-                  {b.type === "in" ? "+" : "-"}{fmtWon(b.amount)}
-                </div>
-                <button onClick={() => removeBalance(b.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
-              </div>
-            ))}
-          </div>
-        )
-      ) : filter === "receivable" ? (
-        list.length === 0 ? (
-          <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>대리결제 기록이 없어요.</div>
-        ) : (
-          <div style={paperCard(T)}>
-            <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 4 }}>정산은 홈 화면에서 할 수 있어요. 여기서는 기록만 확인해요.</div>
-            <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 8 }}>합계 {fmtWon(listTotal)} · {sortedList.length}건</div>
-            {sortedList.map((e) => (
-              <div key={e.id} style={{ padding: "10px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
-                      {e.memo || catMap[e.categoryId]?.name || "대리결제"}
-                      <span style={{ color: e.settled ? T.good : T.warn, fontSize: 13, marginLeft: 6, fontWeight: 700 }}>{e.settled ? "정산완료" : "미정산"}</span>
-                    </div>
-                    <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14 }}>{e.date}{e.settled ? ` · 상환 ${fmtWon(e.repaidAmount)}` : ""}</div>
-                  </div>
-                  <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</div>
-                  <button onClick={() => remove(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )
-      ) : sortedList.length === 0 ? (
+      )}
+
+      {combined.length === 0 ? (
         <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "30px 14px" }}>기록이 없어요.</div>
       ) : (
         <div style={paperCard(T)}>
-          <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>합계 {fmtWon(listTotal)} · {sortedList.length}건</div>
-          {sortedList.map((e) => (
-            <div key={e.id}>
-              <LedgerRow e={e} cat={catMap[e.categoryId]}
-                methodLabel={(e.paymentMethod || "cash") === "card" ? "카드" : "현금"} methodColor={(e.paymentMethod || "cash") === "card" ? T.gold : T.good}
-                dateNode={<div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date}</div>}
-                onEdit={() => startEdit(e)} />
-              {editingId === e.id && renderEditForm(e)}
-            </div>
-          ))}
+          {totalsLine}
+          {combined.map(({ kind, item }) => {
+            if (kind === "balance") return <BalanceRow key={item.id} b={item} onDelete={() => removeBalance(item.id)} />;
+            if (kind === "receivable") return <ReceivableRow key={item.id} e={item} cat={catMap[item.categoryId]} onDelete={() => remove(item.id)} />;
+            return (
+              <div key={item.id}>
+                <LedgerRow e={item} cat={catMap[item.categoryId]}
+                  methodLabel={(item.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === (item.cardId || data.cards[0]?.id))?.name || "카드") : "현금"}
+                  methodColor={(item.paymentMethod || "cash") === "card" ? T.gold : T.good}
+                  dateNode={<div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{item.date}</div>}
+                  onEdit={() => startEdit(item)} />
+                {editingId === item.id && renderEditForm(item)}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
-
