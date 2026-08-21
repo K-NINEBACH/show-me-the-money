@@ -8,7 +8,7 @@
 
 - React 18 + Vite 5, 의존성은 `lucide-react`(아이콘)뿐. **차트 라이브러리 없음**(recharts 제거됨)
 - 스타일링 라이브러리 없이 **인라인 style 객체만** 사용
-- 전체 코드가 `src/App.jsx` **단일 파일 약 2,800줄**
+- **2026-08-21 정리**: 혼자 쓰는 개인용 도구로 확정하면서 안 쓰던 기능(PIN 잠금·휴지통 복원·카테고리별 예산)을 걷어내고, 단일 2,800줄 `App.jsx`를 화면/로직별 여러 파일로 분리했음. `git log`에서 그 커밋 메시지로 찾아보면 변경 배경이 나옴.
 
 ```
 npm install
@@ -28,8 +28,19 @@ passbook-app/
 │   └── icons/icon-192.png, icon-512.png
 └── src/
     ├── main.jsx
-    └── App.jsx                # ★ 전부 여기 있음
+    ├── App.jsx                 # 셸: 로딩/온보딩/월마감 게이트 + 하단 탭 라우팅 + ctx 계산
+    ├── lib/
+    │   ├── constants.js         # STORAGE_KEY, PALETTE, QUICK_AMOUNTS (의존성 없음)
+    │   ├── theme.js              # THEMES, useTheme, F, paperCard/inputSty/primaryBtn
+    │   └── data.js                # defaultData, migrate, 날짜·금액 유틸, fixedInfo 등 (React 없음)
+    ├── components/
+    │   ├── common.jsx            # MoneyInput, Field, SectionLabel, NavBtn 등 여러 화면 공용 조각
+    │   └── ErrorBoundary.jsx
+    └── screens/
+        ├── Gates.jsx              # Onboarding, MonthWrapUp (탭 밖의 전체화면)
+        ├── Home.jsx, Add.jsx, Ledger.jsx, Calendar.jsx, Settings.jsx
 ```
+화면을 고칠 땐 대부분 `screens/` 안의 해당 파일만 보면 됨. 여러 화면이 같이 걸리는 계산(카드값·예산 등)은 `App.jsx`의 `ctx` 구성부에 있음.
 
 ### 배포
 GitHub 저장소 최상단에 폴더 안 파일들을 올리고 → Vercel "Add New Project" → Vite 자동 인식 → Deploy.
@@ -58,20 +69,19 @@ const STORAGE_KEY = "passbook-data-v4";
 
 ```js
 {
-  theme: "dark",              // THEMES 키 (15종)
+  theme: "dark",              // THEMES 키 (6종)
   onboarded: false,           // 온보딩 완료 여부
   lastSeenMonth: null,        // 월 마감 요약 표시 기준 (예: "2026-07")
   spendingGoal: 0,            // 이번 달 목표 지출액
   accounts: [{ id, name, initialBalance }],        // 통장(다중)
   cards:    [{ id, name, bill }],                  // 카드(다중). bill = 일시불 누적분
-  pinLock:  { enabled, pin },
-  categories: [{ id, name, color, budget }],
+  categories: [{ id, name, color }],
   expenses: [...],
   fixedExpenses: [...],
   balanceEntries: [...],
-  trash: [...],
 }
 ```
+`pinLock`·`trash`·카테고리 `budget` 필드는 2026-08-21에 제거됨. `migrate()`가 옛 백업에 남아있어도 조용히 지움 — 다시 쓰지 말 것.
 
 ### expenses[] (지출)
 ```js
@@ -174,32 +184,31 @@ realRemaining  = spendingGoal - processedSpent   // 서브 "반영 전 여유"
 결제수단 3종: **카드 / 현금(통장) / 할부(고정지출)**
 - 할부 선택 시 `InstallmentForm` 표시 (등록·수정·정렬)
 - 금액은 `MoneyInput` (실시간 천단위 콤마 + "원")
-- 카테고리 클릭 시 인라인 예산 설정
 - **결제 문자 붙여넣기 파싱** 버튼
 - 대리결제(추후 정산) 체크박스
 
 ### 내역 (`LedgerView`)
-필터: 이번달/전체/기간/카드/대리결제/입출금/휴지통
+필터: 이번달/전체/기간/카드/대리결제/입출금
 - 정렬: **최신순(등록 시각 기준)/높은금액순/낮은금액순** — 날짜 그룹핑 없이 평면 리스트
 - 지출 수정(연필) — 수정 시 카드값/통장 즉시 반영
 - 대리결제·카드 탭은 읽기 전용(정산·결제는 홈에서만)
+- 삭제(휴지통 아이콘)는 **되돌릴 수 없음** — `window.confirm()` 한 번만 물어보고 바로 지움 (2026-08-21에 21일 휴지통 보관 기능을 걷어냄)
 
 ### 달력 (`CalendarView`)
 일별 지출 합계, 히트맵(빨강 농도), 입금일 초록점, 최고지출일 금테두리, 지난달 대비 배지, 날짜 클릭 시 그날 내역
 
 ### 설정 (`SettingsView`)
-섹션: 화면(테마 15종 5×3) / 예산 / 보안(PIN) / 계좌·카드 / 카테고리(목록·삭제만) / 데이터(JSON 백업·복원)
+섹션: 화면(테마 6종 3×2) / 예산 / 계좌·카드 / 카테고리(목록·삭제만) / 데이터(JSON 백업·복원)
 
 ### 게이트 화면 (순서대로)
 1. `Onboarding` — 8단계, 테마 실시간 미리보기 (`!data.onboarded`)
-2. `LockScreen` — PIN 4자리
-3. `MonthWrapUp` — 달이 바뀌면 지난달 요약 후 넘어가기
+2. `MonthWrapUp` — 달이 바뀌면 지난달 요약 후 넘어가기
 
 ---
 
 ## 6. 테마 시스템
 
-`THEMES` 객체에 15종. 각 테마는 동일한 키 세트를 가짐:
+`THEMES` 객체에 6종(검정·베이지·흰색·청록·파랑·초록, 2026-08-21에 15종에서 추림). 각 테마는 동일한 키 세트를 가짐:
 ```js
 { id, label, swatch, mode, bg, bg2, navBg, paper, paperLine,
   ink, cream, gold, goldSoft, good, warn, danger, muted, border }
@@ -219,8 +228,8 @@ realRemaining  = spendingGoal - processedSpent   // 서브 "반영 전 여유"
 - 잔액·카드값 스냅(맞추기), 고정지출 자동 출금처리(`autoPayDay`), 미처리 배지
 - 대중교통비 빠른입력 — **누적 금액 갱신 방식**(더하지 않고 교체)
 - 결제 문자 파싱(`parsePaymentText`) — 현대카드로 검증됨. "누적" 금액·마스킹 이름(`*`) 제외, 날짜 이후 단어를 가맹점명 우선
-- 휴지통 21일 자동 삭제(`TRASH_RETENTION_DAYS`)
-- PIN 잠금, JSON 백업/복원, 온보딩, 월 마감 요약
+- JSON 백업/복원, 온보딩, 월 마감 요약
+- 렌더링 중 에러가 나도 흰 화면 대신 안내+새로고침을 보여주는 `ErrorBoundary`
 
 ---
 
@@ -229,7 +238,6 @@ realRemaining  = spendingGoal - processedSpent   // 서브 "반영 전 여유"
 ### PENDING
 - **기록 속도 개선** — 자주 쓰는 카테고리/카드 기본값, 즐겨찾기 원터치 재등록 (사용자가 "나중에" 하기로 함)
 - **할부 종료 알림** — "이번 달이 마지막 회차" 안내 미착수
-- **카테고리 예산 초과 경고** — 현재 예산관리를 펼쳐야만 보임. 접힌 상태에서도 노출하면 좋겠다는 논의만 있었음
 - **다른 카드사/은행 문자 파싱** — 현대카드만 검증. 실제 케이스 나오면 그때 다듬기로 함
 
 ### 구조적 제약 (해결 불가)
