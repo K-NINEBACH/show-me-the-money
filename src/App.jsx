@@ -99,7 +99,11 @@ function AppInner() {
   const fixedCardActive = fixedActiveAll.filter((f) => (f.paymentMethod || "cash") === "card");
   const fixedCardInstallment = fixedCardActive.filter((f) => f.totalMonths > 0);
   const fixedCardRecurring = fixedCardActive.filter((f) => !f.totalMonths);
-  const fixedSum = fixedActive.reduce((s, f) => s + Number(f.info.amount), 0) + fixedCardRecurring.reduce((s, f) => s + Number(f.info.amount), 0);
+  // "카드 매달반복" 항목은 반영(카드반영) 전에는 예측치로 fixedSum에 잡아두지만,
+  // 일단 반영되면 그 금액이 c.bill(→cardBillTotal)에 실제로 들어가므로 여기서는 빼야 함.
+  // 안 그러면 반영한 달에 spent에서 그 항목이 두 번(예측치+실제치) 잡히는 이중계산이 생김.
+  const fixedCardRecurringUnpaid = fixedCardRecurring.filter((f) => !(f.paidMonths && f.paidMonths[curKey]));
+  const fixedSum = fixedActive.reduce((s, f) => s + Number(f.info.amount), 0) + fixedCardRecurringUnpaid.reduce((s, f) => s + Number(f.info.amount), 0);
   const fixedSumAll = fixedActiveAll.reduce((s, f) => s + Number(f.info.amount), 0);
   const totalSpentThisMonth = normalSpent + cardSpentThisCycle + fixedSumAll;
 
