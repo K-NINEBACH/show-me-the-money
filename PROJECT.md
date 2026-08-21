@@ -163,8 +163,9 @@ realRemaining  = spendingGoal - processedSpent   // 서브 "반영 전 여유"
 - **서브 = `realRemaining`**: 미처리분을 뺀 값. UI 표기는 **"반영 전 여유"** (예전 "실제 여유"는 오해 소지가 있어 변경됨)
 
 ### fixedSum vs fixedSumAll
-- `fixedSum` = 통장형 + 카드매달반복 (예산 계산용. 카드할부는 `cardBillTotal`에 이미 포함되므로 **중복 방지**)
-- `fixedSumAll` = 전부 (화면 표시용)
+- `fixedSum` = 통장형 + **아직 카드반영 안 한** 카드매달반복 (예산 계산용. 카드할부는 `cardBillTotal`에 이미 포함되므로, 카드매달반복은 반영되는 순간 `cardBillTotal`로 넘어가므로 각각 **중복 방지**)
+  - 2026-08-21 수정: 카드반영을 누른 뒤에도 `fixedSum`이 계속 그 항목을 잡고 있어서 `spent`가 이중계산되던 버그를 고침. `fixedCardRecurringUnpaid`(=`paidMonths[curKey]` 없는 것만) 기준으로 바뀜.
+- `fixedSumAll` = 전부, 반영 여부 무관 (화면 표시용 — 여긴 원래도 이중계산 없었음)
 
 ### ctx 객체
 `App()`에서 모든 파생값을 계산해 `ctx` 하나로 만들어 자식 컴포넌트에 통째로 내려줌. 상태관리 라이브러리 없음.
@@ -242,11 +243,6 @@ realRemaining  = spendingGoal - processedSpent   // 서브 "반영 전 여유"
 - **기록 속도 개선** — 자주 쓰는 카테고리/카드 기본값, 즐겨찾기 원터치 재등록 (사용자가 "나중에" 하기로 함)
 - **할부 종료 알림** — "이번 달이 마지막 회차" 안내 미착수
 - **다른 카드사/은행 문자 파싱** — 현대카드만 검증. 실제 케이스 나오면 그때 다듬기로 함
-- **(미확정) `spent`/`remaining` 이중계산 의심** — 2026-08-21에 카드 추적성 작업을 하다가 발견.
-  `fixedSum`이 "카드 매달반복" 항목을 `info.active`면 매달 자동으로 누적하는데(카드반영 클릭 여부와
-  무관), 실제로 카드반영을 누르면 `cardBillTotal`(=`c.bill`)에도 같은 금액이 더해짐 — `spent = normalSpent
-  + fixedSum + cardBillTotal`이라 클릭한 달은 그 항목이 두 번 잡힐 수 있음. 사용자에게 확인 안 하고
-  손대지 않았음. 건드리려면 먼저 사용자한테 물어볼 것.
 
 ### 구조적 제약 (해결 불가)
 - **푸시 알림 불가** — 웹앱이라 "오늘 기록 안 하셨어요" 같은 리마인드 못 보냄
