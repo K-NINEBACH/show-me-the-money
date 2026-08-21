@@ -90,13 +90,17 @@ const STORAGE_KEY = "passbook-data-v4";
   paymentMethod: "card" | "cash",
   cardId,                    // 카드 결제 시
   linkedBalanceId,           // 현금(통장) 결제 시 생성된 balanceEntry id
-  isReceivable,              // 대리결제(추후 정산) 여부
+  isReceivable,              // 대리결제(추후 정산) 여부 — 2026-08-21부터 새로 안 만듦(레거시 전용, 아래 참고)
   settled, repaidAmount, settledAt,
-  settlementCardDelta, settlementCardId, settlementBalanceId,  // 정산 시 되돌리기용
+  settlementCardDelta, settlementCardId, settlementBalanceId,  // 정산 시 되돌리기용 (레거시)
   linkedTransitMonth,        // 대중교통 누적 항목 표시 (예: "2026-07")
   isCardAdjustment,          // 카드값에 흔적 남기기용(2026-08-21). "카드반영"/카드값 수동
                               // 추가로 생긴 항목 표시. cardSpentThisCycle 집계에서는 제외
                               // (fixedSumAll이 이미 매달 반영하고 있어서 이중계산 방지)
+  reimbursedAmount, reimbursedAt, reimbursementBalanceId,  // 2026-08-21 신규: 대리결제를
+                              // isReceivable 없이 평범한 지출로 기록하고, 나중에 내역에서
+                              // "정산받음"으로 표시할 때 씀. 원래 지출 금액은 안 건드리고
+                              // 받은 돈만 balanceEntries에 순수 입금(type:"in")으로 남김
 }
 ```
 
@@ -189,7 +193,8 @@ realRemaining  = spendingGoal - processedSpent   // 서브 "반영 전 여유"
 - 할부 선택 시 `InstallmentForm` 표시 (등록·수정·정렬)
 - 금액은 `MoneyInput` (실시간 천단위 콤마 + "원")
 - **결제 문자 붙여넣기 파싱** 버튼
-- 대리결제(추후 정산) 체크박스
+- 대리결제 체크박스 **없음** (2026-08-21에 제거) — 대신 내준 돈도 그냥 평범하게 카드/현금
+  지출로 기록. 나중에 돌려받으면 내역에서 "정산받음"으로 표시 (아래 `LedgerView` 참고)
 
 ### 내역 (`LedgerView`) — 2026-08-21에 시간범위×카테고리 2축 구조로 재설계
 - **시간범위** (`timeScope`): 이번달 / 전체 / 기간 — 항상 상단 탭 3개
@@ -205,8 +210,14 @@ realRemaining  = spendingGoal - processedSpent   // 서브 "반영 전 여유"
   대리결제 자체는 목록에 그대로 보이되(원금 표시), 합계엔 부족분만 반영
 - 정렬: **최신순(등록 시각 기준)/높은금액순/낮은금액순** — 날짜 그룹핑 없이 평면 리스트
 - 지출 수정(연필) — 수정 시 카드값/통장 즉시 반영
-- 대리결제는 **미정산일 때만** 연필 버튼으로 그 자리에서 바로 정산(`settleReceivable`, Home.jsx에서 import) — 정산 끝나면 연필 사라지고 상태 태그로 바뀜. 정산완료 후엔 수정 UI 없음(다시 고치려면 삭제 후 재등록)
+- 대리결제(레거시, `isReceivable`)는 **미정산일 때만** 연필 버튼으로 그 자리에서 바로 정산(`settleReceivable`, Home.jsx에서 import) — 정산 끝나면 연필 사라지고 상태 태그로 바뀜. 정산완료 후엔 수정 UI 없음(다시 고치려면 삭제 후 재등록)
 - 입출금은 삭제만 가능(수정 UI 없음)
+- **일반 지출(카드/현금)의 정산받음**: `renderEditForm` 안에 "정산" 섹션이 따로 있음.
+  `reimbursedAmount`가 없으면 입력폼(받은 금액 → `confirmReimburse`), 있으면 "정산받음
+  N원 · 취소"(`cancelReimburse`)로 바뀜. 원래 지출 금액·카드값/통장 차감은 안 건드리고,
+  받은 돈만 `balanceEntries`에 순수 입금으로 추가 — 부족분/초과분 나눌 필요 없음(레거시
+  `settleReceivable`과 다른 점). 목록 줄에는 "정산받음 N원" 태그로 표시(`LedgerRow`).
+  삭제 시 연결된 입금 기록도 같이 삭제됨(`remove()`에서 `reimbursementBalanceId` 처리)
 - 삭제는 **되돌릴 수 없음** — `window.confirm()` 한 번만 물어보고 바로 지움 (2026-08-21에 21일 휴지통 보관 기능을 걷어냄)
 
 ### 달력 (`CalendarView`)
@@ -239,7 +250,10 @@ realRemaining  = spendingGoal - processedSpent   // 서브 "반영 전 여유"
 
 - 다중 통장·다중 카드, 통장 간 이체(양쪽 자동 기록, 삭제 시 쌍으로 삭제)
 - 고정지출/할부 (할부 회차 자동 진행, 월별 금액 오버라이드, 같은 유형 내 카드↔카드·통장↔통장 재지정)
-- 대리결제(추후 정산) — 홈 또는 내역(미정산 줄의 연필)에서 정산 가능, 부족분→카드값 / 초과분→통장 자동 반영 (정산 로직은 `settleReceivable` 하나, Home.jsx에서 export해 Ledger.jsx도 같이 씀)
+- 대신 내준 돈 정산받기 — **2026-08-21부터 새 방식**: 그냥 평범한 지출로 기록하고, 내역에서
+  그 지출 수정 → "정산받음"에 받은 금액 입력 → 순수 입금으로 기록(`confirmReimburse`).
+  구버전 `isReceivable` 방식(대리결제 체크 → 홈/내역에서 부족분→카드값·초과분→통장 자동
+  반영, `settleReceivable`)은 레거시 데이터 호환용으로 남아있고 계속 동작함
 - 잔액·카드값 스냅(맞추기), 고정지출 자동 출금처리(`autoPayDay`), 미처리 배지
 - 대중교통비 빠른입력 — **누적 금액 갱신 방식**(더하지 않고 교체)
 - 결제 문자 파싱(`parsePaymentText`) — 현대카드로 검증됨. "누적" 금액·마스킹 이름(`*`) 제외, 날짜 이후 단어를 가맹점명 우선
