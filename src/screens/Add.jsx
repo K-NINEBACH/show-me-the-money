@@ -4,19 +4,38 @@ import { useState } from "react";
 import { CreditCard, Wallet, Repeat, ClipboardPaste, Check, Pencil, X } from "lucide-react";
 import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
 import { PALETTE } from "../lib/constants";
-import { fmtWon, todayISO, parsePaymentText, sortFixedList, fixedInfo } from "../lib/data";
+import { fmtWon, todayISO, parsePaymentText, sortFixedList, fixedInfo, createdTime } from "../lib/data";
 import { Field, MoneyInput, QuickAmountButtons, FixedSortTabs } from "../components/common";
+
+// 매번 카드부터, 첫 카테고리부터 다시 고르는 게 기록 속도를 제일 깎아먹는 부분이었음
+// (PROJECT.md PENDING에 있던 "기록 속도 개선"). 데이터 구조를 새로 만들 필요 없이,
+// 최근에 실제로 뭘 눌렀는지를 expenses[]에서 거꾸로 찾아서 그걸 기본값으로 씀 —
+// 진짜 처음 쓰는 사람껜 지금처럼 첫 번째 항목이 기본값.
+function findRecentDefaults(data) {
+  const recent = [...data.expenses].filter((e) => !e.isReceivable && !e.isCardAdjustment).sort((a, b) => createdTime(b) - createdTime(a));
+  const lastAny = recent[0];
+  const lastCard = recent.find((e) => (e.paymentMethod || "cash") === "card");
+  const lastCash = recent.find((e) => (e.paymentMethod || "cash") === "cash");
+  const lastCashAccountId = lastCash?.linkedBalanceId ? (data.balanceEntries || []).find((b) => b.id === lastCash.linkedBalanceId)?.accountId : null;
+  return {
+    payMethod: lastAny ? (lastAny.paymentMethod || "cash") : "card",
+    categoryId: lastAny?.categoryId || data.categories[0]?.id || "",
+    cardId: lastCard?.cardId || data.cards?.[0]?.id || "",
+    accountId: lastCashAccountId || data.accounts?.[0]?.id || "",
+  };
+}
 
 export function AddView({ ctx }) {
   const T = useTheme();
   const { data, persist, showToast, curKey } = ctx;
-  const [payMethod, setPayMethod] = useState("card"); // card | cash | installment
+  const [defaults] = useState(() => findRecentDefaults(data));
+  const [payMethod, setPayMethod] = useState(defaults.payMethod); // card | cash | installment
   const [amount, setAmount] = useState("");
-  const [categoryId, setCategoryId] = useState(data.categories[0]?.id || "");
+  const [categoryId, setCategoryId] = useState(defaults.categoryId);
   const [date, setDate] = useState(todayISO());
   const [memo, setMemo] = useState("");
-  const [cardId, setCardId] = useState(data.cards?.[0]?.id || "");
-  const [accountId, setAccountId] = useState(data.accounts?.[0]?.id || "");
+  const [cardId, setCardId] = useState(defaults.cardId);
+  const [accountId, setAccountId] = useState(defaults.accountId);
   const [newCatMode, setNewCatMode] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
