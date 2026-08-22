@@ -279,6 +279,7 @@ function InstallmentForm({ ctx }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ color: T.cream, fontSize: 16, fontWeight: 600 }}>
                     {f.name}{info.label ? ` · ${info.label}` : ""}{!info.active ? " · 완료" : ""}
+                    {info.isLast && <span style={{ color: T.warn, fontSize: 12, fontWeight: 700, marginLeft: 6 }}>마지막 회차</span>}
                   </div>
                   <div style={{ color: T.muted, fontSize: 14 }}>
                     {f.totalMonths ? "할부" : "매달 반복"} · 기본 {fmtWon(f.baseAmount)} · {(f.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === f.cardId)?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장(자동이체)")}{f.autoPayDay ? ` · 매달 ${f.autoPayDay}일 자동` : ""}

@@ -446,7 +446,7 @@ export function LedgerView({ ctx }) {
               <div style={{ color: T.muted, fontSize: 14, marginBottom: 6 }}>카드별 정기결제(할부)</div>
               {ctx.fixedCardActive.map((f) => (
                 <div key={f.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 15, color: T.cream, padding: "2px 0" }}>
-                  <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""} · {data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드"}</span>
+                  <span>{f.name}{f.info.label ? ` · ${f.info.label}` : ""} · {data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드"}{f.info.isLast && <span style={{ color: T.warn, fontSize: 12, fontWeight: 700, marginLeft: 4 }}>마지막</span>}</span>
                   <span style={{ fontFamily: F.mono, color: T.muted }}>{fmtWon(f.info.amount)}</span>
                 </div>
               ))}

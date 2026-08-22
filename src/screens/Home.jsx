@@ -177,6 +177,7 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
           <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14.5, color: T.cream, padding: "3px 0" }}>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {f.name}{f.info.label ? ` ${f.info.label}` : ""} <span style={{ color: T.muted, fontSize: 12.5 }}>· {sourceName}</span>
+              {f.info.isLast && <span style={{ color: T.warn, fontSize: 11.5, fontWeight: 700, marginLeft: 4 }}>마지막</span>}
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 6 }}>
               <span style={{ fontFamily: F.mono, color: T.muted, fontSize: 13.5 }}>{fmtWon(f.info.amount)}</span>

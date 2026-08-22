@@ -146,11 +146,13 @@ export function monthsBetweenKeys(aKey, bKey) { const [ay, am] = aKey.split("-")
 
 export function fixedInfo(f, curKey) {
   const amt = f.overrides && f.overrides[curKey] != null ? f.overrides[curKey] : f.baseAmount;
-  if (!f.totalMonths || f.totalMonths <= 0) return { active: true, label: null, amount: amt, installment: null };
+  if (!f.totalMonths || f.totalMonths <= 0) return { active: true, label: null, amount: amt, installment: null, isLast: false };
   const elapsed = monthsBetweenKeys(f.setupMonthKey, curKey);
   const cur = f.startInstallment + elapsed;
-  if (cur > f.totalMonths || cur < 1) return { active: false, label: null, amount: 0, installment: cur };
-  return { active: true, label: `${cur}/${f.totalMonths}개월`, amount: amt, installment: cur };
+  if (cur > f.totalMonths || cur < 1) return { active: false, label: null, amount: 0, installment: cur, isLast: false };
+  // 할부 마지막 회차 여부 — "이번 달이 마지막이라 다음 달부턴 안 나간다"는 걸 화면에서
+  // 바로 알 수 있게(PROJECT.md PENDING "할부 종료 알림").
+  return { active: true, label: `${cur}/${f.totalMonths}개월`, amount: amt, installment: cur, isLast: cur === f.totalMonths };
 }
 
 export const FIXED_SORTS = [
