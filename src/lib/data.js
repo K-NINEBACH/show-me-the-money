@@ -51,9 +51,13 @@ export function migrate(raw) {
       return { paymentMethod: "cash", cardId: null, paidMonths: {}, ...base };
     });
   }
-  d.categories = raw.categories && raw.categories.length ? raw.categories : defaultData().categories;
-  d.expenses = raw.expenses || [];
-  d.balanceEntries = (raw.balanceEntries || []).map((b) => ({ accountId: d.accounts[0]?.id || "acc1", ...b }));
+  // cards/accounts/fixedExpenses 위에서 다 Array.isArray로 확인하는데 이 셋만 그냥
+  // truthy 체크였음 — JSON 백업 붙여넣기(가져오기)로 들어오는 값이라 형식이 깨져 있어도
+  // (예: categories가 배열이 아닌 문자열) 여기서 막아야 나중에 .map/.filter 하다가
+  // 화면이 통째로 죽는 걸 막을 수 있음.
+  d.categories = Array.isArray(raw.categories) && raw.categories.length ? raw.categories : defaultData().categories;
+  d.expenses = Array.isArray(raw.expenses) ? raw.expenses : [];
+  d.balanceEntries = (Array.isArray(raw.balanceEntries) ? raw.balanceEntries : []).map((b) => ({ accountId: d.accounts[0]?.id || "acc1", ...b }));
   d.spendingGoal = Number(raw.spendingGoal ?? raw.salary) || 0;
   // Old backups may still carry pinLock/trash from a previous version of the app — drop them silently.
   delete d.pinLock;
