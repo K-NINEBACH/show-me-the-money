@@ -43,6 +43,12 @@ export function SettingsView({ ctx }) {
   };
   const removeCard = (id) => {
     if (data.cards.length <= 1) return showToast("카드가 최소 1개는 있어야 해요");
+    const card = data.cards.find((c) => c.id === id);
+    const bill = Number(card?.bill || 0);
+    const msg = bill > 0
+      ? `"${card?.name}" 카드를 삭제할까요? 아직 남은 카드값 ${fmtWon(bill)}은 그대로 사라져요.`
+      : `"${card?.name}" 카드를 삭제할까요?`;
+    if (!window.confirm(msg)) return;
     persist({ ...data, cards: data.cards.filter((c) => c.id !== id) });
   };
   const addCardBill = (cardId) => {
@@ -58,6 +64,8 @@ export function SettingsView({ ctx }) {
     showToast(`${card?.name || "카드"}값에 더했어요 · 내역에서 확인할 수 있어요`);
   };
   const resetCardBill = (cardId) => {
+    const card = data.cards.find((c) => c.id === cardId);
+    if (!window.confirm(`"${card?.name}" 카드값 ${fmtWon(card?.bill || 0)}을 0원으로 초기화할까요? 결제 처리한 걸로 간주하는 거라 되돌릴 수 없어요.`)) return;
     persist({ ...data, cards: data.cards.map((c) => (c.id === cardId ? { ...c, bill: 0 } : c)) });
     setAdjustCardId(null);
     showToast("카드값을 초기화했어요");
@@ -71,11 +79,29 @@ export function SettingsView({ ctx }) {
   };
   const removeAccount = (id) => {
     if (data.accounts.length <= 1) return showToast("통장이 최소 1개는 있어야 해요");
-    persist({ ...data, accounts: data.accounts.filter((a) => a.id !== id) });
+    const acc = data.accounts.find((a) => a.id === id);
+    if (!window.confirm(`"${acc?.name}" 통장을 삭제할까요? 이 통장의 입출금 기록도 같이 사라져요.`)) return;
+    const linkedBalanceIds = new Set((data.balanceEntries || []).filter((b) => b.accountId === id).map((b) => b.id));
+    persist({
+      ...data,
+      accounts: data.accounts.filter((a) => a.id !== id),
+      balanceEntries: (data.balanceEntries || []).filter((b) => b.accountId !== id),
+      // 이 통장으로 낸 현금 지출이 가리키던 balanceEntry가 방금 같이 지워졌으니,
+      // 그 연결도 끊어줌 — 안 그러면 존재하지 않는 balanceEntry를 계속 참조하게 됨.
+      expenses: data.expenses.map((e) => (e.linkedBalanceId && linkedBalanceIds.has(e.linkedBalanceId) ? { ...e, linkedBalanceId: null } : e)),
+    });
   };
   const saveSpendingGoal = () => { const n = Number(spendingGoalInput); if (Number.isNaN(n) || n < 0) return showToast("올바른 금액을 입력해주세요"); persist({ ...data, spendingGoal: n }); showToast("목표 지출액을 저장했어요"); };
   const setTheme = (mode) => persist({ ...data, theme: mode });
-  const removeCategory = (id) => persist({ ...data, categories: data.categories.filter((c) => c.id !== id) });
+  const removeCategory = (id) => {
+    const cat = data.categories.find((c) => c.id === id);
+    const usageCount = data.expenses.filter((e) => e.categoryId === id).length;
+    const msg = usageCount > 0
+      ? `"${cat?.name}" 카테고리를 삭제할까요? 이 카테고리로 기록된 지출 ${usageCount}건은 "미분류"로 남아요.`
+      : `"${cat?.name}" 카테고리를 삭제할까요?`;
+    if (!window.confirm(msg)) return;
+    persist({ ...data, categories: data.categories.filter((c) => c.id !== id) });
+  };
 
   return (
     <div>
