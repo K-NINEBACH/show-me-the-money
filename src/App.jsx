@@ -38,6 +38,22 @@ function AppInner() {
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState("home");
   const [toast, setToast] = useState("");
+  const [, forceTick] = useState(0);
+
+  // PWA로 설치해서 쓰면 화면을 껐다 켜거나 다른 앱 갔다 와도 이 탭이 메모리에 그대로
+  // 남아있는 경우가 많음 — 그러면 today/curKey 같은 값들이 마지막으로 렌더링됐던
+  // 시점에 멈춰있어서, 자정을 넘겨서 돌아오면 "오늘 지출"이나 며칠차 표시가 어제
+  // 기준으로 그대로 보이고, 달까지 바뀌었으면 월마감 화면도 안 뜸. 다시 화면을 볼 때
+  // 강제로 한 번 더 렌더링해서 날짜 관련 값들이 항상 최신으로 다시 계산되게 함.
+  useEffect(() => {
+    const onWake = () => { if (document.visibilityState === "visible") forceTick((n) => n + 1); };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    return () => {
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {

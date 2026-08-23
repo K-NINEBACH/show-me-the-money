@@ -23,10 +23,26 @@ function findRecentDefaults(data) {
   const cardStillExists = lastCard?.cardId && data.cards.some((c) => c.id === lastCard.cardId);
   const categoryStillExists = lastAny?.categoryId && data.categories.some((c) => c.id === lastAny.categoryId);
   return {
-    payMethod: lastAny ? (lastAny.paymentMethod || "cash") : "card",
+    // 카드가 하나도 없는데(온보딩에서 "안 써요" 선택) 기본값이 "card"면 아래 카드
+    // 탭 자체를 안 보여줄 거라 갈 곳 없는 상태로 시작하게 됨 — 그럴 땐 현금부터 시작.
+    payMethod: lastAny ? (lastAny.paymentMethod || "cash") : (data.cards?.length ? "card" : "cash"),
     categoryId: categoryStillExists ? lastAny.categoryId : data.categories[0]?.id || "",
     cardId: cardStillExists ? lastCard.cardId : data.cards?.[0]?.id || "",
     accountId: lastCashAccountId || data.accounts?.[0]?.id || "",
+  };
+}
+
+// InstallmentForm(할부·고정지출 등록)도 같은 이유로 매번 첫 카드/첫 통장부터 다시
+// 고르게 하지 말고, 가장 최근에 등록한 고정지출이 썼던 카드/통장을 기본값으로 줌.
+function findRecentFixedDefaults(data) {
+  const recent = [...(data.fixedExpenses || [])].sort((a, b) => createdTime(b) - createdTime(a));
+  const lastCardFixed = recent.find((f) => (f.paymentMethod || "cash") === "card");
+  const lastCashFixed = recent.find((f) => (f.paymentMethod || "cash") === "cash");
+  const cardStillExists = lastCardFixed?.cardId && data.cards.some((c) => c.id === lastCardFixed.cardId);
+  const accountStillExists = lastCashFixed?.accountId && data.accounts.some((a) => a.id === lastCashFixed.accountId);
+  return {
+    cardId: cardStillExists ? lastCardFixed.cardId : data.cards?.[0]?.id || "",
+    accountId: accountStillExists ? lastCashFixed.accountId : data.accounts?.[0]?.id || "",
   };
 }
 
@@ -96,10 +112,12 @@ export function AddView({ ctx }) {
 
       <Field label="결제 수단">
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setPayMethod("card")}
-            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: payMethod === "card" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
-            <CreditCard size={14} /> 카드
-          </button>
+          {(data.cards || []).length > 0 && (
+            <button onClick={() => setPayMethod("card")}
+              style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: payMethod === "card" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
+              <CreditCard size={14} /> 카드
+            </button>
+          )}
           <button onClick={() => setPayMethod("cash")}
             style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: payMethod === "cash" ? T.good + "22" : "transparent", color: T.cream, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
             <Wallet size={14} /> 현금(통장)
@@ -163,9 +181,6 @@ export function AddView({ ctx }) {
               </div>
             )}
           </div>
-          {payMethod === "card" && (data.cards || []).length === 0 && (
-            <div style={{ color: T.warn, fontSize: 14, marginTop: -10, marginBottom: 16 }}>등록된 카드가 없어요. 설정에서 먼저 카드를 등록해주세요.</div>
-          )}
 
           {newCatMode && (
             <div style={{ marginTop: -8, marginBottom: 16, background: T.bg2, borderRadius: 10, padding: 12 }}>
@@ -209,9 +224,10 @@ function InstallmentForm({ ctx }) {
   const [isInstallment, setIsInstallment] = useState(false);
   const [totalMonths, setTotalMonths] = useState("");
   const [startInstallment, setStartInstallment] = useState("1");
+  const [fixedDefaults] = useState(() => findRecentFixedDefaults(data));
   const [fixedPaymentMethod, setFixedPaymentMethod] = useState("cash");
-  const [fixedCardId, setFixedCardId] = useState(data.cards?.[0]?.id || "");
-  const [fixedAccountId, setFixedAccountId] = useState(data.accounts?.[0]?.id || "");
+  const [fixedCardId, setFixedCardId] = useState(fixedDefaults.cardId);
+  const [fixedAccountId, setFixedAccountId] = useState(fixedDefaults.accountId);
   const [autoPayDay, setAutoPayDay] = useState("");
   const [overrideEditId, setOverrideEditId] = useState(null);
   const [overrideInput, setOverrideInput] = useState("");

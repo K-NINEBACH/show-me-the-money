@@ -1,7 +1,7 @@
 // History tab: one unified feed of everything money-related (card/cash expenses,
 // 대리결제, 입출금), scoped by time (이번달/전체/기간) and optionally narrowed by
 // category (카드/대리결제/입출금). LedgerRow renders the expense rows within that feed.
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Pencil, Trash2, ArrowDownCircle, ArrowUpCircle, Search } from "lucide-react";
 import { useTheme, F, paperCard, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, createdTime, dateStrFor, monthKeyOffset, todayISO } from "../lib/data";
@@ -215,6 +215,11 @@ export function LedgerView({ ctx }) {
   const [editAccountId, setEditAccountId] = useState("");
   const [reimburseInput, setReimburseInput] = useState("");
   const [reimburseOpen, setReimburseOpen] = useState(false);
+
+  // 수정 폼을 켠 채로 기간/카테고리 필터를 바꾸면 그 항목이 목록에서 잠깐 사라졌다가,
+  // 필터를 원래대로 되돌렸을 때 editingId가 그대로 남아있어서 수정 폼이 예고 없이 다시
+  // 열려 있는 것처럼 보였음 — 필터가 바뀌면 수정 중이던 상태를 닫아버림.
+  useEffect(() => { setEditingId(null); }, [timeScope, category, search]);
 
   // 대신 내준 돈을 나중에 돌려받았을 때 여기서 바로 기록 — 카드/현금 상관없이 아무
   // 지출에나 쓸 수 있음. 원래 지출 금액은 그대로 두고(카드값/통장 차감은 실제로 있었던

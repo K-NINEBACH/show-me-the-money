@@ -71,7 +71,7 @@ export function autoProcessFixed(d) {
   const today = now.getDate();
   let changed = false;
   const newEntries = [];
-  const fixedExpenses = (d.fixedExpenses || []).map((f) => {
+  const fixedExpenses = (d.fixedExpenses || []).map((f, idx) => {
     if ((f.paymentMethod || "cash") !== "cash") return f;
     if (!f.autoPayDay) return f;
     if (f.paidMonths && f.paidMonths[curKey]) return f;
@@ -86,7 +86,13 @@ export function autoProcessFixed(d) {
     // f.accountId가 그 사이에 삭제된 통장을 가리킬 수 있음 — 그러면 자동이체 기록이
     // 존재하지 않는 통장에 붙어서 어느 통장 잔액에도 안 잡히는 유령 데이터가 됨.
     const aid = f.accountId && d.accounts.some((a) => a.id === f.accountId) ? f.accountId : d.accounts[0]?.id;
-    const entryId = "b" + Date.now() + Math.floor(Math.random() * 1000);
+    // 같은 날 자동이체 대상이 여러 개면 이 map 루프 안에서 한꺼번에 처리되는데, 그럼
+    // Date.now()가 전부 같은 밀리초라 랜덤 접미사만으론 드물게 id가 겹칠 수 있었음 —
+    // idx를 타임스탬프에 직접 더해서 이 루프 안에서는 항상 서로 다른 값이 되게 함
+    // (createdTime()이 id의 숫자를 그대로 이어붙여 정렬 기준으로 쓰기 때문에, 구분자로
+    // 붙이면 자릿수가 늘어나 Number.MAX_SAFE_INTEGER를 넘어 정렬이 깨질 수 있어서
+    // 구분자 없이 같은 자리수를 유지하는 이 방식으로 함).
+    const entryId = "b" + (Date.now() + idx) + Math.floor(Math.random() * 1000);
     newEntries.push({ id: entryId, type: "out", amount: info.amount, date: dateStrFor(curKey, payDateDay), memo: `${f.name} 자동이체`, accountId: aid, linkedFixedId: f.id, linkedFixedMonth: curKey });
     return { ...f, paidMonths: { ...(f.paidMonths || {}), [curKey]: entryId } };
   });

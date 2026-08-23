@@ -25,14 +25,23 @@ export function SettingsView({ ctx }) {
     }
   };
   const doImport = () => {
+    let parsed;
     try {
-      const parsed = JSON.parse(importText);
-      persist(migrate(parsed));
-      setImportText(""); setShowImport(false);
-      showToast("데이터를 불러왔어요");
+      parsed = JSON.parse(importText);
     } catch {
-      showToast("올바른 JSON 형식이 아니에요");
+      return showToast("올바른 JSON 형식이 아니에요");
     }
+    // 앱에서 제일 되돌리기 어려운 동작인데(지금 있는 데이터를 통째로 덮어씀) 유일하게
+    // 확인창이 없었음 — 카드/통장/카테고리 삭제는 전부 confirm이 있는데 여긴 빠져있었음.
+    const expenseCount = Array.isArray(parsed?.expenses) ? parsed.expenses.length : 0;
+    if (!window.confirm(`가져온 데이터(지출 기록 ${expenseCount}건 포함)로 지금 데이터를 전부 덮어쓸까요? 되돌릴 수 없어요.`)) return;
+    const migrated = migrate(parsed);
+    persist(migrated);
+    // spendingGoalInput은 마운트 시점 data로 한 번만 초기화되는 값이라, 가져오기로
+    // data.spendingGoal이 바뀌어도 이 화면을 벗어났다 오기 전까진 안 갱신됐음.
+    setSpendingGoalInput(String(migrated.spendingGoal || ""));
+    setImportText(""); setShowImport(false);
+    showToast("데이터를 불러왔어요");
   };
   const addCard = () => {
     if (!newCardName.trim()) return showToast("카드 이름을 입력하세요");
