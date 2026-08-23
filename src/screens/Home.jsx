@@ -355,15 +355,19 @@ function TransitQuickAdd({ ctx }) {
 
   const transitCat = data.categories.find((c) => c.name.includes("교통")) || data.categories[0];
   const existing = data.expenses.find((e) => e.linkedTransitMonth === curKey);
+  // existing.cardId를 쓰던 카드가 그 사이에 설정에서 삭제됐을 수 있음 — 그 상태로
+  // 그냥 두면 선택창엔 아무것도 안 골라진 것처럼 보이는데 제출은 되면서, 어느 카드값도
+  // 실제로는 안 바뀌었는데 "반영했어요" 토스트만 뜨는 조용한 실패가 생김.
+  const existingCardValid = existing && (data.cards || []).some((c) => c.id === existing.cardId);
 
   const [amount, setAmount] = useState(existing ? String(existing.amount) : "");
-  const [cardId, setCardId] = useState(existing ? existing.cardId : (data.cards?.[0]?.id || ""));
+  const [cardId, setCardId] = useState(existingCardValid ? existing.cardId : (data.cards?.[0]?.id || ""));
 
   useEffect(() => {
     setAmount(existing ? String(existing.amount) : "");
-    setCardId(existing ? existing.cardId : (data.cards?.[0]?.id || ""));
+    setCardId(existingCardValid ? existing.cardId : (data.cards?.[0]?.id || ""));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curKey, existing?.amount, existing?.cardId]);
+  }, [curKey, existing?.amount, existing?.cardId, existingCardValid]);
 
   const submit = () => {
     const n = Number(amount);
