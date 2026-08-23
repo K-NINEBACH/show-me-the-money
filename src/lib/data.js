@@ -75,13 +75,16 @@ export function autoProcessFixed(d) {
     if ((f.paymentMethod || "cash") !== "cash") return f;
     if (!f.autoPayDay) return f;
     if (f.paidMonths && f.paidMonths[curKey]) return f;
-    if (today < f.autoPayDay) return f;
+    // 31일로 설정해둔 자동이체는 30일(또는 28/29일)짜리 달엔 today가 31에 절대 못
+    // 닿아서 그 달엔 영원히 자동처리가 안 되던 버그 — payDateDay와 똑같이 그 달의
+    // 마지막 날로 맞춰서 비교해야 함.
+    const payDateDay = Math.min(f.autoPayDay, daysInMonthKey(curKey));
+    if (today < payDateDay) return f;
     const info = fixedInfo(f, curKey);
     if (!info.active) return f;
     changed = true;
     const aid = f.accountId || d.accounts[0]?.id;
     const entryId = "b" + Date.now() + Math.floor(Math.random() * 1000);
-    const payDateDay = Math.min(f.autoPayDay, daysInMonthKey(curKey));
     newEntries.push({ id: entryId, type: "out", amount: info.amount, date: dateStrFor(curKey, payDateDay), memo: `${f.name} 자동이체`, accountId: aid, linkedFixedId: f.id, linkedFixedMonth: curKey });
     return { ...f, paidMonths: { ...(f.paidMonths || {}), [curKey]: entryId } };
   });
