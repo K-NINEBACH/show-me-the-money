@@ -336,17 +336,23 @@ export function LedgerView({ ctx }) {
     <div style={{ marginTop: 8, marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 10, padding: 10 }}>
       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
         <MoneyInput value={editAmount} onChange={setEditAmount} />
-        <select value={editPaymentMethod} onChange={(ev) => setEditPaymentMethod(ev.target.value)} style={{ ...editSelectSty, flex: "0 0 84px" }}>
+        <select value={editPaymentMethod} disabled={e.isCardAdjustment} onChange={(ev) => setEditPaymentMethod(ev.target.value)}
+          style={{ ...editSelectSty, flex: "0 0 84px", opacity: e.isCardAdjustment ? 0.6 : 1 }}>
           <option value="card">카드</option>
           <option value="cash">현금</option>
         </select>
       </div>
+      {e.isCardAdjustment && (
+        <div style={{ color: T.ink, fontSize: 12, marginTop: -4, marginBottom: 8 }}>
+          정기결제 카드반영으로 생긴 항목이라 결제수단은 못 바꿔요. 금액·메모는 고칠 수 있어요.
+        </div>
+      )}
       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
         <select value={editCategoryId} onChange={(ev) => setEditCategoryId(ev.target.value)} style={editSelectSty}>
           {data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         {editPaymentMethod === "card" ? (
-          <select value={editCardId} onChange={(ev) => setEditCardId(ev.target.value)} style={editSelectSty}>
+          <select value={editCardId} disabled={e.isCardAdjustment} onChange={(ev) => setEditCardId(ev.target.value)} style={{ ...editSelectSty, opacity: e.isCardAdjustment ? 0.6 : 1 }}>
             {data.cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         ) : data.accounts.length > 1 ? (
