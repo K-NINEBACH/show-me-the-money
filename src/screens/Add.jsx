@@ -17,10 +17,15 @@ function findRecentDefaults(data) {
   const lastCard = recent.find((e) => (e.paymentMethod || "cash") === "card");
   const lastCash = recent.find((e) => (e.paymentMethod || "cash") === "cash");
   const lastCashAccountId = lastCash?.linkedBalanceId ? (data.balanceEntries || []).find((b) => b.id === lastCash.linkedBalanceId)?.accountId : null;
+  // 최근에 쓴 카드/카테고리가 그 사이에 설정에서 삭제됐을 수 있음 — 그대로 기본값으로
+  // 주면 셀렉트가 존재하지 않는 값을 가리키다가, 안 건드리고 기록하면 카드값에 실제로는
+  // 안 잡히는데 기록됐다고만 뜨는 조용한 실패로 이어짐(내역 수정에서 겪은 것과 동일).
+  const cardStillExists = lastCard?.cardId && data.cards.some((c) => c.id === lastCard.cardId);
+  const categoryStillExists = lastAny?.categoryId && data.categories.some((c) => c.id === lastAny.categoryId);
   return {
     payMethod: lastAny ? (lastAny.paymentMethod || "cash") : "card",
-    categoryId: lastAny?.categoryId || data.categories[0]?.id || "",
-    cardId: lastCard?.cardId || data.cards?.[0]?.id || "",
+    categoryId: categoryStillExists ? lastAny.categoryId : data.categories[0]?.id || "",
+    cardId: cardStillExists ? lastCard.cardId : data.cards?.[0]?.id || "",
     accountId: lastCashAccountId || data.accounts?.[0]?.id || "",
   };
 }
