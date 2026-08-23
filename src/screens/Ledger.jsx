@@ -408,7 +408,13 @@ export function LedgerView({ ctx }) {
       <span style={{ color: T.good }}>입금 합계 {fmtWon(balanceInTotal)}</span> · <span style={{ color: T.danger }}>출금 합계 {fmtWon(balanceOutTotal)}</span>
     </div>
   );
-  else totalsLine = <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>총 지출 {fmtWon(totalSpent)} · {combined.length}건</div>;
+  else totalsLine = (
+    // totalSpent는 순수 지출(kind:"expense")만 더한 값인데, 예전엔 옆의 건수를
+    // combined.length(대리결제·입출금까지 섞인 전체 표시 줄 수)로 보여줘서 "이 N건을
+    // 더하면 이 금액"처럼 보이는 게 실제로는 성립 안 했음(예: 67건인데 그중 일부만
+    // 지출 합계에 들어감) — 건수도 실제로 더해진 지출 개수로 맞춤.
+    <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>총 지출 {fmtWon(totalSpent)} · {categoryExpenses.length}건</div>
+  );
 
   return (
     <div>
