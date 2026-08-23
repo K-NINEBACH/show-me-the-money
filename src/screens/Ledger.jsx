@@ -149,7 +149,18 @@ export function LedgerView({ ctx }) {
     ];
     if (amountSort === "amountDesc") items.sort((a, b) => b.sortAmt - a.sortAmt);
     else if (amountSort === "amountAsc") items.sort((a, b) => a.sortAmt - b.sortAmt);
-    else items.sort((a, b) => b.sortTime - a.sortTime);
+    else {
+      // "최신순"은 실제 거래 날짜(date) 기준으로 최근 날짜가 위로 오는 게 맞는데, 예전엔
+      // createdTime(=이 기록이 앱에 실제로 만들어진 시각)로만 정렬했음 — 자동이체처럼
+      // 결제일과 앱에 실제로 반영된 시각이 어긋나는 항목이나, 나중에 지난 날짜로 수정한
+      // 기록이 날짜 순서를 무시하고 계속 위쪽(또는 엉뚱한 자리)에 떠 있는 것처럼 보였음.
+      // date는 항상 "YYYY-MM-DD"라 문자열 비교로 날짜순 정렬이 되고, 같은 날짜끼리는
+      // 기존처럼 등록 시각으로 순서를 정함.
+      items.sort((a, b) => {
+        const byDate = b.item.date.localeCompare(a.item.date);
+        return byDate !== 0 ? byDate : b.sortTime - a.sortTime;
+      });
+    }
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoryExpenses, categoryReceivables, categoryBalance, amountSort]);
