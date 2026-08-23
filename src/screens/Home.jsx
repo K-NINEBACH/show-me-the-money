@@ -249,7 +249,9 @@ function markFixedPaid(ctx, f, info) {
   let next = { ...data };
   let marker;
   if (isCard) {
-    const cid = f.cardId || data.cards[0]?.id;
+    // f.cardId가 그 사이에 삭제된 카드를 가리킬 수 있음(카드 삭제는 fixedExpenses를
+    // 안 건드림) — 확인 안 하면 어느 카드값도 안 늘어나는데 반영됐다고 뜸.
+    const cid = f.cardId && data.cards.some((c) => c.id === f.cardId) ? f.cardId : data.cards[0]?.id;
     next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Number(c.bill || 0) + Number(info.amount) } : c));
     // "카드반영"은 예전엔 bill만 조용히 늘리고 아무 기록도 안 남겼음 — 그래서 내역
     // 탭에서 카드값이 어디서 늘었는지 추적이 안 됐음. 이제 카드 지출 항목을 하나
@@ -260,7 +262,9 @@ function markFixedPaid(ctx, f, info) {
     next.expenses = [...data.expenses, adjExpense];
     marker = adjId;
   } else {
-    const aid = f.accountId || data.accounts[0]?.id;
+    // 같은 이유로 f.accountId도 삭제된 통장을 가리킬 수 있음 — 그러면 새 입출금
+    // 기록이 존재하지 않는 통장에 붙어서 어느 통장 잔액에도 안 잡히는 유령 데이터가 됨.
+    const aid = f.accountId && data.accounts.some((a) => a.id === f.accountId) ? f.accountId : data.accounts[0]?.id;
     const entry = { id: "b" + Date.now(), type: "out", amount: info.amount, date: todayISO(), memo: `${f.name} 자동이체`, accountId: aid, linkedFixedId: f.id, linkedFixedMonth: curKey };
     next.balanceEntries = [...(data.balanceEntries || []), entry];
     marker = entry.id;

@@ -83,7 +83,9 @@ export function autoProcessFixed(d) {
     const info = fixedInfo(f, curKey);
     if (!info.active) return f;
     changed = true;
-    const aid = f.accountId || d.accounts[0]?.id;
+    // f.accountId가 그 사이에 삭제된 통장을 가리킬 수 있음 — 그러면 자동이체 기록이
+    // 존재하지 않는 통장에 붙어서 어느 통장 잔액에도 안 잡히는 유령 데이터가 됨.
+    const aid = f.accountId && d.accounts.some((a) => a.id === f.accountId) ? f.accountId : d.accounts[0]?.id;
     const entryId = "b" + Date.now() + Math.floor(Math.random() * 1000);
     newEntries.push({ id: entryId, type: "out", amount: info.amount, date: dateStrFor(curKey, payDateDay), memo: `${f.name} 자동이체`, accountId: aid, linkedFixedId: f.id, linkedFixedMonth: curKey });
     return { ...f, paidMonths: { ...(f.paidMonths || {}), [curKey]: entryId } };
