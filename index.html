@@ -9,6 +9,18 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <!-- 예전엔 이 폰트를 컴포넌트 안 <style>에서 @import로 불러왔는데, 그러면
+         브라우저가 JS를 실행해서 React가 마운트된 다음에야 폰트 요청을 시작함.
+         여기 head에 두면 HTML을 읽는 즉시(스크립트 실행 전부터) 요청이 나가서
+         글씨가 기본폰트→실제폰트로 바뀌는 지연이 줄어듦. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=IBM+Plex+Mono:wght@500;600&display=swap" />
+    <style>
+      * { box-sizing: border-box; }
+      input, select { font-family: inherit; }
+      ::-webkit-scrollbar { display: none; }
+    </style>
   </head>
   <body style="margin:0;">
     <div id="root"></div>

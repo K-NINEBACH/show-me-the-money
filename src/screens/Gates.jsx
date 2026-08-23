@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { useTheme, THEMES, THEME_ORDER, F, inputSty, primaryBtn } from "../lib/theme";
 import { PALETTE } from "../lib/constants";
 import { monthKey, monthLabel, fixedInfo, fmtWon } from "../lib/data";
-import { MoneyInput, QuickAmountButtons, GoogleFonts, OnboardStep } from "../components/common";
+import { MoneyInput, QuickAmountButtons, OnboardStep } from "../components/common";
 
 export function Onboarding({ data, persist }) {
   const [step, setStep] = useState(0);
@@ -50,7 +50,6 @@ export function Onboarding({ data, persist }) {
 
   return (
     <div style={{ background: T.bg, minHeight: "100vh", display: "flex", flexDirection: "column", fontFamily: F.body, transition: "background 0.3s" }}>
-      <GoogleFonts />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 24px 100px" }}>
         {step > 0 && (
           <div style={{ display: "flex", gap: 6, marginBottom: 28 }}>
@@ -247,7 +246,6 @@ export function MonthWrapUp({ data, persist, wrapKey }) {
 
   return (
     <div style={{ background: T.bg, minHeight: "100vh", display: "flex", flexDirection: "column", fontFamily: F.body }}>
-      <GoogleFonts />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 24px 60px" }}>
         <div style={{ color: T.gold, fontFamily: F.display, fontSize: 15, letterSpacing: 1, marginBottom: 6 }}>{monthLabel(wrapKey)} 마무리</div>
         <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 30, fontWeight: 700, marginBottom: 4 }}>{fmtWon(total)}</div>

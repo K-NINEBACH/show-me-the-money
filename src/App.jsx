@@ -1,22 +1,35 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
 import { STORAGE_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F } from "./lib/theme";
 import { defaultData, migrate, autoProcessFixed, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO } from "./lib/data";
-import { GoogleFonts, NavBtn } from "./components/common";
+import { NavBtn } from "./components/common";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { Onboarding, MonthWrapUp } from "./screens/Gates";
 import { HomeView } from "./screens/Home";
 import { AddView } from "./screens/Add";
 import { LedgerView } from "./screens/Ledger";
-import { CalendarView } from "./screens/Calendar";
-import { SettingsView } from "./screens/Settings";
+// 홈/기록/내역은 매일 쓰는 탭이라 그대로 즉시 로드하고, 온보딩·월마감·달력·설정은
+// 자주 안 들어가는 화면이라 lazy로 분리 — 평소에 쓰는 3탭의 초기 로딩 크기를 줄여서
+// 앱을 켤 때 실제로 체감되는 속도를 개선함. 한 번 들어가면 서비스워커가 캐시해두니
+// 그다음부턴 이 지연도 없음.
+const Onboarding = lazy(() => import("./screens/Gates").then((m) => ({ default: m.Onboarding })));
+const MonthWrapUp = lazy(() => import("./screens/Gates").then((m) => ({ default: m.MonthWrapUp })));
+const CalendarView = lazy(() => import("./screens/Calendar").then((m) => ({ default: m.CalendarView })));
+const SettingsView = lazy(() => import("./screens/Settings").then((m) => ({ default: m.SettingsView })));
 
 export default function App() {
   return (
     <ErrorBoundary>
       <AppInner />
     </ErrorBoundary>
+  );
+}
+
+function LoadingGate({ T }) {
+  return (
+    <div style={{ background: T.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ color: T.cream, fontFamily: F.body }}>불러오는 중…</div>
+    </div>
   );
 }
 
@@ -66,7 +79,9 @@ function AppInner() {
   if (!data.onboarded) {
     return (
       <ThemeContext.Provider value={T}>
-        <Onboarding data={data} persist={persist} />
+        <Suspense fallback={<LoadingGate T={T} />}>
+          <Onboarding data={data} persist={persist} />
+        </Suspense>
       </ThemeContext.Provider>
     );
   }
@@ -75,7 +90,9 @@ function AppInner() {
   if (data.lastSeenMonth && data.lastSeenMonth !== nowMonthKey) {
     return (
       <ThemeContext.Provider value={T}>
-        <MonthWrapUp data={data} persist={persist} wrapKey={data.lastSeenMonth} />
+        <Suspense fallback={<LoadingGate T={T} />}>
+          <MonthWrapUp data={data} persist={persist} wrapKey={data.lastSeenMonth} />
+        </Suspense>
       </ThemeContext.Provider>
     );
   }
@@ -161,13 +178,16 @@ function AppInner() {
   return (
     <ThemeContext.Provider value={T}>
       <div style={S.appShell}>
-        <GoogleFonts />
         <div style={S.screen}>
           {tab === "home" && <HomeView ctx={ctx} />}
           {tab === "add" && <AddView ctx={ctx} />}
           {tab === "ledger" && <LedgerView ctx={ctx} />}
-          {tab === "calendar" && <CalendarView ctx={ctx} />}
-          {tab === "settings" && <SettingsView ctx={ctx} />}
+          {(tab === "calendar" || tab === "settings") && (
+            <Suspense fallback={<div style={{ color: T.muted, fontFamily: F.body, textAlign: "center", padding: "40px 0" }}>불러오는 중…</div>}>
+              {tab === "calendar" && <CalendarView ctx={ctx} />}
+              {tab === "settings" && <SettingsView ctx={ctx} />}
+            </Suspense>
+          )}
         </div>
         <nav style={S.nav}>
           <NavBtn icon={HomeIcon} label="홈" active={tab === "home"} onClick={() => setTab("home")} />

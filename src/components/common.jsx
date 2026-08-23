@@ -53,17 +53,6 @@ export function OnboardStep({ children }) {
   return <div style={{ width: "100%" }}>{children}</div>;
 }
 
-export function GoogleFonts() {
-  return (
-    <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
-      * { box-sizing: border-box; }
-      input, select { font-family: inherit; }
-      ::-webkit-scrollbar { display: none; }
-    `}</style>
-  );
-}
-
 export function NavBtn({ icon: Icon, label, active, onClick }) {
   const T = useTheme();
   return (
