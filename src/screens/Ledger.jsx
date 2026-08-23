@@ -295,6 +295,23 @@ export function LedgerView({ ctx }) {
     showToast("수정했어요 · 카드값/통장에 바로 반영됐어요");
   };
 
+  // 자동이체/출금처리로 생긴 balanceEntry는 linkedFixedId·linkedFixedMonth로 원래
+  // 고정지출의 paidMonths를 가리킴 — 여기서 지워도 그쪽 마커는 안 지워지면(홈에서
+  // "완료" 표시가 실제로는 없는 기록을 계속 가리키게 됨) 카드반영 삭제 때와 같은
+  // 문제라 똑같이 정리해줌.
+  const clearLinkedFixedMarker = (b, next) => {
+    if (!b.linkedFixedId || !b.linkedFixedMonth) return next;
+    return {
+      ...next,
+      fixedExpenses: (next.fixedExpenses || data.fixedExpenses).map((x) => {
+        if (x.id !== b.linkedFixedId || x.paidMonths?.[b.linkedFixedMonth] !== b.id) return x;
+        const pm = { ...x.paidMonths };
+        delete pm[b.linkedFixedMonth];
+        return { ...x, paidMonths: pm };
+      }),
+    };
+  };
+
   const removeBalance = (id) => {
     const b = data.balanceEntries.find((x) => x.id === id);
     if (!b) return;
@@ -305,7 +322,9 @@ export function LedgerView({ ctx }) {
       return;
     }
     if (!window.confirm("이 기록을 삭제할까요?")) return;
-    persist({ ...data, balanceEntries: data.balanceEntries.filter((x) => x.id !== id) });
+    let next = { ...data, balanceEntries: data.balanceEntries.filter((x) => x.id !== id) };
+    next = clearLinkedFixedMarker(b, next);
+    persist(next);
     showToast("삭제했어요");
   };
 
