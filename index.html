@@ -15,7 +15,11 @@
          글씨가 기본폰트→실제폰트로 바뀌는 지연이 줄어듦. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=IBM+Plex+Mono:wght@500;600&display=swap" />
+    <!-- 굵기는 실제 코드에서 쓰는 것만 받음(2026-08-23 정리): Noto Serif KR은
+         거의 전부 700(굵게)만 쓰고 500은 안 씀. IBM Plex Mono(금액 숫자용)는
+         600·700만 쓰고 500은 안 씀 — 예전엔 반대로 안 쓰는 500은 받고, 실제
+         쓰는 700은 안 받아서 숫자가 의도한 굵기보다 살짝 얇게 나오고 있었음. -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@700&family=IBM+Plex+Mono:wght@600;700&display=swap" />
     <style>
       * { box-sizing: border-box; }
       input, select { font-family: inherit; }
