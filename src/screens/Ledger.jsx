@@ -253,7 +253,11 @@ export function LedgerView({ ctx }) {
     setEditDate(e.date);
     setEditMemo(e.memo || "");
     setEditPaymentMethod(e.paymentMethod || "cash");
-    setEditCardId(e.cardId || data.cards[0]?.id || "");
+    // e.cardId가 그 사이에 삭제된 카드를 가리키고 있으면(설정에서 카드 삭제 가능)
+    // 셀렉트가 아무것도 안 고른 것처럼 보이다가, 안 건드리고 저장하면 어느 카드에도
+    // 실제로는 반영이 안 되는데 "반영됐어요" 토스트만 뜨는 조용한 실패로 이어짐.
+    const cardStillExists = data.cards.some((c) => c.id === e.cardId);
+    setEditCardId(cardStillExists ? e.cardId : data.cards[0]?.id || "");
     const linked = e.linkedBalanceId ? (data.balanceEntries || []).find((b) => b.id === e.linkedBalanceId) : null;
     setEditAccountId(linked?.accountId || data.accounts[0]?.id || "");
     setReimburseInput(String(e.amount));
