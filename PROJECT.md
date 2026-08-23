@@ -6,7 +6,10 @@
 
 ## 1. 기술 스택 / 실행
 
-- React 18 + Vite 5, 의존성은 `lucide-react`(아이콘)뿐. **차트 라이브러리 없음**(recharts 제거됨)
+- React 18 + Vite 5, 런타임 의존성은 `lucide-react`(아이콘)뿐. **차트 라이브러리 없음**(recharts 제거됨)
+- 빌드 전용(devDependencies)으로 `vite-plugin-pwa`가 있음 — 2026-08-23에 서비스워커
+  오프라인 프리캐시용으로 추가(아래 "체감 속도 최적화" 참고). 브라우저로 나가는 코드에는
+  전혀 안 실림, `npm run build`할 때만 관여함.
 - 스타일링 라이브러리 없이 **인라인 style 객체만** 사용
 - **2026-08-21 정리**: 혼자 쓰는 개인용 도구로 확정하면서 안 쓰던 기능(PIN 잠금·휴지통 복원·카테고리별 예산)을 걷어내고, 단일 2,800줄 `App.jsx`를 화면/로직별 여러 파일로 분리했음. `git log`에서 그 커밋 메시지로 찾아보면 변경 배경이 나옴.
 
@@ -24,7 +27,8 @@ passbook-app/
 ├── vite.config.js
 ├── public/
 │   ├── manifest.webmanifest   # PWA 설정 (앱 이름/아이콘/테마색)
-│   ├── sw.js                  # 서비스워커
+│   ├── sw.js                  # 서비스워커 소스 (빌드 시 vite-plugin-pwa가 dist/sw.js로
+│   │                            변환 — public/sw.js를 직접 배포하는 게 아님, 아래 참고)
 │   └── icons/icon-192.png, icon-512.png
 └── src/
     ├── main.jsx
@@ -70,6 +74,23 @@ passbook-app/
   있어서 그 자리들이 살짝 더 얇은 굵기로 대체 렌더링되고 있었음. `wght@700` /
   `wght@600;700`으로 정리해서 안 쓰는 굵기 파일은 안 받고, 숫자는 코드에 적힌 굵기
   그대로 나오게 함.
+- **서비스워커 설치 시점 프리캐시(`vite-plugin-pwa`, injectManifest 방식)**: 위 캐시
+  전략 개선까지는 "한 번 방문해야 캐시됨" 구조라, 오프라인으로 처음 켜거나 아직 한
+  번도 안 들어가본 탭(달력·설정처럼 lazy 분리된 것들)은 캐시가 없어서 못 떴음. Vite가
+  빌드마다 파일명 해시를 바꾸는 탓에 `public/sw.js`에 정적으로 목록을 못 넣었는데,
+  `vite-plugin-pwa`를 `strategies: "injectManifest"`로 붙여서 **빌드 시점에** 그 목록을
+  `public/sw.js` 안 `self.__WB_MANIFEST` 자리에 자동으로 채워 넣게 함(`vite.config.js`).
+  `manifest.webmanifest`는 원래 손으로 관리하던 것 그대로 두려고 `manifest: false`로
+  플러그인이 손 안 대게 막았고, 서비스워커 등록도 `main.jsx`에서 이미 직접 하고
+  있어서(`{type:"module"}` 없는 옛날 방식) `injectRegister: false` + `rollupFormat: "iife"`로
+  번들 결과물이 계속 클래식 스크립트로 나오게 함. `precacheAndRoute`/`cleanupOutdatedCaches`
+  (workbox-precaching)가 캐시 이름 버전 관리·정리까지 대신 해줘서, 위에서 손으로 하던
+  `v1→v2` 버전 올리기 같은 관리가 이제 필요 없음. precache 목록에 없는 요청(예:
+  `manifest.webmanifest`)만 `public/sw.js`의 남은 커스텀 `fetch` 핸들러가 처리.
+  **검증**: `npm run build` → `vite preview`로 실제 프로덕션 빌드를 띄우고, Playwright로
+  첫 방문(온라인) 후 `context.setOffline(true)`로 네트워크를 완전히 끊은 채 새로고침 →
+  홈 화면 정상 렌더링 + 아직 한 번도 안 들어가본 달력·설정 탭까지 오프라인 상태로 정상
+  클릭됨을 확인(콘솔 에러 없음).
 
 ### 배포
 GitHub 저장소 최상단에 폴더 안 파일들을 올리고 → Vercel "Add New Project" → Vite 자동 인식 → Deploy.

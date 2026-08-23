@@ -1,49 +1,47 @@
-// 배포 때마다 파일명 뒤 해시가 바뀌므로 버전을 올리면 activate에서 옛 캐시를 통째로 지움.
-const CACHE = "passbook-cache-v2";
+import { precacheAndRoute, cleanupOutdatedCaches } from "workbox-precaching";
 
-self.addEventListener("install", (event) => {
+// vite-plugin-pwa(injectManifest 방식)가 빌드할 때 이 배열을 그 빌드로 실제 나온
+// 파일 목록(파일명+콘텐츠 해시)으로 바꿔치기함. precacheAndRoute가 이 목록을 install
+// 시점에 미리 받아서 캐시해두고, 목록에 있는 요청은 캐시에서 바로 응답해줌 — 그래서
+// 오프라인 상태로 처음 켜거나 아직 한 번도 안 들어가본 탭이어도 뜰 수 있음.
+// cleanupOutdatedCaches는 새로 배포될 때마다 이전 배포에서 캐시해둔 옛 파일들을 자동
+// 정리해줌(예전엔 이걸 손으로 캐시 이름 버전(v1→v2)을 올려가며 관리했었음).
+const manifest = self.__WB_MANIFEST;
+precacheAndRoute(manifest);
+cleanupOutdatedCaches();
+
+// precacheAndRoute가 이미 응답을 처리하는 경로는 아래 커스텀 핸들러에서 건드리면
+// 안 됨(같은 요청에 respondWith를 두 번 부르면 에러남) — 그 목록을 미리 뽑아둠.
+// "/" 요청은 precacheAndRoute가 기본적으로 index.html에 매핑해서 처리하므로 같이 포함.
+const precachedPaths = new Set(
+  manifest.map((entry) => "/" + String(typeof entry === "string" ? entry : entry.url).replace(/^\/+/, ""))
+);
+if (precachedPaths.has("/index.html")) precachedPaths.add("/");
+
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  // v1 시절부터 매번 fetch마다 캐시에 계속 쌓이기만 하고 지워진 적이 없어서, 배포할
-  // 때마다 이전 해시의 JS 파일들이 브라우저 캐시에 그대로 누적돼 있었음 — 버전을
-  // 올릴 때마다 이전 캐시를 통째로 지워서 안 쓰는 옛 파일이 계속 쌓이지 않게 함.
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
+  event.waitUntil(self.clients.claim());
 });
+
+// 위 precache 목록에 없는 요청(예: manifest.webmanifest처럼 새로 추가되거나 목록에
+// 안 실린 것들)만 여기서 처리 — 네트워크 우선으로 최신을 받아오고, 오프라인이면
+// 캐시로 대체.
+const RUNTIME_CACHE = "passbook-runtime-cache";
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+  if (precachedPaths.has(url.pathname)) return;
 
-  // Vite가 내보내는 /assets/*.js는 파일명에 콘텐츠 해시가 붙어있어서, 캐시에
-  // 있으면 그게 곧 최신본이라는 뜻임(내용이 바뀌면 파일명 자체가 바뀌니까).
-  // 예전처럼 매번 네트워크부터 갔다 오면 앱을 켤 때마다 큰 JS 파일을 다시
-  // 받아오느라 느리게 느껴졌음 — 캐시에 있으면 그걸로 즉시 응답하고, 새 배포
-  // 확인용으로 네트워크 요청은 백그라운드로만 보내서 다음번 캐시를 채워둠.
-  if (url.pathname.startsWith("/assets/")) {
-    event.respondWith(
-      caches.match(event.request).then((cached) => {
-        const network = fetch(event.request)
-          .then((res) => { caches.open(CACHE).then((cache) => cache.put(event.request, res.clone())); return res; })
-          .catch(() => cached);
-        return cached || network;
-      })
-    );
-    return;
-  }
-
-  // index.html·manifest·아이콘 등은 배포 갱신을 바로 반영해야 하니 네트워크
-  // 우선, 오프라인일 때만 캐시로 대체.
   event.respondWith(
     fetch(event.request)
       .then((res) => {
         const clone = res.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, clone));
+        caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, clone));
         return res;
       })
       .catch(() => caches.match(event.request))
