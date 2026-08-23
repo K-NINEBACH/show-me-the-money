@@ -298,6 +298,33 @@ realRemaining  = spendingGoal - processedSpent   // 서브 "반영 전 여유"
 - 결제하기가 일시불만 출금하던 버그 → `bill + fixedPortion` 전액 출금으로 수정
 - 문자 파싱이 "누적" 금액·마스킹 이름을 메모에 넣던 버그
 
+### 2026-08-22~23: 전체 코드 훑기 — "삭제된 카드/통장을 계속 참조" 버그 계열
+사용자 요청("1부터 100까지 전부다 확인")으로 전체를 다시 훑으면서, 카드/통장을 삭제한
+뒤에도 다른 데이터가 그 id를 계속 들고 있어서 생기는 같은 패턴의 버그를 여러 곳에서
+발견·수정함. 공통 패턴: `f.cardId || data.cards[0]?.id` 처럼 **falsy만 걸러내는 폴백은
+"삭제된 카드의 id"(truthy)를 못 잡아낸다** — 그러면 실제로는 아무 카드/통장도 안
+바뀌었는데 성공 토스트만 뜨는 조용한 실패가 생김. 고친 곳:
+- `fixedSum`이 "카드반영" 누른 뒤에도 그 항목을 이중으로 잡던 버그 (App.jsx)
+- `autoProcessFixed`의 `autoPayDay=31`이 30일 이하 달엔 영원히 안 걸리던 버그, `aid` 유효성 (lib/data.js)
+- `TransitQuickAdd`/`markFixedPaid`/Ledger `startEdit`/Add `findRecentDefaults` — 삭제된
+  카드·통장을 기본값으로 들고 있던 것들에 `data.cards.some(...)` 검증 추가
+- `removeBalance`가 연결된 `fixedExpenses[].paidMonths` 마커를 안 지우던 것
+- `isCardAdjustment` 지출을 수정할 때 결제수단/카드를 바꿀 수 있어서 원본 고정지출
+  마커와 어긋날 수 있던 것 → 수정 폼에서 그 필드들 비활성화
+- **`settleReceivable`의 `settlementCardId`**(Home.jsx) — 대리결제 원래 카드가 삭제된
+  상태로 부족분 정산하면 어느 카드값에도 안 반영되면서 "카드값에 반영됐어요" 토스트만
+  뜨던 것
+- **`removeCard`가 `fixedExpenses`를 안 건드리던 것**(Settings.jsx) — 할부/카드매달반복이
+  삭제된 카드를 계속 가리키면 `cardTotals.fixedPortion` 집계에서 안 잡혀서 그 금액이
+  예산 계산(`spent`)에서 통째로 조용히 빠짐. 카드 삭제 시 남은 첫 카드로 재배정하도록
+  수정 + 확인창에 영향받는 건수 안내 추가. `App.jsx`의 `fixedPortion` 매칭도 방어적으로
+  보강(옛 백업으로 들어온 유효하지 않은 cardId 대비)
+- 안 쓰이던 `StatCard` 컴포넌트 제거 (`components/common.jsx`)
+
+검토했지만 **문제없다고 확인**한 것: `unmarkFixedPaid`/`remove()`/`saveEdit()`의 카드값
+"되돌리기" 폴백은 삭제된 카드를 가리켜도 안전함 — 되돌릴 대상 자체가 카드와 함께
+이미 사라졌으니 아무것도 안 하는 게 맞는 동작.
+
 ---
 
 ## 9. 용어 통일 (UI 문구)

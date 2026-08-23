@@ -45,11 +45,25 @@ export function SettingsView({ ctx }) {
     if (data.cards.length <= 1) return showToast("카드가 최소 1개는 있어야 해요");
     const card = data.cards.find((c) => c.id === id);
     const bill = Number(card?.bill || 0);
-    const msg = bill > 0
-      ? `"${card?.name}" 카드를 삭제할까요? 아직 남은 카드값 ${fmtWon(bill)}은 그대로 사라져요.`
-      : `"${card?.name}" 카드를 삭제할까요?`;
+    const linkedFixedCount = (data.fixedExpenses || []).filter((f) => (f.paymentMethod || "cash") === "card" && f.cardId === id).length;
+    const notes = [];
+    if (bill > 0) notes.push(`아직 남은 카드값 ${fmtWon(bill)}은 그대로 사라져요`);
+    if (linkedFixedCount > 0) notes.push(`이 카드로 연결된 고정지출 ${linkedFixedCount}건은 남은 카드로 옮겨져요`);
+    const msg = notes.length ? `"${card?.name}" 카드를 삭제할까요? ${notes.join(", ")}.` : `"${card?.name}" 카드를 삭제할까요?`;
     if (!window.confirm(msg)) return;
-    persist({ ...data, cards: data.cards.filter((c) => c.id !== id) });
+    const remainingCards = data.cards.filter((c) => c.id !== id);
+    const fallbackCardId = remainingCards[0]?.id;
+    persist({
+      ...data,
+      cards: remainingCards,
+      // f.cardId가 삭제된 카드를 계속 가리키면, 할부/카드반복 고정지출의 이번달 몫이
+      // 어느 카드의 fixedPortion에도 안 잡혀서(App.jsx cardTotals 집계는 카드ID로
+      // 매칭) 예산 계산에서 그 금액이 통째로 조용히 빠지게 됨 — 남은 첫 카드로 옮겨서
+      // 계속 정상 집계되게 함.
+      fixedExpenses: (data.fixedExpenses || []).map((f) => (
+        (f.paymentMethod || "cash") === "card" && f.cardId === id ? { ...f, cardId: fallbackCardId } : f
+      )),
+    });
   };
   const addCardBill = (cardId) => {
     const n = Number(cardAddInput);

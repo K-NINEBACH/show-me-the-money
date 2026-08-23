@@ -108,7 +108,12 @@ function AppInner() {
   const totalSpentThisMonth = normalSpent + cardSpentThisCycle + fixedSumAll;
 
   const cardTotals = cards.map((c) => {
-    const fixedPortion = fixedCardInstallment.filter((f) => (f.cardId || cards[0]?.id) === c.id).reduce((s, f) => s + Number(f.info.amount), 0);
+    // f.cardId가 (예: JSON 백업을 통해 들어온) 이미 삭제된 카드를 가리키면 어느 카드와도
+    // 매칭이 안 돼서 이 할부 몫이 예산 계산에서 통째로 조용히 빠짐 — 유효하지 않으면
+    // 첫 카드로 몰아서 최소한 어딘가엔 집계되게 함.
+    const fixedPortion = fixedCardInstallment
+      .filter((f) => (f.cardId && cards.some((cc) => cc.id === f.cardId) ? f.cardId : cards[0]?.id) === c.id)
+      .reduce((s, f) => s + Number(f.info.amount), 0);
     return { ...c, fixedPortion, total: Number(c.bill || 0) + fixedPortion };
   });
   const cardBillTotal = cardTotals.reduce((s, c) => s + c.total, 0);

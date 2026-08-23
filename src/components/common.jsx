@@ -88,13 +88,3 @@ export function Field({ label, children }) {
     </div>
   );
 }
-
-export function StatCard({ label, value }) {
-  const T = useTheme();
-  return (
-    <div style={{ flex: 1, background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 10px" }}>
-      <div style={{ color: T.muted, fontSize: 13, marginBottom: 4 }}>{label}</div>
-      <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 15.5, fontWeight: 600 }}>{value}</div>
-    </div>
-  );
-}

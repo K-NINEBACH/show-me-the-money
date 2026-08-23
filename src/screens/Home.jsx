@@ -207,7 +207,9 @@ export function settleReceivable(ctx, exp, repaidAmount) {
   let next = { ...data };
   if (diff < 0) {
     settlementCardDelta = Math.abs(diff);
-    settlementCardId = exp.cardId || data.cards[0]?.id;
+    // exp.cardId가 그 사이에 삭제된 카드를 가리킬 수 있음 — 확인 안 하면 부족분이
+    // 어느 카드값에도 안 반영된 채로 "카드값에 반영됐어요" 토스트만 뜨는 유령 처리가 됨.
+    settlementCardId = exp.cardId && data.cards.some((c) => c.id === exp.cardId) ? exp.cardId : data.cards[0]?.id;
     next.cards = data.cards.map((c) => (c.id === settlementCardId ? { ...c, bill: Number(c.bill || 0) + settlementCardDelta } : c));
   } else if (diff > 0) {
     settlementBalanceId = "b" + Date.now();
