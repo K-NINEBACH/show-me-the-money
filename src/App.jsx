@@ -153,9 +153,22 @@ function AppInner() {
 
   const prevKey = monthKeyOffset(curKey, -1);
   const prevMonthExpenses = data.expenses.filter((e) => !e.isReceivable && e.date.slice(0, 7) === prevKey);
-  const prevSpentDirect = prevMonthExpenses.reduce((s, e) => s + Number(e.amount), 0);
+  // totalSpentThisMonth과 같은 방식으로 계산해야 공평한 비교가 됨 — "카드반영"으로 생긴
+  // isCardAdjustment 항목은 fixedSumAll(예측치) 쪽에서 이미 잡고 있어서, 실제 지출
+  // 합산에서까지 더하면 이중계산됨. 예전엔 이 구분 없이 그냥 다 더해서, 카드반영을 쓴
+  // 달일수록 "지난달 총 지출"이 실제보다 부풀려져 있었음.
+  const prevNormalSpent = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") !== "card").reduce((s, e) => s + Number(e.amount), 0);
+  const prevCardSpent = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") === "card" && !e.isCardAdjustment).reduce((s, e) => s + Number(e.amount), 0);
   const prevFixedSum = data.fixedExpenses.map((f) => fixedInfo(f, prevKey)).filter((i) => i.active).reduce((s, i) => s + Number(i.amount), 0);
-  const prevTotalSpent = prevSpentDirect + prevFixedSum;
+  const prevTotalSpent = prevNormalSpent + prevCardSpent + prevFixedSum;
+  // 홈 화면의 "지난달 대비"는 이번 달 지금까지(진행 중)와 지난달 전체(이미 끝난 달)를
+  // 그냥 비교하면 월초일수록 무조건 크게 줄어든 것처럼 보임(비교 기간 길이가 다르니까) —
+  // 달력 탭의 "지난달 이맘때보다"처럼 지난달도 오늘과 같은 날짜까지만 잘라서 비교해야
+  // 공평함. 고정지출은 날짜 단위로 나뉘는 개념이 아니라(한 달치가 통째로 잡힘) 안 자름.
+  const prevCutoff = Math.min(dayIntoCycle, daysInMonthKey(prevKey));
+  const prevNormalSpentToDate = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") !== "card" && Number(e.date.slice(8, 10)) <= prevCutoff).reduce((s, e) => s + Number(e.amount), 0);
+  const prevCardSpentToDate = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") === "card" && !e.isCardAdjustment && Number(e.date.slice(8, 10)) <= prevCutoff).reduce((s, e) => s + Number(e.amount), 0);
+  const prevTotalSpentToDate = prevNormalSpentToDate + prevCardSpentToDate + prevFixedSum;
 
   const spent = normalSpent + fixedSum + cardBillTotal;
   const spendingGoal = data.spendingGoal || 0;
@@ -180,7 +193,7 @@ function AppInner() {
 
   const ctx = {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
-    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent,
+    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, prevTotalSpentToDate,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,
   };
 

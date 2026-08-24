@@ -138,9 +138,12 @@ function ReceivablesCard({ ctx, receivables, catMap }) {
 // one, since they were just restating the same month's spend in different shapes.
 function SummaryCard({ ctx }) {
   const T = useTheme();
-  const { curKey, totalSpentThisMonth, prevTotalSpent, fixedSumAll, normalSpent } = ctx;
-  const hasPrev = prevTotalSpent > 0;
-  const pct = hasPrev ? Math.round(((totalSpentThisMonth - prevTotalSpent) / prevTotalSpent) * 100) : null;
+  const { curKey, totalSpentThisMonth, prevTotalSpentToDate, fixedSumAll, normalSpent } = ctx;
+  // 이번 달(진행 중, 지금까지분)과 지난달 "전체"를 그냥 비교하면 월초일수록 무조건 크게
+  // 줄어든 것처럼 보임 — prevTotalSpentToDate는 지난달도 오늘과 같은 날짜까지만 잘라서
+  // 계산한 값이라(App.jsx) 진행 속도를 공평하게 비교할 수 있음.
+  const hasPrev = prevTotalSpentToDate > 0;
+  const pct = hasPrev ? Math.round(((totalSpentThisMonth - prevTotalSpentToDate) / prevTotalSpentToDate) * 100) : null;
   const up = pct != null && pct > 0;
   return (
     <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
@@ -148,7 +151,7 @@ function SummaryCard({ ctx }) {
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
         <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 16.5, fontWeight: 700 }}>총 지출 {fmtWon(totalSpentThisMonth)}</div>
         <div style={{ fontSize: 15, fontWeight: 700, color: pct == null ? T.muted : up ? T.danger : T.good }}>
-          {pct == null ? "지난달 비교 데이터 없음" : `지난달 대비 ${up ? "+" : ""}${pct}%`}
+          {pct == null ? "지난달 비교 데이터 없음" : `지난달 이맘때보다 ${up ? "+" : ""}${pct}%`}
         </div>
       </div>
       <div style={{ color: T.muted, fontSize: 13.5, marginTop: 4 }}>고정지출 {fmtWon(fixedSumAll)} · 현금지출 {fmtWon(normalSpent)}</div>
