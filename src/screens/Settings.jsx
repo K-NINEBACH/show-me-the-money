@@ -103,15 +103,25 @@ export function SettingsView({ ctx }) {
   const removeAccount = (id) => {
     if (data.accounts.length <= 1) return showToast("통장이 최소 1개는 있어야 해요");
     const acc = data.accounts.find((a) => a.id === id);
-    if (!window.confirm(`"${acc?.name}" 통장을 삭제할까요? 이 통장의 입출금 기록도 같이 사라져요.`)) return;
+    const linkedFixedCount = (data.fixedExpenses || []).filter((f) => (f.paymentMethod || "cash") === "cash" && f.accountId === id).length;
+    const note = linkedFixedCount > 0 ? ` 이 통장으로 연결된 고정지출 ${linkedFixedCount}건은 남은 통장으로 옮겨져요.` : "";
+    if (!window.confirm(`"${acc?.name}" 통장을 삭제할까요? 이 통장의 입출금 기록도 같이 사라져요.${note}`)) return;
     const linkedBalanceIds = new Set((data.balanceEntries || []).filter((b) => b.accountId === id).map((b) => b.id));
+    const remainingAccounts = data.accounts.filter((a) => a.id !== id);
+    const fallbackAccountId = remainingAccounts[0]?.id;
     persist({
       ...data,
-      accounts: data.accounts.filter((a) => a.id !== id),
+      accounts: remainingAccounts,
       balanceEntries: (data.balanceEntries || []).filter((b) => b.accountId !== id),
       // 이 통장으로 낸 현금 지출이 가리키던 balanceEntry가 방금 같이 지워졌으니,
       // 그 연결도 끊어줌 — 안 그러면 존재하지 않는 balanceEntry를 계속 참조하게 됨.
       expenses: data.expenses.map((e) => (e.linkedBalanceId && linkedBalanceIds.has(e.linkedBalanceId) ? { ...e, linkedBalanceId: null } : e)),
+      // 카드 삭제 때와 같은 이유 — 삭제되는 통장을 계속 가리키는 통장형 고정지출이 있으면
+      // 자동이체 대상 통장 표시가 빈 이름으로 보이거나, autoProcessFixed/출금처리가 매번
+      // 남은 첫 통장으로 조용히 대체되는 게 반복되는 대신 여기서 한 번에 정리해줌.
+      fixedExpenses: (data.fixedExpenses || []).map((f) => (
+        (f.paymentMethod || "cash") === "cash" && f.accountId === id ? { ...f, accountId: fallbackAccountId } : f
+      )),
     });
   };
   const saveSpendingGoal = () => { const n = Number(spendingGoalInput); if (Number.isNaN(n) || n < 0) return showToast("올바른 금액을 입력해주세요"); persist({ ...data, spendingGoal: n }); showToast("목표 지출액을 저장했어요"); };

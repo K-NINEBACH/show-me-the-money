@@ -169,12 +169,13 @@ export function LedgerView({ ctx }) {
   const receivableTotal = categoryReceivables.reduce((s, e) => s + Number(e.amount), 0);
   // 카드값 실제 구성 = 카드로 기록된 지출 전액 + 대리결제 정산에서 모자라게 받아 카드값에
   // 얹힌 부분만(초과분·정산 전·정확히 받은 건은 카드값에 안 잡히므로 제외).
-  const cardSettledShortfall = categoryReceivables.reduce((s, e) => {
-    if (!e.settled) return s;
-    const diff = Number(e.repaidAmount) - Number(e.amount);
-    return s + (diff < 0 ? -diff : 0);
-  }, 0);
+  const cardShortfallReceivables = categoryReceivables.filter((e) => e.settled && Number(e.repaidAmount) - Number(e.amount) < 0);
+  const cardSettledShortfall = cardShortfallReceivables.reduce((s, e) => s + (Number(e.amount) - Number(e.repaidAmount)), 0);
   const cardListTotal = categoryExpenses.reduce((s, e) => s + Number(e.amount), 0) + cardSettledShortfall;
+  // "카드값에 반영된 지출 합계"에 카드 지출뿐 아니라 부족분이 카드값에 얹힌 대리결제도
+  // 금액으로는 들어가 있는데, 옆의 건수는 카드 지출 개수만 세고 있어서 "전체 흐름"에서
+  // 있었던 것과 같은 건수·금액 불일치가 있었음 — 부족분에 걸린 대리결제 건수도 같이 셈.
+  const cardListCount = categoryExpenses.length + cardShortfallReceivables.length;
   const balanceInTotal = categoryBalance.filter((b) => b.type === "in").reduce((s, b) => s + Number(b.amount), 0);
   const balanceOutTotal = categoryBalance.filter((b) => b.type === "out").reduce((s, b) => s + Number(b.amount), 0);
 
@@ -412,7 +413,7 @@ export function LedgerView({ ctx }) {
   );
 
   let totalsLine = null;
-  if (category === "card") totalsLine = <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>카드값에 반영된 지출 합계 {fmtWon(cardListTotal)} · {categoryExpenses.length}건</div>;
+  if (category === "card") totalsLine = <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>카드값에 반영된 지출 합계 {fmtWon(cardListTotal)} · {cardListCount}건</div>;
   else if (category === "receivable") totalsLine = <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>합계 {fmtWon(receivableTotal)} · {categoryReceivables.length}건</div>;
   else if (category === "balance") totalsLine = (
     <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>
