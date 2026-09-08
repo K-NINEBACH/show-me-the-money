@@ -2,7 +2,7 @@
 import { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTheme, F, paperCard } from "../lib/theme";
-import { fmtWon, monthLabel, monthKeyOffset, daysInMonthKey, firstWeekday, dateStrFor, todayISO } from "../lib/data";
+import { fmtWon, netAmount, monthLabel, monthKeyOffset, daysInMonthKey, firstWeekday, dateStrFor, todayISO } from "../lib/data";
 
 export function CalendarView({ ctx }) {
   const T = useTheme();
@@ -12,11 +12,16 @@ export function CalendarView({ ctx }) {
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
 
   const monthExpenses = useMemo(() => data.expenses.filter((e) => !e.isReceivable && e.date.slice(0, 7) === viewKey), [data.expenses, viewKey]);
-  const monthTotal = monthExpenses.reduce((s, e) => s + Number(e.amount), 0);
+  /*
+    합계는 전부 netAmount로 낸다 — 돌려받은 몫은 내가 쓴 돈이 아니다.
+    아래 날짜별 목록의 줄은 실제 결제 금액(amount)을 그대로 보여주되,
+    돌려받은 게 있으면 '정산받음'을 붙여서 합계와 어긋나 보이지 않게 한다.
+  */
+  const monthTotal = monthExpenses.reduce((s, e) => s + netAmount(e), 0);
 
   const dailyTotals = useMemo(() => {
     const map = {};
-    monthExpenses.forEach((e) => { const day = Number(e.date.slice(8, 10)); map[day] = (map[day] || 0) + Number(e.amount); });
+    monthExpenses.forEach((e) => { const day = Number(e.date.slice(8, 10)); map[day] = (map[day] || 0) + netAmount(e); });
     return map;
   }, [monthExpenses]);
 
@@ -37,7 +42,7 @@ export function CalendarView({ ctx }) {
 
   const topCategory = useMemo(() => {
     const map = {};
-    monthExpenses.forEach((e) => { map[e.categoryId] = (map[e.categoryId] || 0) + Number(e.amount); });
+    monthExpenses.forEach((e) => { map[e.categoryId] = (map[e.categoryId] || 0) + netAmount(e); });
     const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]);
     return sorted.length ? catMap[sorted[0][0]]?.name : null;
   }, [monthExpenses]);
@@ -48,8 +53,8 @@ export function CalendarView({ ctx }) {
     const todayDay = Number(todayISO().slice(8, 10));
     const cutoff = isCurrentMonth ? todayDay : daysInMonthKey(viewKey);
     const prevCutoff = Math.min(cutoff, daysInMonthKey(prevKey));
-    const curSum = monthExpenses.filter((e) => Number(e.date.slice(8, 10)) <= cutoff).reduce((s, e) => s + Number(e.amount), 0);
-    const prevSum = data.expenses.filter((e) => !e.isReceivable && e.date.slice(0, 7) === prevKey && Number(e.date.slice(8, 10)) <= prevCutoff).reduce((s, e) => s + Number(e.amount), 0);
+    const curSum = monthExpenses.filter((e) => Number(e.date.slice(8, 10)) <= cutoff).reduce((s, e) => s + netAmount(e), 0);
+    const prevSum = data.expenses.filter((e) => !e.isReceivable && e.date.slice(0, 7) === prevKey && Number(e.date.slice(8, 10)) <= prevCutoff).reduce((s, e) => s + netAmount(e), 0);
     if (prevSum <= 0) return null;
     const pct = Math.round(((curSum - prevSum) / prevSum) * 100);
     return { pct, up: pct > 0 };
@@ -139,6 +144,7 @@ export function CalendarView({ ctx }) {
                       <span style={{ fontSize: 12.5, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
                         {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
                       </span>
+                      {e.reimbursedAmount != null && <span style={{ fontSize: 11.5, marginLeft: 6, fontWeight: 700, color: T.good }}>정산받음 {fmtWon(e.reimbursedAmount)}</span>}
                     </div>
                     {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 13 }}>{e.memo}</div>}
                   </div>

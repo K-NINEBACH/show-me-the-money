@@ -4,7 +4,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { useTheme, THEMES, THEME_ORDER, F, inputSty, primaryBtn } from "../lib/theme";
 import { PALETTE } from "../lib/constants";
-import { monthKey, monthLabel, fixedInfo, fmtWon } from "../lib/data";
+import { monthKey, monthLabel, fixedInfo, fmtWon, netAmount } from "../lib/data";
 import { MoneyInput, QuickAmountButtons, OnboardStep } from "../components/common";
 
 export function Onboarding({ data, persist }) {
@@ -230,10 +230,11 @@ export function Onboarding({ data, persist }) {
 export function MonthWrapUp({ data, persist, wrapKey }) {
   const T = useTheme();
   const monthExpenses = data.expenses.filter((e) => !e.isReceivable && e.date.slice(0, 7) === wrapKey);
-  const total = monthExpenses.reduce((s, e) => s + Number(e.amount), 0);
+  // 월마감 요약도 내가 부담한 금액으로 — 홈·달력·내역과 같은 기준이어야 한다
+  const total = monthExpenses.reduce((s, e) => s + netAmount(e), 0);
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
   const catTotals = {};
-  monthExpenses.forEach((e) => { catTotals[e.categoryId] = (catTotals[e.categoryId] || 0) + Number(e.amount); });
+  monthExpenses.forEach((e) => { catTotals[e.categoryId] = (catTotals[e.categoryId] || 0) + netAmount(e); });
   const topCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).slice(0, 3);
   const unpaidCount = data.fixedExpenses.filter((f) => {
     const info = fixedInfo(f, wrapKey);

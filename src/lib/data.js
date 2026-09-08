@@ -102,6 +102,24 @@ export function autoProcessFixed(d) {
 
 
 export function fmtWon(n) { return Math.round(n).toLocaleString("ko-KR") + "원"; }
+
+/*
+  **내가 실제로 부담한 금액.**
+
+  대리결제처럼 나중에 돌려받은 몫(reimbursedAmount)은 내 소비가 아니다.
+  기록에 남는 amount는 카드사에 실제로 청구된 액수라 그대로 두고,
+  **합계를 낼 때만** 돌려받은 만큼을 뺀다.
+
+  이걸 안 쓰고 amount를 그냥 더하면 남의 몫까지 내가 쓴 것으로 잡힌다 —
+  코스트코에서 566,020원을 긁고 494,160원을 받았는데도 566,020원을 쓴
+  사람으로 세는 식이다. 과소비를 막으려고 만든 앱이 반대로 겁을 준다.
+
+  reimbursedAmount는 예전부터 저장은 되고 있었지만 **어느 합계도 이 값을
+  읽지 않았다**(2026-09-08에 발견). 홈 게이지·달력·내역이 전부 그랬다.
+*/
+export function netAmount(e) {
+  return Number(e.amount) - Number(e.reimbursedAmount || 0);
+}
 export function createdTime(item) {
   const digits = String(item?.id || "").replace(/\D/g, "");
   return digits ? Number(digits) : 0;

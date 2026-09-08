@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
 import { STORAGE_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F } from "./lib/theme";
-import { defaultData, migrate, autoProcessFixed, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO } from "./lib/data";
+import { defaultData, migrate, autoProcessFixed, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
 import { NavBtn } from "./components/common";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { HomeView } from "./screens/Home";
@@ -120,11 +120,24 @@ function AppInner() {
   const dayIntoCycle = today.getDate();
 
   const cycleExpenses = data.expenses.filter((e) => e.date.slice(0, 7) === curKey && !e.isReceivable);
-  const todaySpent = cycleExpenses.filter((e) => e.date === todayISO()).reduce((s, e) => s + Number(e.amount), 0);
-  const normalSpent = cycleExpenses.filter((e) => (e.paymentMethod || "cash") !== "card").reduce((s, e) => s + Number(e.amount), 0);
+  const todaySpent = cycleExpenses.filter((e) => e.date === todayISO()).reduce((s, e) => s + netAmount(e), 0);
+  const normalSpent = cycleExpenses.filter((e) => (e.paymentMethod || "cash") !== "card").reduce((s, e) => s + netAmount(e), 0);
   // isCardAdjustment 항목(정기결제 "카드반영")은 제외 — fixedSumAll이 이 금액을 매달
   // 이미 반영 여부와 무관하게 미리 포함하고 있어서, 여기서도 더하면 이중 계산됨.
-  const cardSpentThisCycle = cycleExpenses.filter((e) => (e.paymentMethod || "cash") === "card" && !e.isCardAdjustment).reduce((s, e) => s + Number(e.amount), 0);
+  const cardSpentThisCycle = cycleExpenses.filter((e) => (e.paymentMethod || "cash") === "card" && !e.isCardAdjustment).reduce((s, e) => s + netAmount(e), 0);
+
+  /*
+    카드로 대신 내주고 돌려받은 돈.
+
+    카드 지출은 spent에 cardBillTotal(카드사에 낼 실제 청구액)로 들어간다.
+    청구액은 돌려받은 것과 무관하게 전액 그대로라 netAmount로는 안 빠진다.
+    그래서 이 몫만 따로 한 번 뺀다 — 카드값은 나가지만 그만큼 통장으로
+    이미 들어왔으니, 이번 달 내 주머니에서 실제로 줄어든 돈은 그 차액이다.
+
+    (현금으로 대신 낸 것은 normalSpent가 이미 net이라 여기서 세면 두 번 뺀다)
+  */
+  const cardReimbursedThisCycle = cycleExpenses.filter((e) => (e.paymentMethod || "cash") === "card").reduce((s, e) => s + Number(e.reimbursedAmount || 0), 0);
+  const reimbursedThisCycle = cycleExpenses.reduce((s, e) => s + Number(e.reimbursedAmount || 0), 0);
 
   const cards = data.cards && data.cards.length ? data.cards : [{ id: "card1", name: "카드", bill: 0 }];
   const fixedActiveAll = data.fixedExpenses.map((f) => ({ ...f, info: fixedInfo(f, curKey) })).filter((f) => f.info.active);
@@ -157,8 +170,8 @@ function AppInner() {
   // isCardAdjustment 항목은 fixedSumAll(예측치) 쪽에서 이미 잡고 있어서, 실제 지출
   // 합산에서까지 더하면 이중계산됨. 예전엔 이 구분 없이 그냥 다 더해서, 카드반영을 쓴
   // 달일수록 "지난달 총 지출"이 실제보다 부풀려져 있었음.
-  const prevNormalSpent = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") !== "card").reduce((s, e) => s + Number(e.amount), 0);
-  const prevCardSpent = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") === "card" && !e.isCardAdjustment).reduce((s, e) => s + Number(e.amount), 0);
+  const prevNormalSpent = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") !== "card").reduce((s, e) => s + netAmount(e), 0);
+  const prevCardSpent = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") === "card" && !e.isCardAdjustment).reduce((s, e) => s + netAmount(e), 0);
   const prevFixedSum = data.fixedExpenses.map((f) => fixedInfo(f, prevKey)).filter((i) => i.active).reduce((s, i) => s + Number(i.amount), 0);
   const prevTotalSpent = prevNormalSpent + prevCardSpent + prevFixedSum;
   // 홈 화면의 "지난달 대비"는 이번 달 지금까지(진행 중)와 지난달 전체(이미 끝난 달)를
@@ -166,11 +179,11 @@ function AppInner() {
   // 달력 탭의 "지난달 이맘때보다"처럼 지난달도 오늘과 같은 날짜까지만 잘라서 비교해야
   // 공평함. 고정지출은 날짜 단위로 나뉘는 개념이 아니라(한 달치가 통째로 잡힘) 안 자름.
   const prevCutoff = Math.min(dayIntoCycle, daysInMonthKey(prevKey));
-  const prevNormalSpentToDate = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") !== "card" && Number(e.date.slice(8, 10)) <= prevCutoff).reduce((s, e) => s + Number(e.amount), 0);
-  const prevCardSpentToDate = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") === "card" && !e.isCardAdjustment && Number(e.date.slice(8, 10)) <= prevCutoff).reduce((s, e) => s + Number(e.amount), 0);
+  const prevNormalSpentToDate = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") !== "card" && Number(e.date.slice(8, 10)) <= prevCutoff).reduce((s, e) => s + netAmount(e), 0);
+  const prevCardSpentToDate = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") === "card" && !e.isCardAdjustment && Number(e.date.slice(8, 10)) <= prevCutoff).reduce((s, e) => s + netAmount(e), 0);
   const prevTotalSpentToDate = prevNormalSpentToDate + prevCardSpentToDate + prevFixedSum;
 
-  const spent = normalSpent + fixedSum + cardBillTotal;
+  const spent = normalSpent + fixedSum + cardBillTotal - cardReimbursedThisCycle;
   const spendingGoal = data.spendingGoal || 0;
   const hasGoal = spendingGoal > 0;
   const remaining = spendingGoal - spent;
@@ -193,7 +206,7 @@ function AppInner() {
 
   const ctx = {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
-    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, prevTotalSpentToDate,
+    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,
   };
 

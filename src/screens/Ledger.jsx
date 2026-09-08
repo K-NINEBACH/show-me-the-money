@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Pencil, Trash2, ArrowDownCircle, ArrowUpCircle, Search } from "lucide-react";
 import { useTheme, F, paperCard, inputSty, primaryBtn } from "../lib/theme";
-import { fmtWon, createdTime, dateStrFor, monthKeyOffset, todayISO } from "../lib/data";
+import { fmtWon, createdTime, dateStrFor, monthKeyOffset, todayISO, netAmount } from "../lib/data";
 import { MoneyInput, QuickAmountButtons } from "../components/common";
 import { settleReceivable } from "./Home";
 
@@ -165,13 +165,20 @@ export function LedgerView({ ctx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoryExpenses, categoryReceivables, categoryBalance, amountSort]);
 
-  const totalSpent = categoryExpenses.reduce((s, e) => s + Number(e.amount), 0);
+  /*
+    합계는 내가 부담한 금액(netAmount)으로 낸다. 줄마다 보이는 숫자는 실제
+    결제액이라 단순히 더하면 이 합계와 다른데, 그 차이가 곧 돌려받은 돈이다.
+    그래서 아래 총계 옆에 얼마를 뺐는지 적어 준다 — 안 적으면 '이 줄들을
+    더하면 이 금액이 아닌데?'가 된다. 이 저장소에서 세 번 나온 병이다.
+  */
+  const totalSpent = categoryExpenses.reduce((s, e) => s + netAmount(e), 0);
+  const reimbursedInView = categoryExpenses.reduce((s, e) => s + Number(e.reimbursedAmount || 0), 0);
   const receivableTotal = categoryReceivables.reduce((s, e) => s + Number(e.amount), 0);
   // 카드값 실제 구성 = 카드로 기록된 지출 전액 + 대리결제 정산에서 모자라게 받아 카드값에
   // 얹힌 부분만(초과분·정산 전·정확히 받은 건은 카드값에 안 잡히므로 제외).
   const cardShortfallReceivables = categoryReceivables.filter((e) => e.settled && Number(e.repaidAmount) - Number(e.amount) < 0);
   const cardSettledShortfall = cardShortfallReceivables.reduce((s, e) => s + (Number(e.amount) - Number(e.repaidAmount)), 0);
-  const cardListTotal = categoryExpenses.reduce((s, e) => s + Number(e.amount), 0) + cardSettledShortfall;
+  const cardListTotal = categoryExpenses.reduce((s, e) => s + netAmount(e), 0) + cardSettledShortfall;
   // "카드값에 반영된 지출 합계"에 카드 지출뿐 아니라 부족분이 카드값에 얹힌 대리결제도
   // 금액으로는 들어가 있는데, 옆의 건수는 카드 지출 개수만 세고 있어서 "전체 흐름"에서
   // 있었던 것과 같은 건수·금액 불일치가 있었음 — 부족분에 걸린 대리결제 건수도 같이 셈.
@@ -413,7 +420,12 @@ export function LedgerView({ ctx }) {
   );
 
   let totalsLine = null;
-  if (category === "card") totalsLine = <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>카드값에 반영된 지출 합계 {fmtWon(cardListTotal)} · {cardListCount}건</div>;
+  if (category === "card") totalsLine = (
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700 }}>카드값에 반영된 지출 합계 {fmtWon(cardListTotal)} · {cardListCount}건</div>
+      {reimbursedInView > 0 && <div style={{ color: T.good, fontSize: 12.5, fontWeight: 700, marginTop: 2 }}>정산받은 {fmtWon(reimbursedInView)}은 뺐어요</div>}
+    </div>
+  );
   else if (category === "receivable") totalsLine = <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>합계 {fmtWon(receivableTotal)} · {categoryReceivables.length}건</div>;
   else if (category === "balance") totalsLine = (
     <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>
@@ -425,7 +437,10 @@ export function LedgerView({ ctx }) {
     // combined.length(대리결제·입출금까지 섞인 전체 표시 줄 수)로 보여줘서 "이 N건을
     // 더하면 이 금액"처럼 보이는 게 실제로는 성립 안 했음(예: 67건인데 그중 일부만
     // 지출 합계에 들어감) — 건수도 실제로 더해진 지출 개수로 맞춤.
-    <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>총 지출 {fmtWon(totalSpent)} · {categoryExpenses.length}건</div>
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700 }}>총 지출 {fmtWon(totalSpent)} · {categoryExpenses.length}건</div>
+      {reimbursedInView > 0 && <div style={{ color: T.good, fontSize: 12.5, fontWeight: 700, marginTop: 2 }}>정산받은 {fmtWon(reimbursedInView)}은 뺐어요</div>}
+    </div>
   );
 
   return (
