@@ -4,6 +4,7 @@ import { STORAGE_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F } from "./lib/theme";
 import { defaultData, migrate, autoProcessFixed, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
 import { NavBtn } from "./components/common";
+import { pullPendingPayments, saveBackup } from "./lib/native";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { HomeView } from "./screens/Home";
 import { AddView } from "./screens/Add";
@@ -65,6 +66,27 @@ function AppInner() {
       /* 주소를 못 지워도 등록은 되게 둔다 */
     }
   }, []);
+
+  /*
+    껍데기 앱이 모아 둔 결제 알림을 가져온다.
+
+    앱을 켤 때와 화면으로 돌아올 때 확인한다. 알림은 앱이 꺼져 있을 때도
+    오므로 저쪽에 쌓여 있고, 여기서 가져오면 저쪽 큐는 비워진다.
+
+    **자동으로 등록하지는 않는다.** 카드사마다 문자 형식이 달라서 금액이나
+    가맹점을 잘못 읽을 수 있는데, 그게 조용히 기록으로 남으면 나중에 어느
+    줄이 가짜인지 찾을 방법이 없다. 받아 두고 사람이 확인한다.
+  */
+  const [inbox, setInbox] = useState([]);
+  useEffect(() => {
+    const pull = () => {
+      const got = pullPendingPayments();
+      if (got.length) setInbox((prev) => [...prev, ...got]);
+    };
+    pull();
+    window.addEventListener("passbook-native-resume", pull);
+    return () => window.removeEventListener("passbook-native-resume", pull);
+  }, []);
   const [toast, setToast] = useState("");
   const [, forceTick] = useState(0);
 
@@ -109,6 +131,27 @@ function AppInner() {
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 1800); };
 
   const T = (data && THEMES[data.theme]) || THEMES.dark;
+
+  /*
+    자동 백업 — 화면을 벗어날 때 한 번.
+
+    데이터가 바뀔 때마다 저장하면 글자 하나 칠 때마다 파일을 쓴다. 기록을
+    남기고 앱을 닫는 게 가장 흔한 흐름이라, 그 순간이 데이터가 가장 최신인
+    지점이다. 껍데기 앱이 없으면(크롬으로 열었으면) 아무 일도 안 한다.
+  */
+  useEffect(() => {
+    if (!data) return;
+    const dump = () => saveBackup(data);
+    window.addEventListener("passbook-native-pause", dump);
+    const onHide = () => {
+      if (document.visibilityState === "hidden") dump();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.removeEventListener("passbook-native-pause", dump);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, [data]);
 
   if (!loaded || !data) {
     return (
@@ -237,6 +280,7 @@ function AppInner() {
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,
     pendingText, clearPendingText: () => setPendingText(null),
+    inbox, dismissInbox: (i) => setInbox((prev) => prev.filter((_, n) => n !== i)),
   };
 
   const S = {

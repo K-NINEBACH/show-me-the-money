@@ -5,6 +5,7 @@ import { CreditCard, Wallet, Repeat, ClipboardPaste, Check, Pencil, X } from "lu
 import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
 import { PALETTE } from "../lib/constants";
 import { fmtWon, todayISO, parsePaymentText, sortFixedList, fixedInfo, createdTime } from "../lib/data";
+import { PaymentInbox } from "../components/payment-inbox";
 import { Field, MoneyInput, QuickAmountButtons, FixedSortTabs } from "../components/common";
 
 // 매번 카드부터, 첫 카테고리부터 다시 고르는 게 기록 속도를 제일 깎아먹는 부분이었음
@@ -84,6 +85,15 @@ export function AddView({ ctx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.pendingText]);
 
+  /* 문자 한 건을 폼에 올린다 — 붙여넣기·공유·알림이 전부 이 길을 쓴다 */
+  const fillFrom = (text) => {
+    const r = parsePaymentText(text || "");
+    if (r.amount) setAmount(r.amount);
+    if (r.merchant) setMemo(r.merchant);
+    if (r.date) setDate(r.date);
+    showToast(r.amount ? "읽어왔어요 · 확인하고 등록하세요" : "금액을 못 찾았어요 · 직접 입력해주세요");
+  };
+
   const applyParse = () => {
     if (!pasteText.trim()) return showToast("문자 내용을 붙여넣어주세요");
     const r = parsePaymentText(pasteText);
@@ -130,6 +140,8 @@ export function AddView({ ctx }) {
   return (
     <div>
       <div style={{ color: T.cream, fontFamily: F.display, fontSize: 20.5, fontWeight: 700, marginBottom: 16 }}>기록</div>
+
+      <PaymentInbox ctx={ctx} onPick={fillFrom} />
 
       <Field label="결제 수단">
         <div style={{ display: "flex", gap: 8 }}>
