@@ -1,6 +1,6 @@
 // Record tab: log an expense (card/cash/installment), or manage a fixed
 // expense (subscriptions, installments) via InstallmentForm.
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CreditCard, Wallet, Repeat, ClipboardPaste, Check, Pencil, X } from "lucide-react";
 import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
 import { PALETTE } from "../lib/constants";
@@ -62,6 +62,27 @@ export function AddView({ ctx }) {
   const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState("");
+
+  /*
+    공유·자동화로 넘어온 문자가 있으면 열자마자 읽어서 채운다.
+    **등록까지 자동으로 하지는 않는다** — 문자 형식은 카드사마다 다르고,
+    금액이나 가맹점을 잘못 읽었을 때 조용히 기록으로 남으면 나중에
+    어느 줄이 틀렸는지 찾을 수가 없다. 사람이 한 번 보고 누른다.
+  */
+  useEffect(() => {
+    if (!ctx.pendingText) return;
+    const r = parsePaymentText(ctx.pendingText);
+    if (r.amount) setAmount(r.amount);
+    if (r.merchant) setMemo(r.merchant);
+    if (r.date) setDate(r.date);
+    ctx.clearPendingText();
+    showToast(
+      r.amount
+        ? "문자에서 읽어왔어요 · 확인하고 등록하세요"
+        : "금액을 못 찾았어요 · 직접 입력해주세요",
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx.pendingText]);
 
   const applyParse = () => {
     if (!pasteText.trim()) return showToast("문자 내용을 붙여넣어주세요");

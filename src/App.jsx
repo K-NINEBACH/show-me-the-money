@@ -37,6 +37,34 @@ function AppInner() {
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState("home");
+  /*
+    밖에서 넘어온 결제 문자.
+
+    안드로이드에서 문자·알림을 '공유 → 내돈챙겨줘'로 보내면 manifest의
+    share_target을 타고 ?text=... 로 열린다. MacroDroid 같은 자동화 앱이
+    같은 주소를 직접 열어도 똑같이 동작한다(?paste=... 도 받는다).
+
+    **주소는 곧바로 지운다.** 안 지우면 새로고침할 때마다 같은 문자가 다시
+    올라오고, 홈 화면에 그 주소가 저장돼 버리면 앱을 켤 때마다 뜬다.
+  */
+  const [pendingText, setPendingText] = useState(null);
+  useEffect(() => {
+    let raw = null;
+    try {
+      const q = new URLSearchParams(window.location.search);
+      raw = q.get("text") || q.get("paste") || q.get("title");
+    } catch {
+      /* 주소가 이상해도 앱은 떠야 한다 */
+    }
+    if (!raw || !raw.trim()) return;
+    setPendingText(raw);
+    setTab("add");
+    try {
+      window.history.replaceState({}, "", window.location.pathname);
+    } catch {
+      /* 주소를 못 지워도 등록은 되게 둔다 */
+    }
+  }, []);
   const [toast, setToast] = useState("");
   const [, forceTick] = useState(0);
 
@@ -208,6 +236,7 @@ function AppInner() {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,
+    pendingText, clearPendingText: () => setPendingText(null),
   };
 
   const S = {
