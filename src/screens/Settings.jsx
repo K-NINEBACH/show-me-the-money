@@ -3,6 +3,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, migrate, todayISO } from "../lib/data";
+import { inNativeApp } from "../lib/native";
 import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../components/common";
 
 export function SettingsView({ ctx }) {
@@ -235,6 +236,42 @@ export function SettingsView({ ctx }) {
           {data.categories.length === 0 && <div style={{ color: T.muted, fontSize: 15, textAlign: "center", padding: "10px 0" }}>카테고리가 없어요. &lsquo;기록&rsquo; 탭에서 추가할 수 있어요.</div>}
         </div>
       </Field>
+
+      {/*
+        껍데기 앱 안에서만 보인다. 크롬에는 알림을 읽을 방법이 없어서,
+        여기 스위치가 있어 봐야 눌러도 아무 일이 안 일어난다.
+      */}
+      {inNativeApp() && (
+        <>
+          <SectionLabel>결제 알림</SectionLabel>
+          <Field label="카드 결제를 자동으로 기록">
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                onClick={() => persist({ ...data, autoRecord: !data.autoRecord })}
+                style={{
+                  width: 52, height: 30, borderRadius: 15, border: "none", cursor: "pointer",
+                  background: data.autoRecord ? T.gold : T.border,
+                  position: "relative", flexShrink: 0,
+                }}
+              >
+                <span style={{
+                  position: "absolute", top: 3, left: data.autoRecord ? 25 : 3,
+                  width: 24, height: 24, borderRadius: "50%", background: "#fff",
+                  transition: "left .15s",
+                }} />
+              </button>
+              <span style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.5 }}>
+                {data.autoRecord
+                  ? "카드 승인 알림이 오면 확인 없이 바로 기록해요. 자동으로 들어간 줄에는 내역에서 '자동' 표시가 붙어요."
+                  : "알림을 모아만 두고, 기록 탭에서 확인하고 등록해요."}
+              </span>
+            </div>
+          </Field>
+          <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, marginTop: -4, marginBottom: 10 }}>
+            은행 입출금은 자동으로 넣지 않아요 — 앱이 이미 만드는 출금과 겹쳐서 통장에서 두 번 빠질 수 있거든요.
+          </div>
+        </>
+      )}
 
       <SectionLabel>데이터</SectionLabel>
       <Field label="데이터 백업">

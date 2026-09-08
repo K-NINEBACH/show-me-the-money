@@ -5,6 +5,7 @@ import { THEMES, DARK, ThemeContext, F } from "./lib/theme";
 import { defaultData, migrate, autoProcessFixed, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
 import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup } from "./lib/native";
+import { autoRecordPayments } from "./lib/auto-record";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { HomeView } from "./screens/Home";
 import { AddView } from "./screens/Add";
@@ -87,6 +88,25 @@ function AppInner() {
     window.addEventListener("passbook-native-resume", pull);
     return () => window.removeEventListener("passbook-native-resume", pull);
   }, []);
+
+  /*
+    자동 등록 — 카드 승인 알림만, 확실한 것만.
+
+    조건에 안 맞는 것은 알림함에 남아 사람이 본다. 넣은 것에는 auto 표시가
+    붙어서 내역에서 '자동' 배지로 보인다 — 이상하면 그 줄만 훑어 지울 수 있다.
+
+    넣은 게 없으면 아무 상태도 안 바꾼다. 안 그러면 이 효과가 스스로를
+    다시 부르며 끝없이 돈다.
+  */
+  useEffect(() => {
+    if (!data?.autoRecord || inbox.length === 0) return;
+    const { next, registered, leftover } = autoRecordPayments(data, inbox);
+    if (registered.length === 0) return;
+    persist(next);
+    setInbox(leftover);
+    showToast(`결제 ${registered.length}건 자동으로 기록했어요`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inbox, data]);
   const [toast, setToast] = useState("");
   const [, forceTick] = useState(0);
 

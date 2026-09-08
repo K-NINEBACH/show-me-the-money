@@ -22,6 +22,12 @@ export const defaultData = () => ({
 
 export function migrate(raw) {
   const d = { ...defaultData(), ...raw };
+  /*
+    카드 결제 알림을 확인 없이 바로 기록에 넣을지.
+    쓰는 카드가 하나라 문구가 일정하고, 붙여넣기로 오래 써 보면서 잘못 읽는
+    일이 없었다. 그래도 언제든 끌 수 있게 설정에 스위치를 둔다.
+  */
+  d.autoRecord = raw.autoRecord !== false;
   d.onboarded = raw.onboarded !== false;
   d.lastSeenMonth = raw.lastSeenMonth || monthKey(new Date());
   if (raw.theme === "light") d.theme = "beige";

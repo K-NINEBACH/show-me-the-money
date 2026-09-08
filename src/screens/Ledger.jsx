@@ -18,6 +18,8 @@ export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, 
           {cat ? cat.name : "미분류"}
           <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: methodColor }}>{methodLabel}</span>
           {e.reimbursedAmount != null && <span style={{ fontSize: 11.5, marginLeft: 6, fontWeight: 700, color: T.good }}>정산받음 {fmtWon(e.reimbursedAmount)}</span>}
+          {/* 알림에서 확인 없이 들어온 줄 — 이상하면 이것만 훑어 지울 수 있게 */}
+          {e.auto && <span style={{ fontSize: 11.5, marginLeft: 6, fontWeight: 700, color: T.muted }}>자동</span>}
         </div>
         {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.memo}</div>}
         {dateNode}
