@@ -268,7 +268,7 @@ export function SettingsView({ ctx }) {
             </div>
           </Field>
           <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, marginTop: -4, marginBottom: 10 }}>
-            은행 입출금은 자동으로 넣지 않아요 — 앱이 이미 만드는 출금과 겹쳐서 통장에서 두 번 빠질 수 있거든요.
+            은행 입출금도 자동으로 넣어 통장 잔고를 맞춰요. 카드값 결제처럼 앱이 이미 만든 출금과 겹치면 넣지 않아요.
           </div>
         </>
       )}

@@ -313,8 +313,29 @@ function payCard(ctx, card) {
   if (!total || total <= 0) return showToast("결제할 금액이 없어요");
   const nextCards = data.cards.map((c) => (c.id === card.id ? { ...c, bill: 0 } : c));
   const aid = data.accounts?.[0]?.id;
-  persist({ ...data, cards: nextCards, balanceEntries: [...(data.balanceEntries || []), { id: "b" + Date.now(), type: "out", amount: total, date: todayISO(), memo: `${card.name} 카드값 결제`, accountId: aid }] });
-  showToast(`${fmtWon(total)} 결제 처리 · 통장에서 출금됐어요`);
+
+  /*
+    은행 알림이 먼저 들어와 이미 출금이 적혀 있으면 또 만들지 않는다.
+
+    카드값을 은행 앱에서 먼저 내고 나중에 이 버튼을 누르는 순서가 있다.
+    그때 출금을 하나 더 만들면 통장에서 같은 돈이 두 번 빠지는데, 잔액이
+    조금 틀린 것보다 나쁘다 — 어느 쪽이 진짜인지 나중에 알 수가 없다.
+    같은 날·같은 금액의 출금이 있으면 그게 이 결제라고 본다.
+  */
+  const already = (data.balanceEntries || []).some(
+    (b) => b.type === "out" && Number(b.amount) === total && b.date === todayISO(),
+  );
+
+  const nextEntries = already
+    ? (data.balanceEntries || [])
+    : [...(data.balanceEntries || []), { id: "b" + Date.now(), type: "out", amount: total, date: todayISO(), memo: `${card.name} 카드값 결제`, accountId: aid }];
+
+  persist({ ...data, cards: nextCards, balanceEntries: nextEntries });
+  showToast(
+    already
+      ? `${fmtWon(total)} 결제 처리 · 통장 출금은 이미 적혀 있어요`
+      : `${fmtWon(total)} 결제 처리 · 통장에서 출금됐어요`,
+  );
 }
 
 function CardsBlock({ ctx, cardTotals }) {
