@@ -1,4 +1,4 @@
-import { parsePaymentText, todayISO } from "./data";
+import { parsePaymentText, todayISO, monthKey, fixedInfo } from "./data";
 
 /*
   결제 알림을 사람 확인 없이 바로 기록으로 넣는 자리.
@@ -118,6 +118,43 @@ function alreadyRecorded(expenses, { amount, date, cardId }) {
   );
 }
 
+/*
+  이 알림이 '이번 달 아직 처리 안 한 고정지출'인가.
+
+  **여기가 중복 문제의 진짜 답이다.** 유튜브·쿠팡 정기결제나 청약·적금
+  자동이체는 통장·카드에서 먼저 빠져나가고, 사람은 며칠 뒤에 앱에서
+  '카드반영'이나 '출금처리'를 누른다. 날짜가 다르니 같은 날 비교로는 못
+  막고, 그러면 같은 돈이 두 번 잡힌다.
+
+  그래서 날짜를 넓게 보는 대신 **고정지출 자체를 처리 완료로 표시한다.**
+  앱이 버튼을 눌렀을 때 하는 일과 똑같이 한다 — 기록을 남기고 그 id를
+  paidMonths에 적는다. 그러면 그 항목은 '출금처리 안 한 고정지출' 목록에서
+  사라지고, 누를 버튼 자체가 없어진다. 며칠이 지나든 중복이 생길 수 없다.
+
+  금액과 결제 수단이 둘 다 맞아야 짝으로 본다. 금액만 보면 우연히 같은
+  금액의 다른 지출이 고정지출을 처리 완료로 만들어 버린다.
+*/
+function matchFixed(data, { amount, isCard, cardId, accountId }, curKey) {
+  const list = data.fixedExpenses || [];
+  for (const f of list) {
+    if (f.paidMonths && f.paidMonths[curKey]) continue;   // 이미 처리됨
+
+    const info = fixedInfo(f, curKey);
+    if (!info.active) continue;
+    if (Number(info.amount) !== Number(amount)) continue;
+
+    const fixedIsCard = (f.paymentMethod || "cash") === "card";
+    if (fixedIsCard !== isCard) continue;
+
+    // 카드·통장이 지정돼 있으면 그것도 맞아야 한다
+    if (isCard && f.cardId && cardId && f.cardId !== cardId) continue;
+    if (!isCard && f.accountId && accountId && f.accountId !== accountId) continue;
+
+    return { fixed: f, info };
+  }
+  return null;
+}
+
 /**
  * 알림 목록을 훑어 자동으로 넣을 수 있는 것만 넣는다.
  *
@@ -133,6 +170,17 @@ export function autoRecordPayments(data, items) {
   let expenses = data.expenses;
   let cards = data.cards;
   let balanceEntries = data.balanceEntries || [];
+  let fixedExpenses = data.fixedExpenses || [];
+  const curKey = monthKey(new Date());
+
+  /* 고정지출을 처리 완료로 표시한다 — 버튼을 누른 것과 같은 효과 */
+  const markPaid = (fixedId, markerId) => {
+    fixedExpenses = fixedExpenses.map((x) =>
+      x.id === fixedId
+        ? { ...x, paidMonths: { ...(x.paidMonths || {}), [curKey]: markerId } }
+        : x,
+    );
+  };
 
   for (const item of items) {
     const text = String(item?.text || "");
@@ -162,16 +210,32 @@ export function autoRecordPayments(data, items) {
         leftover.push(item);
         continue;
       }
+
+      /* 자동이체로 나간 고정지출이면 그 항목을 처리 완료로 표시한다 */
+      const hitOut =
+        dir === "out"
+          ? matchFixed(
+              { ...data, fixedExpenses },
+              { amount, isCard: false, accountId: acc.id },
+              curKey,
+            )
+          : null;
+
+      const entryId = "b" + (Date.now() + registered.length);
       const entry = {
-        id: "b" + (Date.now() + registered.length),
+        id: entryId,
         type: dir,
         amount,
         date: bDate,
-        memo: r.merchant || (dir === "in" ? "입금" : "출금"),
+        memo: hitOut
+          ? `${hitOut.fixed.name} 자동이체`
+          : r.merchant || (dir === "in" ? "입금" : "출금"),
         accountId: acc.id,
         auto: true,
+        ...(hitOut ? { linkedFixedId: hitOut.fixed.id, linkedFixedMonth: curKey } : {}),
       };
       balanceEntries = [...balanceEntries, entry];
+      if (hitOut) markPaid(hitOut.fixed.id, entryId);
       registered.push(entry);
       continue;
     }
@@ -187,17 +251,33 @@ export function autoRecordPayments(data, items) {
       넣으면 틀린 카테고리가 조용히 쌓인다. 미분류로 두면 내역에서 눈에 띄어
       나중에 고치게 된다.
     */
+    /*
+      정기결제(카드 고정지출)면 '카드반영'을 누른 것과 같게 만든다.
+      isCardAdjustment를 붙여야 예산에서 두 번 세지 않는다 — fixedSumAll이
+      이미 매달 이 금액을 미리 잡고 있기 때문이다.
+    */
+    const hitCard = matchFixed(
+      { ...data, fixedExpenses },
+      { amount, isCard: true, cardId: card.id },
+      curKey,
+    );
+
+    const expenseId = "e" + (Date.now() + registered.length);
     const expense = {
-      id: "e" + (Date.now() + registered.length),
+      id: expenseId,
       amount,
       categoryId: null,
       date,
-      memo: r.merchant || "",
+      memo: hitCard
+        ? `${hitCard.fixed.name} · 정기결제 카드반영`
+        : r.merchant || "",
       paymentMethod: "card",
       cardId: card.id,
       linkedBalanceId: null,
       auto: true,
+      ...(hitCard ? { isCardAdjustment: true } : {}),
     };
+    if (hitCard) markPaid(hitCard.fixed.id, expenseId);
 
     expenses = [...expenses, expense];
     cards = cards.map((c) =>
@@ -209,5 +289,9 @@ export function autoRecordPayments(data, items) {
   if (registered.length === 0) {
     return { next: data, registered, leftover };
   }
-  return { next: { ...data, expenses, cards, balanceEntries }, registered, leftover };
+  return {
+    next: { ...data, expenses, cards, balanceEntries, fixedExpenses },
+    registered,
+    leftover,
+  };
 }
