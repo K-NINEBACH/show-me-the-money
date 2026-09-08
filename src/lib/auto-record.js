@@ -134,8 +134,10 @@ function alreadyRecorded(expenses, { amount, date, cardId }) {
   금액과 결제 수단이 둘 다 맞아야 짝으로 본다. 금액만 보면 우연히 같은
   금액의 다른 지출이 고정지출을 처리 완료로 만들어 버린다.
 */
-function matchFixed(data, { amount, isCard, cardId, accountId }, curKey) {
+function matchFixed(data, { amount, isCard, cardId, accountId, text }, curKey) {
   const list = data.fixedExpenses || [];
+
+  const candidates = [];
   for (const f of list) {
     if (f.paidMonths && f.paidMonths[curKey]) continue;   // 이미 처리됨
 
@@ -150,7 +152,31 @@ function matchFixed(data, { amount, isCard, cardId, accountId }, curKey) {
     if (isCard && f.cardId && cardId && f.cardId !== cardId) continue;
     if (!isCard && f.accountId && accountId && f.accountId !== accountId) continue;
 
-    return { fixed: f, info };
+    candidates.push({ fixed: f, info });
+  }
+
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  /*
+    **금액이 같은 고정지출이 여럿일 때.**
+
+    실제로 흔하다 — 10만 원짜리가 '데이트(여행)'·'가족모임'·'주택청약'처럼
+    셋씩 있다. 금액만 보고 아무거나 고르면 잔액은 맞지만 **어느 항목이
+    나갔는지 이름이 뒤바뀐다.**
+
+    그래서 알림 문구에 항목 이름의 조각이 들어 있으면 그쪽을 먼저 고른다
+    (은행 문자에는 대개 받는 곳이나 적요가 찍힌다 — '청약', '보험' 등).
+    힌트가 없으면 고르지 않고 **알림함에 남긴다.** 아무거나 골라서 이름이
+    틀리는 것보다, 사람이 보고 누르는 편이 낫다.
+  */
+  const hay = String(text || "");
+  for (const c of candidates) {
+    const name = String(c.fixed.name || "").replace(/[^가-힣A-Za-z0-9]/g, "");
+    for (let len = Math.min(name.length, 6); len >= 2; len -= 1) {
+      const key = name.slice(0, len);
+      if (key && hay.includes(key)) return c;
+    }
   }
   return null;
 }
@@ -216,7 +242,7 @@ export function autoRecordPayments(data, items) {
         dir === "out"
           ? matchFixed(
               { ...data, fixedExpenses },
-              { amount, isCard: false, accountId: acc.id },
+              { amount, isCard: false, accountId: acc.id, text },
               curKey,
             )
           : null;
@@ -258,7 +284,7 @@ export function autoRecordPayments(data, items) {
     */
     const hitCard = matchFixed(
       { ...data, fixedExpenses },
-      { amount, isCard: true, cardId: card.id },
+      { amount, isCard: true, cardId: card.id, text },
       curKey,
     );
 
