@@ -38,6 +38,71 @@ function looksLikeCardApproval(text) {
 }
 
 /*
+  **알림을 보낸 앱으로 은행·카드사를 가린다.**
+
+  문구에 은행 이름이 아예 없는 경우가 흔하다. KB스타뱅킹 출금 알림이 그렇다 —
+  "출금 30,000원 · 김*혁님 09/09 22:54 · 카카오페이 FBS출금 30,000 잔액1,392,375"
+  어디에도 '국민'이 없다. 글자만 보면 어느 통장인지 영영 못 고른다.
+
+  게다가 본문에 '카카오페이' 같은 **남의 이름**이 들어 있어서, 글자만 보다가는
+  엉뚱한 통장에 붙을 수도 있다. 보낸 앱은 그런 착각을 안 한다.
+
+  그래서 패키지를 먼저 보고, 거기서 못 고를 때만 글자로 넘어간다.
+  후보가 둘 이상 걸리면(같은 은행 통장이 둘이면) 고르지 않는다 — 그건 사람이 본다.
+*/
+const ISSUERS = [
+  { re: /kbstar|kbbank|kbcard|kookmin/, keys: ["국민", "KB", "kb"] },
+  { re: /shinhan/, keys: ["신한"] },
+  { re: /woori/, keys: ["우리"] },
+  { re: /hanabank|hanacard|hanaskcard/, keys: ["하나"] },
+  { re: /nonghyup|nhbank|nhcard|nhqv/, keys: ["농협", "NH", "nh"] },
+  { re: /kakaobank/, keys: ["카카오뱅크", "카뱅"] },
+  { re: /kakaopay/, keys: ["카카오페이"] },
+  { re: /tossbank/, keys: ["토스뱅크"] },
+  { re: /viva|toss/, keys: ["토스"] },
+  { re: /ibk/, keys: ["기업", "IBK", "ibk"] },
+  { re: /hyundaicard/, keys: ["현대"] },
+  { re: /lottecard/, keys: ["롯데"] },
+  { re: /samsungcard/, keys: ["삼성"] },
+  { re: /bccard/, keys: ["비씨", "BC"] },
+  { re: /citibank/, keys: ["씨티"] },
+];
+
+function issuerOf(pkg) {
+  const p = String(pkg || "").toLowerCase();
+  if (!p) return null;
+  return ISSUERS.find((it) => it.re.test(p)) || null;
+}
+
+function pickByKeys(list, keys) {
+  const hits = (list || []).filter((x) =>
+    keys.some((k) => String(x.name || "").includes(k)),
+  );
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/*
+  **보낸 곳을 아는데 그 이름의 통장·카드가 없으면, 글자로 찍지 않는다.**
+
+  글자 대조는 이름 앞 두 글자가 문구 아무 데나 있으면 잡는다. 그런데 은행
+  문구에는 남의 회사 이름이 자주 들어간다 — KB 출금 알림 본문의 '카카오페이'가
+  그렇다. 카카오페이 통장을 따로 두고 있으면 KB에서 나간 돈이 거기 붙는다.
+  잔액이 두 군데 다 틀어지고, 눈으로는 알아채기 어렵다.
+
+  보낸 앱이 KB라는 걸 아는 이상 그건 확실히 틀린 답이다. 못 고르면 보류하고
+  사람에게 넘긴다. 보낸 곳을 모를 때만 예전처럼 글자로 넘어간다.
+*/
+function findByIssuerOrText(list, text, pkg) {
+  const issuer = issuerOf(pkg);
+  if (issuer) return pickByKeys(list, issuer.keys);
+  for (const x of list) {
+    const key = String(x.name || "").replace(/[^가-힣A-Za-z]/g, "").slice(0, 2);
+    if (key && text.includes(key)) return x;
+  }
+  return null;
+}
+
+/*
   어느 카드에 달 것인가.
 
   문구에 카드 이름의 일부가 있으면 그 카드를 쓴다("현대카드" → 이름에 '현대'가
@@ -45,15 +110,11 @@ function looksLikeCardApproval(text) {
   달면 카드값이 둘 다 틀어지고, 그건 눈으로 알아채기 어렵다.
   카드가 하나뿐이면 그 카드로 본다.
 */
-function findCard(cards, text) {
+function findCard(cards, text, pkg) {
   if (!cards || cards.length === 0) return null;
   if (cards.length === 1) return cards[0];
 
-  for (const c of cards) {
-    const key = String(c.name || "").replace(/[^가-힣A-Za-z]/g, "").slice(0, 2);
-    if (key && text.includes(key)) return c;
-  }
-  return null;
+  return findByIssuerOrText(cards, text, pkg);
 }
 
 /** 통장 입출금으로 보이나 */
@@ -68,17 +129,14 @@ function bankDirection(text) {
 }
 
 /*
-  어느 통장인가. 카드와 같은 방식이다 — 이름 앞 두 글자가 문구에 있으면
-  그 통장. 통장이 하나뿐이면 그것으로 본다. 못 고르면 자동으로 안 넣는다.
+  어느 통장인가. 카드와 같은 방식이다 — 보낸 앱(패키지)을 먼저 보고, 안 되면
+  이름 앞 두 글자가 문구에 있는지 본다. 통장이 하나뿐이면 그것으로 본다.
+  못 고르면 자동으로 안 넣는다.
 */
-function findAccount(accounts, text) {
+function findAccount(accounts, text, pkg) {
   if (!accounts || accounts.length === 0) return null;
   if (accounts.length === 1) return accounts[0];
-  for (const a of accounts) {
-    const key = String(a.name || "").replace(/[^가-힣A-Za-z]/g, "").slice(0, 2);
-    if (key && text.includes(key)) return a;
-  }
-  return null;
+  return findByIssuerOrText(accounts, text, pkg);
 }
 
 /*
@@ -256,7 +314,8 @@ export function autoRecordPayments(data, items) {
       continue;
     }
 
-    const card = looksLikeCardApproval(text) ? findCard(cards, text) : null;
+    const pkg = item?.pkg;
+    const card = looksLikeCardApproval(text) ? findCard(cards, text, pkg) : null;
 
     /*
       카드로 못 붙이면 통장 입출금으로 시도한다. 순서가 중요하다 —
@@ -265,7 +324,7 @@ export function autoRecordPayments(data, items) {
     */
     if (!card) {
       const dir = bankDirection(text);
-      const acc = dir ? findAccount(data.accounts, text) : null;
+      const acc = dir ? findAccount(data.accounts, text, pkg) : null;
       if (!dir || !acc) {
         leftover.push(item);
         continue;
