@@ -3,7 +3,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, migrate, todayISO } from "../lib/data";
-import { inNativeApp, listBackups, readBackup } from "../lib/native";
+import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings } from "../lib/native";
 import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../components/common";
 
 /** "가계부-백업-2026-09-09.json" → "2026-09-09". 못 읽으면 파일 이름 그대로. */
@@ -30,6 +30,15 @@ export function SettingsView({ ctx }) {
   const [importText, setImportText] = useState("");
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState([]);
+  /*
+    결제 알림이 어디까지 왔는지 보여주는 값.
+
+    이게 없으면 알림이 안 들어올 때 볼 수 있는 게 아무것도 없다. 권한이 꺼진
+    건지, 껍데기가 못 잡은 건지, 잡았는데 앱이 안 가져간 건지 구분이 안 돼서
+    어디를 고쳐야 할지도 모른다.
+  */
+  const [noti, setNoti] = useState(() => ({ access: hasNotificationAccess(), pending: pendingCount() }));
+  const refreshNoti = () => setNoti({ access: hasNotificationAccess(), pending: pendingCount() });
   const exportJson = JSON.stringify(data, null, 2);
   const doExport = () => {
     setShowExport(true); setShowImport(false);
@@ -315,6 +324,45 @@ export function SettingsView({ ctx }) {
           <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, marginTop: -4, marginBottom: 10 }}>
             은행 입출금도 자동으로 넣어 통장 잔고를 맞춰요. 카드값 결제처럼 앱이 이미 만든 출금과 겹치면 넣지 않아요.
           </div>
+
+          <Field label="알림이 잘 들어오고 있나">
+            <div style={{ color: T.cream, fontSize: 14.5, lineHeight: 1.9, fontFamily: F.mono }}>
+              <div>
+                알림 읽기 권한 ·{" "}
+                <span style={{ color: noti.access === true ? T.good : noti.access === false ? T.danger : T.muted, fontWeight: 700 }}>
+                  {noti.access === true ? "켜짐" : noti.access === false ? "꺼짐" : "알 수 없음"}
+                </span>
+              </div>
+              <div>
+                아직 안 가져온 알림 ·{" "}
+                <span style={{ fontWeight: 700 }}>{noti.pending === null ? "알 수 없음" : `${noti.pending}건`}</span>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new Event("passbook-native-resume"));
+                  setTimeout(refreshNoti, 300);
+                  showToast("지금 확인했어요");
+                }}
+                style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 15, cursor: "pointer" }}
+              >
+                지금 가져오기
+              </button>
+              {noti.access !== true && (
+                <button
+                  onClick={openNotificationSettings}
+                  style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: T.gold, color: "#23190C", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
+                >
+                  권한 설정 열기
+                </button>
+              )}
+            </div>
+            <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, marginTop: 8 }}>
+              권한이 꺼져 있으면 알림을 아예 못 봐요. 권한이 켜져 있는데도 계속 0건이면,
+              권한을 껐다 다시 켜서 알림 읽기를 다시 이어주세요.
+            </div>
+          </Field>
         </>
       )}
 

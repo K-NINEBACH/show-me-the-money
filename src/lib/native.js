@@ -41,6 +41,20 @@ export function pullPendingPayments() {
   }
 }
 
+/**
+ * 아직 안 가져온 알림이 몇 건인가. 큐를 비우지 않고 세기만 한다.
+ * 껍데기가 없거나 못 세면 null.
+ */
+export function pendingCount() {
+  const b = bridge();
+  if (!b?.pendingCount) return null;
+  try {
+    return Number(b.pendingCount());
+  } catch {
+    return null;
+  }
+}
+
 /** 알림 접근 권한이 켜져 있나. 껍데기가 없으면 null(해당 없음). */
 export function hasNotificationAccess() {
   const b = bridge();
