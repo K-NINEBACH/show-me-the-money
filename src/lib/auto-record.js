@@ -1,4 +1,4 @@
-import { parsePaymentText, todayISO, monthKey, fixedInfo } from "./data";
+import { parsePaymentText, todayISO, fixedInfo } from "./data";
 
 /*
   결제 알림을 사람 확인 없이 바로 기록으로 넣는 자리.
@@ -119,7 +119,25 @@ function alreadyRecorded(expenses, { amount, date, cardId }) {
 }
 
 /*
-  이 알림이 '이번 달 아직 처리 안 한 고정지출'인가.
+  이 승인이 '할부 회차 금액'과 같은가.
+
+  할부는 앱이 매달 cardTotals.fixedPortion으로 카드값에 이미 넣고 있다. 이 승인이
+  정말 그 할부 청구라면 bill에 또 더해져 **그 달 카드값이 두 배**가 된다. 그런데
+  문자만 보고는 진짜 할부 청구인지 우연히 금액이 같은 다른 결제인지 가를 수 없다.
+  그래서 자동으로 넣지 않고 사람에게 넘긴다 — 알림함에서 보고 넣으면 된다.
+*/
+function looksLikeInstallmentCharge(fixedExpenses, { amount, cardId }, key) {
+  return (fixedExpenses || []).some((f) => {
+    if ((f.paymentMethod || "cash") !== "card") return false;
+    if (!(f.totalMonths > 0)) return false;
+    if (f.cardId && cardId && f.cardId !== cardId) return false;
+    const info = fixedInfo(f, key);
+    return info.active && Number(info.amount) === Number(amount);
+  });
+}
+
+/*
+  이 알림이 '그 달에 아직 처리 안 한 고정지출'인가.
 
   **여기가 중복 문제의 진짜 답이다.** 유튜브·쿠팡 정기결제나 청약·적금
   자동이체는 통장·카드에서 먼저 빠져나가고, 사람은 며칠 뒤에 앱에서
@@ -134,14 +152,27 @@ function alreadyRecorded(expenses, { amount, date, cardId }) {
   금액과 결제 수단이 둘 다 맞아야 짝으로 본다. 금액만 보면 우연히 같은
   금액의 다른 지출이 고정지출을 처리 완료로 만들어 버린다.
 */
-function matchFixed(data, { amount, isCard, cardId, accountId, text }, curKey) {
+function matchFixed(data, { amount, isCard, cardId, accountId, text }, key) {
   const list = data.fixedExpenses || [];
 
   const candidates = [];
   for (const f of list) {
-    if (f.paidMonths && f.paidMonths[curKey]) continue;   // 이미 처리됨
+    if (f.paidMonths && f.paidMonths[key]) continue;   // 이미 처리됨
 
-    const info = fixedInfo(f, curKey);
+    /*
+      **카드 쪽은 '매달반복'만 짝으로 본다.**
+
+      카드 할부(totalMonths > 0)에는 '카드반영' 버튼이 아예 없다 — 앱이 매달
+      cardTotals.fixedPortion으로 카드값에 이미 넣고 있기 때문이다. 여기서 짝을
+      지어 bill에 또 더하면 **그 달 카드값이 정확히 두 배가 된다.**
+      paidMonths를 적어도 소용없다(unpaidFixed가 할부는 안 본다).
+
+      통장 쪽은 할부여도 상관없다 — 통장형은 paidMonths로 '출금처리'를 관리하고,
+      fixedSum이 처리 여부와 무관하게 항상 잡고 있어서 이중계산이 안 생긴다.
+    */
+    if (isCard && f.totalMonths > 0) continue;
+
+    const info = fixedInfo(f, key);
     if (!info.active) continue;
     if (Number(info.amount) !== Number(amount)) continue;
 
@@ -197,13 +228,21 @@ export function autoRecordPayments(data, items) {
   let cards = data.cards;
   let balanceEntries = data.balanceEntries || [];
   let fixedExpenses = data.fixedExpenses || [];
-  const curKey = monthKey(new Date());
+
+  /*
+    처리 완료로 적는 달은 '지금'이 아니라 **그 결제가 실제로 일어난 달**이다.
+
+    12월 31일 결제 알림을 1월 1일에 읽는 일이 실제로 생긴다. 그때 이번 달을
+    처리 완료로 적으면 12월 것은 계속 미처리로 남고, 1월 것은 나가지도 않았는데
+    처리된 것이 된다 — 양쪽이 다 틀린다.
+  */
+  const keyOf = (iso) => String(iso).slice(0, 7);
 
   /* 고정지출을 처리 완료로 표시한다 — 버튼을 누른 것과 같은 효과 */
-  const markPaid = (fixedId, markerId) => {
+  const markPaid = (fixedId, markerId, key) => {
     fixedExpenses = fixedExpenses.map((x) =>
       x.id === fixedId
-        ? { ...x, paidMonths: { ...(x.paidMonths || {}), [curKey]: markerId } }
+        ? { ...x, paidMonths: { ...(x.paidMonths || {}), [key]: markerId } }
         : x,
     );
   };
@@ -232,6 +271,7 @@ export function autoRecordPayments(data, items) {
         continue;
       }
       const bDate = r.date || todayISO();
+      const bKey = keyOf(bDate);
       if (alreadyInLedger(balanceEntries, { amount, date: bDate, type: dir, accountId: acc.id })) {
         leftover.push(item);
         continue;
@@ -243,7 +283,7 @@ export function autoRecordPayments(data, items) {
           ? matchFixed(
               { ...data, fixedExpenses },
               { amount, isCard: false, accountId: acc.id, text },
-              curKey,
+              bKey,
             )
           : null;
 
@@ -258,16 +298,23 @@ export function autoRecordPayments(data, items) {
           : r.merchant || (dir === "in" ? "입금" : "출금"),
         accountId: acc.id,
         auto: true,
-        ...(hitOut ? { linkedFixedId: hitOut.fixed.id, linkedFixedMonth: curKey } : {}),
+        ...(hitOut ? { linkedFixedId: hitOut.fixed.id, linkedFixedMonth: bKey } : {}),
       };
       balanceEntries = [...balanceEntries, entry];
-      if (hitOut) markPaid(hitOut.fixed.id, entryId);
+      if (hitOut) markPaid(hitOut.fixed.id, entryId, bKey);
       registered.push(entry);
       continue;
     }
 
     const date = r.date || todayISO();
+    const eKey = keyOf(date);
     if (alreadyRecorded(expenses, { amount, date, cardId: card.id })) {
+      leftover.push(item);
+      continue;
+    }
+
+    /* 할부 회차와 같은 금액이면 자동으로 안 넣는다 — 위 설명 참고 */
+    if (looksLikeInstallmentCharge(fixedExpenses, { amount, cardId: card.id }, eKey)) {
       leftover.push(item);
       continue;
     }
@@ -285,7 +332,7 @@ export function autoRecordPayments(data, items) {
     const hitCard = matchFixed(
       { ...data, fixedExpenses },
       { amount, isCard: true, cardId: card.id, text },
-      curKey,
+      eKey,
     );
 
     const expenseId = "e" + (Date.now() + registered.length);
@@ -303,7 +350,7 @@ export function autoRecordPayments(data, items) {
       auto: true,
       ...(hitCard ? { isCardAdjustment: true } : {}),
     };
-    if (hitCard) markPaid(hitCard.fixed.id, expenseId);
+    if (hitCard) markPaid(hitCard.fixed.id, expenseId, eKey);
 
     expenses = [...expenses, expense];
     cards = cards.map((c) =>
