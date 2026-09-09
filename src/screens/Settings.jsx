@@ -3,8 +3,18 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, migrate, todayISO } from "../lib/data";
-import { inNativeApp } from "../lib/native";
+import { inNativeApp, listBackups, readBackup } from "../lib/native";
 import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../components/common";
+
+/** "가계부-백업-2026-09-09.json" → "2026-09-09". 못 읽으면 파일 이름 그대로. */
+function backupDay(name) {
+  const m = String(name || "").match(/(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : String(name || "");
+}
+function fmtSize(bytes) {
+  const n = Number(bytes || 0);
+  return n >= 1024 ? `${Math.round(n / 1024)}KB` : `${n}B`;
+}
 
 export function SettingsView({ ctx }) {
   const T = useTheme();
@@ -18,6 +28,8 @@ export function SettingsView({ ctx }) {
   const [showExport, setShowExport] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
+  const [showBackups, setShowBackups] = useState(false);
+  const [backups, setBackups] = useState([]);
   const exportJson = JSON.stringify(data, null, 2);
   const doExport = () => {
     setShowExport(true); setShowImport(false);
@@ -44,6 +56,39 @@ export function SettingsView({ ctx }) {
     setImportText(""); setShowImport(false);
     showToast("데이터를 불러왔어요");
   };
+  /*
+    껍데기가 매일 남기는 백업을 앱 안에서 바로 되돌리는 자리.
+
+    이게 없으면 백업 파일이 있어도 파일 관리자로 찾아 열어서 본문을 복사해
+    '가져오기'에 붙여넣어야 했다. 정작 복구가 필요한 순간(기기를 바꿨거나 앱을
+    지웠다 깐 직후)에 그 과정을 해내기 어렵다 — 백업은 되돌릴 수 있어야 백업이다.
+
+    **덮어쓰기는 되돌릴 수 없어서** 가져오기와 똑같이 확인창을 한 번 거친다.
+  */
+  const openBackups = () => {
+    const next = !showBackups;
+    setShowBackups(next);
+    setShowExport(false); setShowImport(false);
+    if (next) {
+      const list = listBackups();
+      setBackups(list);
+      if (list.length === 0) showToast("저장된 백업이 없어요");
+    }
+  };
+  const restoreBackup = (name) => {
+    const parsed = readBackup(name);
+    if (!parsed) return showToast("백업 파일을 읽지 못했어요");
+    const expenseCount = Array.isArray(parsed?.expenses) ? parsed.expenses.length : 0;
+    const day = backupDay(name);
+    if (!window.confirm(`${day} 백업(지출 기록 ${expenseCount}건 포함)으로 지금 데이터를 전부 덮어쓸까요? 되돌릴 수 없어요.`)) return;
+    const migrated = migrate(parsed);
+    persist(migrated);
+    // doImport와 같은 이유 — 입력창은 마운트 때 값에 멈춰 있어서 직접 맞춰줘야 함
+    setSpendingGoalInput(String(migrated.spendingGoal || ""));
+    setShowBackups(false);
+    showToast(`${day} 백업으로 되돌렸어요`);
+  };
+
   const addCard = () => {
     if (!newCardName.trim()) return showToast("카드 이름을 입력하세요");
     const card = { id: "card" + Date.now(), name: newCardName.trim(), bill: 0 };
@@ -291,6 +336,45 @@ export function SettingsView({ ctx }) {
             <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="여기에 백업 JSON 붙여넣기" style={{ ...inputSty(T), height: 120, fontFamily: F.mono, fontSize: 13, marginBottom: 8 }} />
             <button onClick={doImport} style={primaryBtn(T)}>불러오기</button>
           </div>
+        )}
+
+        {/*
+          껍데기 앱 안에서만 보인다. 크롬에는 이 파일들에 닿을 방법이 없다.
+        */}
+        {inNativeApp() && (
+          <>
+            <button
+              onClick={openBackups}
+              style={{ width: "100%", padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 15.5, cursor: "pointer", marginTop: 8 }}
+            >
+              휴대폰에 저장된 백업{showBackups ? " 닫기" : ""}
+            </button>
+            {showBackups && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.5, marginBottom: 8 }}>
+                  앱이 하루에 하나씩 자동으로 남긴 것이고 30일치까지 있어요.
+                  누르면 그날 상태로 되돌아가요 — 지금 데이터는 없어져요.
+                </div>
+                {backups.length === 0 && (
+                  <div style={{ color: T.muted, fontSize: 14, textAlign: "center", padding: "10px 0" }}>아직 저장된 백업이 없어요.</div>
+                )}
+                {backups.map((b) => (
+                  <div key={b.name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid ${T.paperLine}` }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ color: T.cream, fontSize: 15, fontWeight: 700 }}>{backupDay(b.name)}</div>
+                      <div style={{ color: T.muted, fontSize: 12.5, fontFamily: F.mono }}>{fmtSize(b.size)}</div>
+                    </div>
+                    <button
+                      onClick={() => restoreBackup(b.name)}
+                      style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 14, cursor: "pointer", flexShrink: 0 }}
+                    >
+                      되돌리기
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </Field>
     </div>
