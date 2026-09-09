@@ -4,7 +4,7 @@ import { STORAGE_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F } from "./lib/theme";
 import { defaultData, migrate, autoProcessFixed, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
 import { NavBtn } from "./components/common";
-import { pullPendingPayments, saveBackup } from "./lib/native";
+import { pullPendingPayments, saveBackup, inNativeApp } from "./lib/native";
 import { autoRecordPayments } from "./lib/auto-record";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { HomeView } from "./screens/Home";
@@ -71,8 +71,14 @@ function AppInner() {
   /*
     껍데기 앱이 모아 둔 결제 알림을 가져온다.
 
-    앱을 켤 때와 화면으로 돌아올 때 확인한다. 알림은 앱이 꺼져 있을 때도
-    오므로 저쪽에 쌓여 있고, 여기서 가져오면 저쪽 큐는 비워진다.
+    앱을 켤 때와 화면으로 돌아올 때, 그리고 **켜 둔 동안에도 이따금** 확인한다.
+    알림은 앱이 꺼져 있을 때도 오므로 저쪽에 쌓여 있고, 여기서 가져오면 저쪽
+    큐는 비워진다.
+
+    켜 둔 동안에도 보는 이유: 예전엔 껍데기가 보내는 '돌아옴' 신호에만 기댔다.
+    그래서 앱을 보고 있는 중에 결제 알림이 오면 큐에 쌓이기만 하고, 앱을
+    나갔다 다시 들어와야 그제야 들어왔다. 결제하고 바로 앱을 여는 게 흔한
+    흐름이라 이 자리에서 자주 놓쳤다.
 
     여기서는 받아만 둔다. 이 중에 무엇을 자동으로 넣을지는 바로 아래 효과가
     auto-record.js의 규칙으로 정하고, 확실하지 않은 것은 알림함에 남는다.
@@ -85,7 +91,14 @@ function AppInner() {
     };
     pull();
     window.addEventListener("passbook-native-resume", pull);
-    return () => window.removeEventListener("passbook-native-resume", pull);
+    // 껍데기가 아니면 가져올 것 자체가 없으므로 타이머도 안 건다
+    const tick = inNativeApp()
+      ? setInterval(() => { if (document.visibilityState === "visible") pull(); }, 15000)
+      : null;
+    return () => {
+      if (tick) clearInterval(tick);
+      window.removeEventListener("passbook-native-resume", pull);
+    };
   }, []);
 
   /*
