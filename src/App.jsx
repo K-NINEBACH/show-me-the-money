@@ -74,9 +74,8 @@ function AppInner() {
     앱을 켤 때와 화면으로 돌아올 때 확인한다. 알림은 앱이 꺼져 있을 때도
     오므로 저쪽에 쌓여 있고, 여기서 가져오면 저쪽 큐는 비워진다.
 
-    **자동으로 등록하지는 않는다.** 카드사마다 문자 형식이 달라서 금액이나
-    가맹점을 잘못 읽을 수 있는데, 그게 조용히 기록으로 남으면 나중에 어느
-    줄이 가짜인지 찾을 방법이 없다. 받아 두고 사람이 확인한다.
+    여기서는 받아만 둔다. 이 중에 무엇을 자동으로 넣을지는 바로 아래 효과가
+    auto-record.js의 규칙으로 정하고, 확실하지 않은 것은 알림함에 남는다.
   */
   const [inbox, setInbox] = useState([]);
   useEffect(() => {
@@ -90,20 +89,28 @@ function AppInner() {
   }, []);
 
   /*
-    자동 등록 — 카드 승인 알림만, 확실한 것만.
+    자동 등록 — 확실한 것만.
 
     조건에 안 맞는 것은 알림함에 남아 사람이 본다. 넣은 것에는 auto 표시가
     붙어서 내역에서 '자동' 배지로 보인다 — 이상하면 그 줄만 훑어 지울 수 있다.
 
-    넣은 게 없으면 아무 상태도 안 바꾼다. 안 그러면 이 효과가 스스로를
-    다시 부르며 끝없이 돈다.
+    **한 번 보류한 알림은 다시 자동으로 넣지 않는다**(checked 표시). 이 효과는
+    data가 바뀔 때마다 도는데, 예전엔 그때마다 알림함 전체를 다시 판단했다.
+    그러면 "애매하니 사람이 보라"고 미뤄 둔 것이 나중에 엉뚱한 데이터 변경에
+    편승해 조용히 들어간다 — 백업을 되돌렸더니 알림함에 있던 건이 딸려 들어오는
+    식이다. 보류했다는 건 사람이 보고 정하라는 뜻이므로, 그다음은 '채우기'를
+    눌러서만 들어간다.
   */
   useEffect(() => {
-    if (!data?.autoRecord || inbox.length === 0) return;
-    const { next, registered, leftover } = autoRecordPayments(data, inbox);
+    if (!data?.autoRecord) return;
+    const fresh = inbox.filter((i) => !i.checked);
+    if (fresh.length === 0) return;
+    const { next, registered, leftover } = autoRecordPayments(data, fresh);
+    const held = new Set(leftover);
+    // 판단이 끝난 것만 남기고 표시해 둔다 — 넣은 것은 목록에서 빠진다
+    setInbox(inbox.filter((i) => i.checked || held.has(i)).map((i) => (i.checked ? i : { ...i, checked: true })));
     if (registered.length === 0) return;
     persist(next);
-    setInbox(leftover);
     showToast(`결제 ${registered.length}건 자동으로 기록했어요`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inbox, data]);
