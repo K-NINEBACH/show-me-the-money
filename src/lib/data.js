@@ -142,10 +142,37 @@ export function parsePaymentText(text) {
   const dateMatch = text.match(/(\d{1,2})[\/.\-](\d{1,2})/);
   let date = null;
   if (dateMatch) {
+    const m = Number(dateMatch[1]);
+    const d = Number(dateMatch[2]);
     const now = new Date();
-    const mm = String(dateMatch[1]).padStart(2, "0");
-    const dd = String(dateMatch[2]).padStart(2, "0");
-    date = `${now.getFullYear()}-${mm}-${dd}`;
+    /*
+      **달력에 실제로 있는 날일 때만 쓴다.**
+
+      정규식이 날짜가 아닌 것도 잡는다 — "19.99" 같은 게 걸리면 "2026-19-99"라는
+      날짜가 만들어지고, 그러면 그 기록은 어느 달 목록에도 안 잡혀서 **조용히
+      사라진다.** 삭제된 것도 아니라 찾을 방법도 없다. 말이 안 되면 날짜를 안 쓰고
+      비워 둔다 — 부르는 쪽이 오늘로 채운다.
+    */
+    const probe = new Date(now.getFullYear(), m - 1, d);
+    const real = m >= 1 && m <= 12 && d >= 1 && probe.getMonth() === m - 1 && probe.getDate() === d;
+    if (real) {
+      /*
+        **결제 알림은 이미 일어난 일이라 미래일 수 없다.**
+
+        문자에는 연도가 없어서 올해로 읽는데, 12월 31일 문자를 1월 1일에 받으면
+        올해 12월이 되어 1년 뒤로 밀린다. 그러면 이번 달 합계에서 통째로 빠진다.
+        앞선 날짜는 작년으로 본다(시차·전송 지연을 감안해 일주일까지는 봐줌).
+      */
+      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const year = probe.getTime() > midnight.getTime() + 7 * 86400000
+        ? now.getFullYear() - 1
+        : now.getFullYear();
+      // 작년으로 되돌린 뒤에도 있는 날인지 다시 본다 — 윤년 2/29가 작년엔 없을 수 있다
+      const back = new Date(year, m - 1, d);
+      if (back.getMonth() === m - 1 && back.getDate() === d) {
+        date = `${year}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      }
+    }
   }
 
   const noise = /^(승인|일시불|할부|원|입금|출금|결제|잔액|카드|Web발신|체크카드|신용카드|누적|사용|금액|매출|취소|이체)$/;
