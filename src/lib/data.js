@@ -131,6 +131,38 @@ export function createdTime(item) {
   return digits ? Number(digits) : 0;
 }
 
+/*
+  문구에서 날짜(월/일)를 찾는다.
+
+  **계좌번호를 날짜로 읽는 사고가 있었다.** 기업은행 출금 알림이 이렇게 온다 —
+  "[출금] 851,362원 원리금-3200031 다음납입예정일-258-******-01-011 09/10 07:16".
+  예전 정규식은 아무 데나 있는 "숫자-숫자"를 잡아서 계좌번호 끝의 "01-011"을
+  1월 1일로 읽었다. 진짜 날짜(09/10)는 그 뒤에 있는데 못 봤다. 그러면 그 지출이
+  **이번 달에서 통째로 사라진다.**
+
+  두 가지로 막는다.
+    · 앞뒤가 다른 숫자나 구분기호에 붙어 있으면 날짜로 안 본다. 계좌번호 조각은
+      늘 다른 숫자에 붙어 있어서 여기서 걸러진다.
+    · 뒤에 시각(07:16)이 따라오는 것을 먼저 고른다. 거래 시각은 대개 거래
+      날짜 바로 뒤에 붙고, '다음납입예정일' 같은 남의 날짜에는 안 붙는다.
+*/
+function findDatePart(text) {
+  const re = /(?:^|[^\d\-/.:])(\d{1,2})[/.\-](\d{1,2})(?![\d\-/.])/g;
+  const found = [];
+  let hit;
+  while ((hit = re.exec(text)) !== null) {
+    const rest = text.slice(hit.index + hit[0].length);
+    found.push({
+      m: Number(hit[1]),
+      d: Number(hit[2]),
+      raw: `${hit[1]}${hit[0].includes("/") ? "/" : hit[0].includes(".") ? "." : "-"}${hit[2]}`,
+      timed: /^\s*\d{1,2}:\d{2}/.test(rest),
+    });
+  }
+  if (found.length === 0) return null;
+  return found.find((f) => f.timed) || found[0];
+}
+
 export function parsePaymentText(text) {
   const amountMatch = text.match(/([\d,]{3,})\s*원/);
   const amount = amountMatch ? amountMatch[1].replace(/,/g, "") : "";
@@ -139,11 +171,11 @@ export function parsePaymentText(text) {
   if (/입금|입금액|이체입금/.test(text)) type = "in";
   else if (/승인|출금|결제|이체출금/.test(text)) type = "out";
 
-  const dateMatch = text.match(/(\d{1,2})[\/.\-](\d{1,2})/);
+  const dateMatch = findDatePart(text);
   let date = null;
   if (dateMatch) {
-    const m = Number(dateMatch[1]);
-    const d = Number(dateMatch[2]);
+    const m = dateMatch.m;
+    const d = dateMatch.d;
     const now = new Date();
     /*
       **달력에 실제로 있는 날일 때만 쓴다.**
@@ -191,7 +223,7 @@ export function parsePaymentText(text) {
   let merchant = "";
   if (candidates.length) {
     if (dateMatch) {
-      const dateIdx = text.indexOf(dateMatch[0]);
+      const dateIdx = text.indexOf(dateMatch.raw);
       const afterDate = candidates.filter((c) => text.indexOf(c) > dateIdx);
       merchant = afterDate.length ? afterDate[0] : candidates[candidates.length - 1];
     } else {

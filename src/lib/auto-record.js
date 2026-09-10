@@ -60,7 +60,7 @@ const ISSUERS = [
   { re: /kakaopay/, keys: ["카카오페이"] },
   { re: /tossbank/, keys: ["토스뱅크"] },
   { re: /viva|toss/, keys: ["토스"] },
-  { re: /ibk/, keys: ["기업", "IBK", "ibk"] },
+  { re: /ibk|ionebank|i-one/, keys: ["기업", "IBK", "ibk"] },
   { re: /hyundaicard/, keys: ["현대"] },
   { re: /lottecard/, keys: ["롯데"] },
   { re: /samsungcard/, keys: ["삼성"] },
@@ -92,9 +92,36 @@ function pickByKeys(list, keys) {
   보낸 앱이 KB라는 걸 아는 이상 그건 확실히 틀린 답이다. 못 고르면 보류하고
   사람에게 넘긴다. 보낸 곳을 모를 때만 예전처럼 글자로 넘어간다.
 */
-function findByIssuerOrText(list, text, pkg) {
+function issuerOfName(name) {
+  const n = String(name || "");
+  if (!n) return null;
+  return ISSUERS.find((it) => it.keys.some((k) => n.includes(k))) || null;
+}
+
+function pickOne(list, text, pkg) {
+  if (!list || list.length === 0) return null;
   const issuer = issuerOf(pkg);
+
+  /*
+    **하나뿐이어도 '다른 은행'이면 붙이지 않는다.**
+
+    하나뿐이면 거기 붙이는 게 보통 맞다 — 이름을 '주거래'처럼 지어 뒀어도
+    받는 곳이 거기밖에 없다. 하지만 이름이 대놓고 다른 은행을 가리키면
+    얘기가 다르다. 국민은행 통장 하나만 등록해 둔 상태에서 기업은행 출금
+    알림이 오면, 그건 앱이 아직 모르는 통장에서 나간 돈이다. 국민은행에
+    붙이면 그 잔고가 틀어지고, 정작 기업은행은 여전히 안 보인다.
+
+    이름에 은행이 안 적혀 있으면 예전처럼 그냥 붙인다.
+  */
+  if (list.length === 1) {
+    const only = list[0];
+    const mine = issuerOfName(only.name);
+    if (issuer && mine && mine !== issuer) return null;
+    return only;
+  }
+
   if (issuer) return pickByKeys(list, issuer.keys);
+
   for (const x of list) {
     const key = String(x.name || "").replace(/[^가-힣A-Za-z]/g, "").slice(0, 2);
     if (key && text.includes(key)) return x;
@@ -111,10 +138,7 @@ function findByIssuerOrText(list, text, pkg) {
   카드가 하나뿐이면 그 카드로 본다.
 */
 function findCard(cards, text, pkg) {
-  if (!cards || cards.length === 0) return null;
-  if (cards.length === 1) return cards[0];
-
-  return findByIssuerOrText(cards, text, pkg);
+  return pickOne(cards, text, pkg);
 }
 
 /** 통장 입출금으로 보이나 */
@@ -134,9 +158,7 @@ function bankDirection(text) {
   못 고르면 자동으로 안 넣는다.
 */
 function findAccount(accounts, text, pkg) {
-  if (!accounts || accounts.length === 0) return null;
-  if (accounts.length === 1) return accounts[0];
-  return findByIssuerOrText(accounts, text, pkg);
+  return pickOne(accounts, text, pkg);
 }
 
 /*
