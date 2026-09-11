@@ -210,14 +210,41 @@ function findAccount(accounts, text, pkg) {
   두 번 옮겼다면 두 번째는 알림함에 남으니 사람이 보고 넣으면 된다 —
   반대 방향(두 번 빠지는 것)은 되돌리기가 훨씬 어렵다.
 */
-function alreadyInLedger(entries, { amount, date, type, accountId }) {
+function alreadyInLedger(entries, { amount, date, type, accountId, time }) {
   return (entries || []).some(
     (b) =>
       Number(b.amount) === Number(amount) &&
       b.date === date &&
       b.type === type &&
-      (accountId ? (b.accountId || null) === accountId : true),
+      (accountId ? (b.accountId || null) === accountId : true) &&
+      sameMoment(b, time),
   );
+}
+
+/*
+  **같은 날·같은 금액이어도 시각이 다르면 다른 거래다.**
+
+  예전엔 같은 날·같은 금액이면 무조건 같은 건으로 보고 보류했다. 그러면 지하철을
+  하루 두 번 타도(1,450원 × 2) 두 번째가 알림함에 걸려 사람이 눌러야 했다.
+
+  그렇다고 그냥 풀면 반대가 터진다 — 같은 결제가 카드사 앱 알림과 문자로 두 번
+  오면 두 번 들어간다. 그래서 문자에 찍힌 결제 시각(17:15)을 자동 기록에 남겨 두고
+  (autoTime), 시각이 같으면 같은 거래, 다르면 다른 거래로 본다.
+
+  손으로 적은 기록(auto 아님)이나 앱이 스스로 만든 입출금(카드값 결제·출금처리)은
+  시각이 없으니 같은 날·같은 금액이면 같은 거래로 본다. 한쪽이라도 시각을 모르면
+  같은 거래로 본다 — 두 번 들어가는 쪽이 되돌리기 어렵다.
+*/
+function sameMoment(entry, time) {
+  if (!entry.auto) return true;
+  if (!entry.autoTime || !time) return true;
+  return entry.autoTime === time;
+}
+
+/** 문자에 찍힌 결제 시각 "17:15". 없으면 null */
+function timeOf(text) {
+  const m = String(text || "").match(/(?:^|[^\d])(\d{1,2}):(\d{2})(?!\d)/);
+  return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
 }
 
 /*
@@ -230,13 +257,47 @@ function alreadyInLedger(entries, { amount, date, type, accountId }) {
   놓칠 위험(같은 날 같은 금액을 진짜로 두 번 쓴 경우)도 있지만, 그때는 알림함에
   남아서 사람이 보고 넣으면 된다. 반대 방향의 실수는 되돌리기 어렵다.
 */
-function alreadyRecorded(expenses, { amount, date, cardId }) {
+function alreadyRecorded(expenses, { amount, date, cardId, time }) {
   return expenses.some(
     (e) =>
       Number(e.amount) === Number(amount) &&
       e.date === date &&
-      (e.cardId || null) === (cardId || null),
+      (e.cardId || null) === (cardId || null) &&
+      sameMoment(e, time),
   );
+}
+
+/*
+  이번 달에 **이미 처리한** 고정지출인가 — 이름 조각이 문구에 있을 때만.
+
+  '카드반영'·'출금처리'를 먼저 눌러 둔 뒤 실제 결제 알림이 오는 경우다. 그 고정지출은
+  이미 처리돼 있어서 짝을 못 찾고, 예전엔 새 지출로 한 번 더 들어갔다 — 같은 돈이
+  두 번 잡힌다. 이름 조각까지 맞을 때만 같은 건으로 본다. 금액만 맞으면 우연히 같은
+  금액의 다른 결제일 수 있다.
+*/
+function paidFixedHit(fixedExpenses, { amount, isCard, cardId, accountId, text }, key) {
+  const hay = String(text || "");
+  return (fixedExpenses || []).find((f) => {
+    if (!(f.paidMonths && f.paidMonths[key])) return false;
+    if (((f.paymentMethod || "cash") === "card") !== isCard) return false;
+    if (isCard && f.totalMonths > 0) return false;
+    const info = fixedInfo(f, key);
+    if (!info.active || Number(info.amount) !== Number(amount)) return false;
+    if (isCard && f.cardId && cardId && f.cardId !== cardId) return false;
+    if (!isCard && f.accountId && accountId && f.accountId !== accountId) return false;
+    const name = String(f.name || "").replace(/[^가-힣A-Za-z0-9]/g, "");
+    for (let len = Math.min(name.length, 6); len >= 2; len -= 1) {
+      if (hay.includes(name.slice(0, len))) return true;
+    }
+    return false;
+  }) || null;
+}
+
+/** 할부 개월 수 "3개월" → 3. 모르면 null */
+function monthsOf(text) {
+  const m = String(text || "").match(/(\d{1,2})\s*개월/);
+  const n = m ? Number(m[1]) : null;
+  return n && n >= 2 && n <= 60 ? n : null;
 }
 
 /*
@@ -344,6 +405,7 @@ function matchFixed(data, { amount, isCard, cardId, accountId, text }, key) {
  *   leftover   자동으로 못 넣어 알림함에 남길 것들
  *   dropped    결제·취소가 짝이 맞아 알림함에서 치울 것들(held 포함)
  *   undone     취소 알림을 받아 기록에서 뺀 지출들
+ *   skipped    이미 적혀 있는 거래라 넘긴 알림들(두 번 넣지 않는다)
  */
 export function autoRecordPayments(data, items, held = []) {
   const registered = [];
@@ -401,6 +463,7 @@ export function autoRecordPayments(data, items, held = []) {
   }
   const dropped = [...paired];
   const undone = [];
+  const skipped = [];
 
   for (const it of all.slice(0, items.length)) {
     const { item, text, r, amount, pkg } = it;
@@ -419,21 +482,38 @@ export function autoRecordPayments(data, items, held = []) {
       손으로 적은 기록이나 지난달 것(카드값을 이미 냈을 수 있다)은 건드리지 않고
       알림함에 '취소'로 남겨 사람이 본다. 가맹점 이름이 같은 게 있으면 그걸 고른다.
     */
+    /*
+      손으로 적은 결제도 되돌린다(2026-09-11, "확인 안 눌러도 자동으로" 요청).
+      자동으로 들어간 것을 먼저 고르고, 없을 때 손으로 적은 것을 본다. 가맹점 이름이
+      같은 게 있으면 그걸 고른다. 정산을 붙인 것·지난달 것은 여전히 안 건드린다.
+      할부로 자동 등록한 결제의 취소면 그 할부 항목을 지운다.
+    */
     if (it.isCancel) {
       const nowKey = keyOf(todayISO());
-      const cands = it.card
-        ? expenses.filter((e) => e.auto && (e.paymentMethod || "cash") === "card" && e.cardId === it.card.id
+      const pool = it.card
+        ? expenses.filter((e) => (e.paymentMethod || "cash") === "card" && e.cardId === it.card.id
             && Number(e.amount) === amount && !e.isCardAdjustment && e.reimbursedAmount == null && keyOf(e.date) === nowKey)
         : [];
-      const same = cands.filter((e) => r.merchant && e.memo === r.merchant);
-      const pick = (same.length ? same : cands).slice(-1)[0];
-      if (!pick) {
-        leftover.push(item);
+      const byMerchant = (list) => list.filter((e) => r.merchant && e.memo === r.merchant);
+      const autos = pool.filter((e) => e.auto);
+      const manuals = pool.filter((e) => !e.auto);
+      const pick = [byMerchant(autos), autos, byMerchant(manuals), manuals].find((l) => l.length)?.slice(-1)[0];
+      if (pick) {
+        expenses = expenses.filter((e) => e.id !== pick.id);
+        cards = cards.map((c) => (c.id === it.card.id ? { ...c, bill: Math.max(0, Number(c.bill || 0) - amount) } : c));
+        undone.push(pick);
         continue;
       }
-      expenses = expenses.filter((e) => e.id !== pick.id);
-      cards = cards.map((c) => (c.id === it.card.id ? { ...c, bill: Math.max(0, Number(c.bill || 0) - amount) } : c));
-      undone.push(pick);
+      const inst = it.card
+        ? fixedExpenses.find((f) => f.auto && f.cardId === it.card.id && f.setupMonthKey === nowKey && f.totalMonths > 0
+            && Number(f.purchaseAmount) === amount)
+        : null;
+      if (inst) {
+        fixedExpenses = fixedExpenses.filter((f) => f.id !== inst.id);
+        undone.push(inst);
+        continue;
+      }
+      leftover.push(item);
       continue;
     }
 
@@ -453,8 +533,15 @@ export function autoRecordPayments(data, items, held = []) {
       }
       const bDate = r.date || todayISO();
       const bKey = keyOf(bDate);
-      if (alreadyInLedger(balanceEntries, { amount, date: bDate, type: dir, accountId: acc.id })) {
-        leftover.push(item);
+      const time = timeOf(text);
+      /*
+        이미 적혀 있는 거래면 넘긴다. 예전엔 알림함에 보류해 사람이 '버리기'를
+        눌러야 했는데, 앱이 스스로 만든 출금(카드값 결제·출금처리)이나 같은 알림이
+        두 번 온 것이라 넣을 이유가 없다. 넘겼다는 건 알림 문구로 알린다.
+      */
+      if (alreadyInLedger(balanceEntries, { amount, date: bDate, type: dir, accountId: acc.id, time })
+        || (dir === "out" && paidFixedHit(fixedExpenses, { amount, isCard: false, accountId: acc.id, text }, bKey))) {
+        skipped.push(item);
         continue;
       }
 
@@ -479,6 +566,7 @@ export function autoRecordPayments(data, items, held = []) {
           : r.merchant || (dir === "in" ? "입금" : "출금"),
         accountId: acc.id,
         auto: true,
+        ...(time ? { autoTime: time } : {}),
         ...(hitOut ? { linkedFixedId: hitOut.fixed.id, linkedFixedMonth: bKey } : {}),
       };
       balanceEntries = [...balanceEntries, entry];
@@ -487,16 +575,62 @@ export function autoRecordPayments(data, items, held = []) {
       continue;
     }
 
-    /* 할부 결제는 자동으로 안 넣는다 — 위 설명 참고 */
+    const date = r.date || todayISO();
+    const eKey = keyOf(date);
+    const time = timeOf(text);
+
+    /*
+      **할부 결제는 '할부(고정지출)'로 등록한다**(2026-09-11).
+
+      문자에는 총액이 찍힌다. 지출로 넣으면 몇 달에 나눠 낼 돈이 이번 달 카드값에
+      통째로 잡힌다. 그래서 사람이 기록 탭에서 할부로 등록하던 걸 그대로 대신한다 —
+      월 금액 = 총액 ÷ 개월, 나머지 원 단위는 첫 달에 얹어 합이 총액과 맞게. 첫 회차는
+      결제한 달이다(일시불이 결제한 달에 잡히는 것과 같게). 카드값에는 앱이 매달
+      할부 몫으로 알아서 넣는다.
+
+      개월 수를 문구에서 못 읽으면(예: '무이자할부'만 있고 '3개월'이 없으면) 나눌 수가
+      없으니 알림함에 남긴다.
+    */
     if (looksLikeInstallmentPurchase(text)) {
-      leftover.push(item);
+      const months = monthsOf(text);
+      if (!months) {
+        leftover.push(item);
+        continue;
+      }
+      const dupInst = fixedExpenses.some((f) => f.auto && f.cardId === card.id && f.setupMonthKey === eKey
+        && Number(f.purchaseAmount) === amount && (f.autoTime || null) === time);
+      if (dupInst) {
+        skipped.push(item);
+        continue;
+      }
+      const monthly = Math.floor(amount / months);
+      const first = amount - monthly * (months - 1);
+      const inst = {
+        id: "f" + (Date.now() + registered.length),
+        name: `${r.merchant || "카드"} 할부`,
+        baseAmount: monthly,
+        totalMonths: months,
+        startInstallment: 1,
+        setupMonthKey: eKey,
+        overrides: first !== monthly ? { [eKey]: first } : {},
+        paymentMethod: "card",
+        cardId: card.id,
+        accountId: null,
+        paidMonths: {},
+        autoPayDay: null,
+        auto: true,
+        purchaseAmount: amount,
+        ...(time ? { autoTime: time } : {}),
+      };
+      fixedExpenses = [...fixedExpenses, inst];
+      registered.push(inst);
       continue;
     }
 
-    const date = r.date || todayISO();
-    const eKey = keyOf(date);
-    if (alreadyRecorded(expenses, { amount, date, cardId: card.id })) {
-      leftover.push(item);
+    /* 이미 적혀 있는 결제면 넘긴다 — 같은 알림이 두 번 왔거나 손으로 먼저 적은 것 */
+    if (alreadyRecorded(expenses, { amount, date, cardId: card.id, time })
+      || paidFixedHit(fixedExpenses, { amount, isCard: true, cardId: card.id, text }, eKey)) {
+      skipped.push(item);
       continue;
     }
 
@@ -535,6 +669,7 @@ export function autoRecordPayments(data, items, held = []) {
       cardId: card.id,
       linkedBalanceId: null,
       auto: true,
+      ...(time ? { autoTime: time } : {}),
       ...(hitCard ? { isCardAdjustment: true } : {}),
     };
     if (hitCard) markPaid(hitCard.fixed.id, expenseId, eKey);
@@ -547,7 +682,7 @@ export function autoRecordPayments(data, items, held = []) {
   }
 
   if (registered.length === 0 && undone.length === 0) {
-    return { next: data, registered, leftover, dropped, undone };
+    return { next: data, registered, leftover, dropped, undone, skipped };
   }
   return {
     next: { ...data, expenses, cards, balanceEntries, fixedExpenses },
@@ -555,5 +690,6 @@ export function autoRecordPayments(data, items, held = []) {
     leftover,
     dropped,
     undone,
+    skipped,
   };
 }

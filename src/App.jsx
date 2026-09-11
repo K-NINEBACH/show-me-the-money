@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
-import { STORAGE_KEY, INBOX_KEY } from "./lib/constants";
+import { STORAGE_KEY, INBOX_KEY, SEEN_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
 import { defaultData, migrate, autoProcessFixed, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
 import { NavBtn } from "./components/common";
@@ -107,7 +107,17 @@ function AppInner() {
   }, [inbox]);
   useEffect(() => {
     const pull = () => {
-      const got = pullPendingPayments();
+      const pulled = pullPendingPayments();
+      if (!pulled.length) return;
+      /*
+        이미 받아 처리한 알림은 다시 안 받는다. 껍데기는 휴대폰을 재시작하거나 앱을
+        업데이트하면 알림창에 남은 알림을 다시 넘긴다. 그걸 또 처리하면, 예컨대 이미
+        기록을 되돌린 취소 알림이 짝을 못 찾아 알림함에 괜히 뜬다.
+      */
+      let seen = [];
+      try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"); } catch { seen = []; }
+      const got = pulled.filter((g) => !seen.includes(g.text));
+      try { localStorage.setItem(SEEN_KEY, JSON.stringify([...seen, ...got.map((g) => g.text)].slice(-500))); } catch { /* 못 적어도 앱은 돈다 */ }
       if (!got.length) return;
       /*
         같은 문구는 한 번만. 껍데기가 다시 연결될 때 알림창에 남은 것을 한 번 더
@@ -146,7 +156,7 @@ function AppInner() {
     const fresh = inbox.filter((i) => !i.checked);
     const heldBefore = inbox.filter((i) => i.checked);
     // 보류된 것도 넘긴다 — 자동으로 넣지는 않고, 결제·취소 짝을 맞출 때만 쓴다
-    const { next, registered, leftover, dropped, undone } = autoRecordPayments(data, fresh, heldBefore);
+    const { next, registered, leftover, dropped, undone, skipped } = autoRecordPayments(data, fresh, heldBefore);
     // 새로 온 것도, 치울 짝도 없으면 아무 상태도 안 바꾼다 — 안 그러면 이 효과가 끝없이 돈다
     if (fresh.length === 0 && dropped.length === 0) return;
     const keep = new Set(leftover);
@@ -157,6 +167,7 @@ function AppInner() {
     if (registered.length) msgs.push(`결제 ${registered.length}건 자동으로 기록했어요`);
     if (undone.length) msgs.push(`취소된 결제 ${undone.length}건을 기록에서 뺐어요`);
     if (dropped.length) msgs.push(`결제 후 취소된 ${Math.round(dropped.length / 2)}건은 넣지 않았어요`);
+    if (skipped.length) msgs.push(`이미 적힌 거래 ${skipped.length}건은 넘겼어요`);
     if (next !== data) persist(next);
     if (msgs.length) showToast(msgs.join(" · "));
     // eslint-disable-next-line react-hooks/exhaustive-deps
