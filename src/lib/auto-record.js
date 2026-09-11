@@ -24,17 +24,58 @@ import { parsePaymentText, todayISO, fixedInfo } from "./data";
   그 줄들만 훑어서 지울 수 있다. 표시가 없으면 자동 등록은 위험한 기능이 된다.
 */
 
-/** 이 말이 있으면 지출이 아니다 — 취소·환불·안내 문구 */
+/** 이 말이 있으면 통장 입출금이 아니다 — 취소·환불·안내 문구 */
 const NEGATIVE = /취소|환불|거절|실패|누적|한도|승인취소|출금취소/;
 
 /** 이 말이 있어야 결제다 */
 const POSITIVE = /승인|결제/;
 
+/*
+  카드 결제가 아닌 문구.
+
+  **'누적'은 여기 없다.** 현대카드 결제 문자는 늘 끝에 "누적1,778,985원"이 붙는데,
+  예전엔 '누적'이 있으면 결제가 아니라고 걸러서 현대카드 결제가 한 번도 자동으로
+  못 들어갔다('누적 사용액 안내'를 거르려던 것). 그런 안내 문자에는 '승인'이 없으니
+  POSITIVE에서 이미 떨어진다.
+
+  대신 '결제 예정·청구·안내'는 거른다. '결제'라는 글자가 있어서 예전 규칙으로도
+  카드 결제로 들어갈 수 있던 문구다 — 다음 달 청구 금액 안내가 지출로 잡히면
+  그 달 여유가 통째로 틀어진다.
+*/
+const CARD_NOT_APPROVAL = /취소|환불|거절|실패|예정|안내|청구/;
+
 /** 카드 결제로 보이나 */
 function looksLikeCardApproval(text) {
   if (!POSITIVE.test(text)) return false;
-  if (NEGATIVE.test(text)) return false;
+  if (CARD_NOT_APPROVAL.test(text)) return false;
   return true;
+}
+
+/*
+  카드 결제 취소로 보이나. 통장 '출금취소'는 카드 취소가 아니다 — 입출금 말이
+  섞여 있으면 여기서 뺀다.
+*/
+function looksLikeCardCancel(text) {
+  if (!/취소|환불/.test(text)) return false;
+  if (/거절|실패|출금|입금|이체/.test(text)) return false;
+  return true;
+}
+
+/*
+  할부로 산 결제인가("3개월", "무이자할부"). 일시불이면 아니다.
+
+  할부 결제 문자에는 총액이 찍힌다. 그대로 넣으면 몇 달에 나눠 낼 돈이 이번 달
+  카드값에 통째로 잡혀 여유가 크게 틀어진다. 이 앱은 할부를 '할부(고정지출)'로
+  따로 등록해 회차마다 나눠 세는 구조라, 자동으로 넣지 않고 사람에게 넘긴다.
+*/
+function looksLikeInstallmentPurchase(text) {
+  if (/일시불/.test(text)) return false;
+  return /할부|\d{1,2}\s*개월/.test(text);
+}
+
+/** 알림함에서 '취소'로 보여 줄 문구인가 (화면용) */
+export function isCancelText(text) {
+  return /취소|환불/.test(String(text || ""));
 }
 
 /*
@@ -295,12 +336,16 @@ function matchFixed(data, { amount, isCard, cardId, accountId, text }, key) {
 /**
  * 알림 목록을 훑어 자동으로 넣을 수 있는 것만 넣는다.
  *
- * @returns {{ next: object, registered: object[], leftover: object[] }}
- *   next      바뀐 데이터(넣은 게 없으면 원본 그대로)
+ * @param held  알림함에 이미 보류돼 있는 것들. 자동으로 넣지는 않고, 결제·취소
+ *              짝을 맞출 때만 본다.
+ * @returns {{ next, registered, leftover, dropped, undone }}
+ *   next       바뀐 데이터(바뀐 게 없으면 원본 그대로)
  *   registered 자동으로 넣은 항목들
- *   leftover  자동으로 못 넣어 알림함에 남길 것들
+ *   leftover   자동으로 못 넣어 알림함에 남길 것들
+ *   dropped    결제·취소가 짝이 맞아 알림함에서 치울 것들(held 포함)
+ *   undone     취소 알림을 받아 기록에서 뺀 지출들
  */
-export function autoRecordPayments(data, items) {
+export function autoRecordPayments(data, items, held = []) {
   const registered = [];
   const leftover = [];
 
@@ -327,16 +372,71 @@ export function autoRecordPayments(data, items) {
     );
   };
 
-  for (const item of items) {
+  /*
+    **결제했다가 바로 취소하면 둘 다 넣지 않는다.**
+
+    결제 문자와 취소 문자가 따로 온다. 예전엔 취소를 그냥 보류해서, 알림함에
+    '36,280원 쿠팡페이'가 똑같은 모양으로 두 줄 떴고 둘 다 '채우기'가 있었다.
+    결제가 두 번 잡힌 것처럼 보이고, 둘 다 누르면 실제로 두 번 들어간다.
+
+    같은 카드·같은 금액의 결제와 취소가 알림함(새로 온 것 + 이미 보류된 것)에
+    같이 있으면 서로 지운다. 둘 다 아직 기록 전이라 아무것도 안 건드린다.
+  */
+  const info = (item) => {
     const text = String(item?.text || "");
     const r = parsePaymentText(text);
     const amount = Number(r.amount);
+    const pkg = item?.pkg;
+    const isCancel = looksLikeCardCancel(text);
+    const isApproval = !isCancel && looksLikeCardApproval(text);
+    const card = (isCancel || isApproval) && amount > 0 ? findCard(cards, text, pkg) : null;
+    return { item, text, r, amount, pkg, isCancel, isApproval, card };
+  };
+  const all = [...items.map(info), ...held.map(info)];
+  const paired = new Set();
+  for (const c of all) {
+    if (!c.isCancel || !c.card) continue;
+    const a = all.find((x) => x.isApproval && x.card && x.card.id === c.card.id && x.amount === c.amount && !paired.has(x.item));
+    if (a) { paired.add(a.item); paired.add(c.item); }
+  }
+  const dropped = [...paired];
+  const undone = [];
+
+  for (const it of all.slice(0, items.length)) {
+    const { item, text, r, amount, pkg } = it;
+    if (paired.has(item)) continue;
     if (!amount || amount <= 0) {
       leftover.push(item);
       continue;
     }
 
-    const pkg = item?.pkg;
+    /*
+      **이미 자동으로 들어간 결제에 취소가 오면 그 기록을 뺀다.**
+
+      결제 알림이 먼저 와서 자동으로 들어간 뒤 몇 분 뒤 취소가 오는 경우다. 앱이
+      스스로 넣은 것을 같은 경로로 되돌리는 것이라 대칭이 맞는다. 좁게 잡는다 —
+      자동으로 들어간 것, 같은 카드·같은 금액, 이번 달, 정산을 안 붙인 것만.
+      손으로 적은 기록이나 지난달 것(카드값을 이미 냈을 수 있다)은 건드리지 않고
+      알림함에 '취소'로 남겨 사람이 본다. 가맹점 이름이 같은 게 있으면 그걸 고른다.
+    */
+    if (it.isCancel) {
+      const nowKey = keyOf(todayISO());
+      const cands = it.card
+        ? expenses.filter((e) => e.auto && (e.paymentMethod || "cash") === "card" && e.cardId === it.card.id
+            && Number(e.amount) === amount && !e.isCardAdjustment && e.reimbursedAmount == null && keyOf(e.date) === nowKey)
+        : [];
+      const same = cands.filter((e) => r.merchant && e.memo === r.merchant);
+      const pick = (same.length ? same : cands).slice(-1)[0];
+      if (!pick) {
+        leftover.push(item);
+        continue;
+      }
+      expenses = expenses.filter((e) => e.id !== pick.id);
+      cards = cards.map((c) => (c.id === it.card.id ? { ...c, bill: Math.max(0, Number(c.bill || 0) - amount) } : c));
+      undone.push(pick);
+      continue;
+    }
+
     const card = looksLikeCardApproval(text) ? findCard(cards, text, pkg) : null;
 
     /*
@@ -384,6 +484,12 @@ export function autoRecordPayments(data, items) {
       balanceEntries = [...balanceEntries, entry];
       if (hitOut) markPaid(hitOut.fixed.id, entryId, bKey);
       registered.push(entry);
+      continue;
+    }
+
+    /* 할부 결제는 자동으로 안 넣는다 — 위 설명 참고 */
+    if (looksLikeInstallmentPurchase(text)) {
+      leftover.push(item);
       continue;
     }
 
@@ -440,12 +546,14 @@ export function autoRecordPayments(data, items) {
     registered.push(expense);
   }
 
-  if (registered.length === 0) {
-    return { next: data, registered, leftover };
+  if (registered.length === 0 && undone.length === 0) {
+    return { next: data, registered, leftover, dropped, undone };
   }
   return {
     next: { ...data, expenses, cards, balanceEntries, fixedExpenses },
     registered,
     leftover,
+    dropped,
+    undone,
   };
 }

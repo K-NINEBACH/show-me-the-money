@@ -1,6 +1,7 @@
 import { useTheme, F } from "../lib/theme";
 import { fmtWon, parsePaymentText } from "../lib/data";
 import { hasNotificationAccess, openNotificationSettings } from "../lib/native";
+import { isCancelText } from "../lib/auto-record";
 
 /*
   껍데기 앱이 잡아 왔는데 **자동으로 넣지 못한** 결제 알림을 보여주는 자리
@@ -83,6 +84,13 @@ export function PaymentInbox({ ctx, onPick }) {
 
       {inbox.map((item, i) => {
         const r = parsePaymentText(item.text || "");
+        /*
+          취소 알림은 결제 알림과 똑같은 모양이라, 예전엔 '36,280원 쿠팡페이'가
+          두 줄 뜨면 결제가 두 번 잡힌 것처럼 보였고 둘 다 '채우기'가 있었다.
+          취소는 표시를 붙이고 '채우기'를 뺀다 — 채우면 결제로 들어가 버린다.
+        */
+        const cancel = isCancelText(item.text);
+        const amountText = r.amount ? fmtWon(Number(r.amount)) : "금액 못 읽음";
         return (
           <div
             key={`${item.at}-${i}`}
@@ -93,8 +101,9 @@ export function PaymentInbox({ ctx, onPick }) {
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 15.5, fontWeight: 700 }}>
-                  {r.amount ? fmtWon(Number(r.amount)) : "금액 못 읽음"}
+                <div style={{ display: "flex", alignItems: "baseline", gap: 6, color: T.cream, fontFamily: F.mono, fontSize: 15.5, fontWeight: 700 }}>
+                  <span style={cancel ? { textDecoration: "line-through", color: T.muted } : undefined}>{amountText}</span>
+                  {cancel && <span style={{ fontFamily: "inherit", fontSize: 12.5, color: T.danger, whiteSpace: "nowrap" }}>결제 취소</span>}
                 </div>
                 <div
                   style={{
@@ -109,13 +118,15 @@ export function PaymentInbox({ ctx, onPick }) {
                   {r.merchant || item.text}
                 </div>
               </div>
-              <button
+              {!cancel && <button
                 onClick={() => {
                   onPick(item.text);
                   dismissInbox(i);
                 }}
+                aria-label={`${amountText} ${r.merchant || ""} 기록 화면에 채우기`}
                 style={{
-                  padding: "6px 10px",
+                  minHeight: 36,
+                  padding: "0 12px",
                   borderRadius: 8,
                   border: "none",
                   background: T.gold,
@@ -126,11 +137,13 @@ export function PaymentInbox({ ctx, onPick }) {
                 }}
               >
                 채우기
-              </button>
+              </button>}
               <button
                 onClick={() => dismissInbox(i)}
+                aria-label={`${amountText} ${r.merchant || ""} ${cancel ? "취소 알림" : "알림"} 버리기`}
                 style={{
-                  padding: "6px 8px",
+                  minHeight: 36,
+                  padding: "0 10px",
                   borderRadius: 8,
                   border: `1px solid ${T.border}`,
                   background: "transparent",

@@ -144,14 +144,21 @@ function AppInner() {
   useEffect(() => {
     if (!data?.autoRecord) return;
     const fresh = inbox.filter((i) => !i.checked);
-    if (fresh.length === 0) return;
-    const { next, registered, leftover } = autoRecordPayments(data, fresh);
-    const held = new Set(leftover);
-    // 판단이 끝난 것만 남기고 표시해 둔다 — 넣은 것은 목록에서 빠진다
-    setInbox(inbox.filter((i) => i.checked || held.has(i)).map((i) => (i.checked ? i : { ...i, checked: true })));
-    if (registered.length === 0) return;
-    persist(next);
-    showToast(`결제 ${registered.length}건 자동으로 기록했어요`);
+    const heldBefore = inbox.filter((i) => i.checked);
+    // 보류된 것도 넘긴다 — 자동으로 넣지는 않고, 결제·취소 짝을 맞출 때만 쓴다
+    const { next, registered, leftover, dropped, undone } = autoRecordPayments(data, fresh, heldBefore);
+    // 새로 온 것도, 치울 짝도 없으면 아무 상태도 안 바꾼다 — 안 그러면 이 효과가 끝없이 돈다
+    if (fresh.length === 0 && dropped.length === 0) return;
+    const keep = new Set(leftover);
+    const gone = new Set(dropped);
+    // 판단이 끝난 것만 남기고 표시해 둔다 — 넣은 것과 짝이 맞아 치운 것은 목록에서 빠진다
+    setInbox(inbox.filter((i) => !gone.has(i) && (i.checked || keep.has(i))).map((i) => (i.checked ? i : { ...i, checked: true })));
+    const msgs = [];
+    if (registered.length) msgs.push(`결제 ${registered.length}건 자동으로 기록했어요`);
+    if (undone.length) msgs.push(`취소된 결제 ${undone.length}건을 기록에서 뺐어요`);
+    if (dropped.length) msgs.push(`결제 후 취소된 ${Math.round(dropped.length / 2)}건은 넣지 않았어요`);
+    if (next !== data) persist(next);
+    if (msgs.length) showToast(msgs.join(" · "));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inbox, data]);
   const [toast, setToast] = useState("");
@@ -355,7 +362,7 @@ function AppInner() {
     appShell: { background: `radial-gradient(circle at 50% -10%, ${T.bg2}, ${T.bg} 60%)`, minHeight: "100vh", display: "flex", flexDirection: "column", fontFamily: F.body },
     screen: { flex: 1, overflowY: "auto", padding: "20px 16px 12px", paddingBottom: 90 },
     nav: { position: "fixed", bottom: 0, left: 0, right: 0, display: "flex", background: T.navBg, borderTop: `1px solid ${T.goldSoft}55`, backdropFilter: "blur(8px)", padding: "8px 4px calc(8px + env(safe-area-inset-bottom))" },
-    toast: { position: "fixed", bottom: 84, left: "50%", transform: "translateX(-50%)", background: T.gold, color: T.onGold, padding: "8px 16px", borderRadius: 20, fontSize: 16, fontWeight: 600, boxShadow: "0 4px 16px rgba(0,0,0,0.3)", whiteSpace: "nowrap" },
+    toast: { position: "fixed", bottom: 84, left: "50%", transform: "translateX(-50%)", background: T.gold, color: T.onGold, padding: "8px 16px", borderRadius: 20, fontSize: 16, fontWeight: 600, boxShadow: "0 4px 16px rgba(0,0,0,0.3)", width: "max-content", maxWidth: "calc(100% - 32px)", textAlign: "center" },
   };
 
   return (
