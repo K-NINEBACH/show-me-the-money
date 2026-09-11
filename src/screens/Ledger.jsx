@@ -8,26 +8,59 @@ import { fmtWon, createdTime, dateStrFor, monthKeyOffset, todayISO, netAmount } 
 import { MoneyInput, QuickAmountButtons } from "../components/common";
 import { settleReceivable } from "./Home";
 
+/*
+  내역 줄의 공용 조각. 지출·대리결제·입출금 세 종류가 한 목록에 섞이는데, 예전엔
+  줄마다 틀이 달랐다 — 지출은 날짜가 아래 줄에 '2026-09-10', 입출금은 금액 옆에
+  '09-10'. 한 목록 안에서 같은 정보가 다른 자리·다른 모양으로 나오면 훑어 내려갈
+  때 눈이 매번 다시 찾아야 한다. 이제 셋 다 [제목·배지 / 메모 / 날짜 | 금액 | 버튼].
+
+  흐린 글자는 T.inkMuted — 예전엔 #8A7E5E·#9A8E6E가 박혀 있어 테마를 안 따라갔고
+  종이 위 대비가 2.8~3.9로 전 테마에서 기준(4.5) 미달이었다.
+*/
+// 제목과 배지를 한 줄에 흘려 두고, 넘치면 배지가 다음 줄 맨 앞부터 이어진다.
+// 예전엔 배지마다 왼쪽 여백을 붙여서, 줄이 넘어가면 그 여백까지 같이 넘어가
+// 들여쓰기처럼 보였다.
+function rowTitle(T) { return { display: "flex", flexWrap: "wrap", alignItems: "baseline", columnGap: 6, rowGap: 1, color: T.ink, fontSize: 16, fontWeight: 600 }; }
+function rowSub(T) { return { color: T.inkMuted, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }; }
+function rowDate(T) { return { color: T.inkMuted, fontSize: 12.5, fontFamily: F.mono }; }
+function Badge({ color, children }) {
+  return <span style={{ fontSize: 12, fontWeight: 700, color, whiteSpace: "nowrap" }}>{children}</span>;
+}
+
+/*
+  아이콘만 있는 버튼. 예전엔 이름이 없어 스크린리더가 "버튼"이라고만 읽었고,
+  누르는 영역이 22px 남짓이라 금액 옆 휴지통을 스치듯 잘못 누르기 쉬웠다.
+  보이는 아이콘 크기는 그대로 두고 누르는 영역만 40px로 넓힌다.
+*/
+function IconBtn({ label, color, onClick, children }) {
+  return (
+    <button onClick={onClick} aria-label={label}
+      style={{ background: "none", border: "none", cursor: "pointer", color, width: 36, height: 40, marginInline: -4, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      {children}
+    </button>
+  );
+}
+
 export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, onDelete }) {
   const T = useTheme();
+  const title = cat ? cat.name : "미분류";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-      <div style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
+      <div aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
-          {cat ? cat.name : "미분류"}
-          <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: methodColor }}>{methodLabel}</span>
-          {e.reimbursedAmount != null && <span style={{ fontSize: 11.5, marginLeft: 6, fontWeight: 700, color: T.good }}>정산받음 {fmtWon(e.reimbursedAmount)}</span>}
+        <div style={rowTitle(T)}>
+          {title}
+          <Badge color={methodColor}>{methodLabel}</Badge>
+          {e.reimbursedAmount != null && <Badge color={T.good}>정산받음 {fmtWon(e.reimbursedAmount)}</Badge>}
           {/* 알림에서 확인 없이 들어온 줄 — 이상하면 이것만 훑어 지울 수 있게 */}
-          {e.auto && <span style={{ fontSize: 11.5, marginLeft: 6, fontWeight: 700, color: T.muted }}>자동</span>}
+          {e.auto && <Badge color={T.inkMuted}>자동</Badge>}
         </div>
-        {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.memo}</div>}
-        {dateNode}
+        {e.memo && <div style={rowSub(T)}>{e.memo}</div>}
+        {dateNode || <div style={rowDate(T)}>{e.date}</div>}
       </div>
-      {!dateNode && <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 14, fontFamily: F.mono }}>{e.date.slice(5)}</div>}
-      <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16, minWidth: 74, textAlign: "right" }}>{fmtWon(e.amount)}</div>
-      {onEdit && <button onClick={onEdit} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>}
-      {onDelete && <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>}
+      <div style={{ color: T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16, textAlign: "right", whiteSpace: "nowrap" }}>{fmtWon(e.amount)}</div>
+      {onEdit && <IconBtn label={`${title} ${fmtWon(e.amount)} 수정`} color={T.gold} onClick={onEdit}><Pencil size={15} aria-hidden="true" /></IconBtn>}
+      {onDelete && <IconBtn label={`${title} ${fmtWon(e.amount)} 삭제`} color={T.danger} onClick={onDelete}><Trash2 size={15} aria-hidden="true" /></IconBtn>}
     </div>
   );
 }
@@ -46,26 +79,26 @@ function ReceivableRow({ ctx, e, cat, onDelete }) {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-        <div style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
+        <div aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>
+          <div style={rowTitle(T)}>
             {cat ? cat.name : "대리결제"}
-            <span style={{ fontSize: 13, marginLeft: 6, fontWeight: 700, color: T.muted }}>대리결제 · {methodLabel}</span>
+            <Badge color={T.inkMuted}>대리결제 · {methodLabel}</Badge>
           </div>
-          {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.memo}</div>}
-          <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{e.date}</div>
+          {e.memo && <div style={rowSub(T)}>{e.memo}</div>}
+          <div style={rowDate(T)}>{e.date}</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
-          <span style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</span>
+          <span style={{ color: T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</span>
           {!e.settled && <span style={{ color: T.warn, fontSize: 11, fontWeight: 700 }}>미정산</span>}
           {e.settled && diff === 0 && <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>정산완료</span>}
           {e.settled && diff < 0 && <span style={{ color: T.danger, fontSize: 11, fontWeight: 700 }}>부족분 {fmtWon(-diff)} 카드값</span>}
           {e.settled && diff > 0 && <span style={{ color: T.good, fontSize: 11, fontWeight: 700 }}>초과분 {fmtWon(diff)} 통장</span>}
         </div>
         {!e.settled && !settling && (
-          <button onClick={openSettle} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, padding: 4 }}><Pencil size={14} /></button>
+          <IconBtn label={`${e.memo || "대리결제"} 정산`} color={T.gold} onClick={openSettle}><Pencil size={15} aria-hidden="true" /></IconBtn>
         )}
-        <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
+        <IconBtn label={`${e.memo || "대리결제"} ${fmtWon(e.amount)} 삭제`} color={T.danger} onClick={onDelete}><Trash2 size={15} aria-hidden="true" /></IconBtn>
       </div>
       {settling && (
         <div style={{ marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
@@ -82,19 +115,33 @@ function ReceivableRow({ ctx, e, cat, onDelete }) {
   );
 }
 
-function BalanceRow({ b, onDelete }) {
+/*
+  입출금 한 줄. 지출 줄과 같은 틀로 맞췄다 — 예전엔 메모를 제목에 이어 붙여서
+  '입금 · 코스트코코리아 대리결제 정산'이 세 줄로 접히고 금액 칸을 밀어냈다.
+
+  '자동' 배지를 여기에도 붙인다. 은행 알림으로 들어온 입출금에 auto 표시가 있는데
+  이 줄은 그걸 안 그려서, 지출과 달리 무엇이 자동으로 들어왔는지 안 보였다.
+  통장이 여럿이라 어느 통장인지도 같이 적는다.
+*/
+function BalanceRow({ b, accountName, onDelete }) {
   const T = useTheme();
+  const kind = b.type === "in" ? "입금" : "출금";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-      {b.type === "in" ? <ArrowDownCircle size={15} color={T.good} /> : <ArrowUpCircle size={15} color={T.danger} />}
+      {b.type === "in" ? <ArrowDownCircle size={15} color={T.good} aria-hidden="true" style={{ flexShrink: 0, marginInline: -3.5 }} /> : <ArrowUpCircle size={15} color={T.danger} aria-hidden="true" style={{ flexShrink: 0, marginInline: -3.5 }} />}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: T.ink, fontSize: 16, fontWeight: 600 }}>{b.type === "in" ? "입금" : "출금"}{b.memo ? ` · ${b.memo}` : ""}</div>
+        <div style={rowTitle(T)}>
+          {kind}
+          {accountName && <Badge color={T.inkMuted}>{accountName}</Badge>}
+          {b.auto && <Badge color={T.inkMuted}>자동</Badge>}
+        </div>
+        {b.memo && <div style={rowSub(T)}>{b.memo}</div>}
+        <div style={rowDate(T)}>{b.date}</div>
       </div>
-      <div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 14, fontFamily: F.mono }}>{b.date.slice(5)}</div>
-      <div style={{ color: b.type === "in" ? T.good : T.danger, fontFamily: F.mono, fontWeight: 700, fontSize: 16 }}>
+      <div style={{ color: b.type === "in" ? T.good : T.danger, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16, whiteSpace: "nowrap" }}>
         {b.type === "in" ? "+" : "-"}{fmtWon(b.amount)}
       </div>
-      <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 4 }}><Trash2 size={14} /></button>
+      <IconBtn label={`${kind} ${b.memo || ""} ${fmtWon(b.amount)} 삭제`} color={T.danger} onClick={onDelete}><Trash2 size={15} aria-hidden="true" /></IconBtn>
     </div>
   );
 }
@@ -409,7 +456,7 @@ export function LedgerView({ ctx }) {
       ) : (
         <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
           <MoneyInput value={reimburseInput} onChange={setReimburseInput} placeholder="받은 금액" />
-          <button onClick={() => confirmReimburse(e)} style={{ ...primaryBtn(T), width: 60, background: T.good }}>확인</button>
+          <button onClick={() => confirmReimburse(e)} style={{ ...primaryBtn(T), width: 60, background: T.good, color: T.mode === "dark" ? "#000000" : "#FFFFFF" }}>확인</button>
         </div>
       )}
 
@@ -448,50 +495,52 @@ export function LedgerView({ ctx }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-        <div style={{ color: T.cream, fontFamily: F.display, fontSize: 20.5, fontWeight: 700 }}>전체 내역</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ display: "flex", background: T.bg2, borderRadius: 8, padding: 3 }}>
+        <h1 style={{ margin: 0, color: T.cream, fontFamily: F.display, fontSize: 20.5, fontWeight: 700 }}>전체 내역</h1>
+        {/* 좁은 화면(320px)에서 검색 버튼이 화면 밖으로 잘렸다 — 이제 '전체 흐름' 칸이 줄어든다 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, maxWidth: "100%", minWidth: 0 }}>
+          <div role="group" aria-label="기간" style={{ display: "flex", flexShrink: 0, background: T.bg2, borderRadius: 8, padding: 3 }}>
             {[["cycle", "이번달"], ["all", "전체"], ["range", "기간"]].map(([k, l]) => (
-              <button key={k} onClick={() => setTimeScope(k)}
-                style={{ border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 14, fontWeight: 600,
-                  background: timeScope === k ? T.gold : "transparent", color: timeScope === k ? "#23190C" : T.muted, cursor: "pointer" }}>
+              <button key={k} onClick={() => setTimeScope(k)} aria-pressed={timeScope === k}
+                style={{ border: "none", borderRadius: 6, padding: "0 10px", minHeight: 32, fontSize: 14, fontWeight: 600,
+                  background: timeScope === k ? T.gold : "transparent", color: timeScope === k ? T.onGold : T.muted, cursor: "pointer" }}>
                 {l}
               </button>
             ))}
           </div>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}
-            style={{ border: "none", borderRadius: 8, padding: "6px 8px", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
-              background: category === "all" ? T.bg2 : T.gold, color: category === "all" ? T.muted : "#23190C" }}>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="보기"
+            style={{ flex: "1 1 auto", minWidth: 0, border: "none", borderRadius: 8, padding: "0 8px", minHeight: 38, fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+              background: category === "all" ? T.bg2 : T.gold, color: category === "all" ? T.muted : T.onGold }}>
             <option value="all">전체 흐름</option>
             <option value="card">카드</option>
             <option value="receivable">대리결제</option>
             <option value="balance">입출금</option>
           </select>
           <button onClick={() => { setSearchOpen(!searchOpen); if (searchOpen) setSearch(""); }}
-            style={{ border: "none", borderRadius: 8, padding: "6px 8px", cursor: "pointer", background: searchOpen ? T.gold : T.bg2, color: searchOpen ? "#23190C" : T.muted, display: "flex" }}>
-            <Search size={16} />
+            aria-label={searchOpen ? "검색 닫기" : "검색"} aria-expanded={searchOpen}
+            style={{ flexShrink: 0, border: "none", borderRadius: 8, width: 38, height: 38, cursor: "pointer", background: searchOpen ? T.gold : T.bg2, color: searchOpen ? T.onGold : T.muted, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Search size={16} aria-hidden="true" />
           </button>
         </div>
       </div>
 
       {searchOpen && (
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="메모나 카테고리로 검색" autoFocus
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="메모나 카테고리로 검색" aria-label="검색어" type="search" autoFocus
           style={{ ...inputSty(T), marginBottom: 14, fontSize: 16 }} />
       )}
 
       {timeScope === "range" && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-          <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} style={{ ...inputSty(T), fontSize: 14, padding: "8px 10px" }} />
-          <span style={{ color: T.muted, fontSize: 13.5 }}>~</span>
-          <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} style={{ ...inputSty(T), fontSize: 14, padding: "8px 10px" }} />
+          <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} aria-label="시작 날짜" style={{ ...inputSty(T), fontSize: 14, padding: "8px 10px" }} />
+          <span aria-hidden="true" style={{ color: T.muted, fontSize: 13.5 }}>~</span>
+          <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} aria-label="끝 날짜" style={{ ...inputSty(T), fontSize: 14, padding: "8px 10px" }} />
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+      <div role="group" aria-label="정렬" style={{ display: "flex", gap: 6, marginBottom: 14 }}>
         {[["date", "최신순"], ["amountDesc", "높은금액순"], ["amountAsc", "낮은금액순"]].map(([k, l]) => (
-          <button key={k} onClick={() => setAmountSort(k)}
-            style={{ border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-              background: amountSort === k ? T.gold : T.bg2, color: amountSort === k ? "#23190C" : T.muted }}>
+          <button key={k} onClick={() => setAmountSort(k)} aria-pressed={amountSort === k}
+            style={{ border: "none", borderRadius: 8, padding: "0 12px", minHeight: 32, fontSize: 13, fontWeight: 700, cursor: "pointer",
+              background: amountSort === k ? T.gold : T.bg2, color: amountSort === k ? T.onGold : T.muted }}>
             {l}
           </button>
         ))}
@@ -503,7 +552,7 @@ export function LedgerView({ ctx }) {
             {ctx.cardTotals.map((c) => (
               <div key={c.id} style={{ ...paperCard(T), display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px" }}>
                 <div>
-                  <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 14 }}>{c.name}</div>
+                  <div style={{ color: T.inkMuted, fontSize: 14 }}>{c.name}</div>
                   <div style={{ color: T.ink, fontFamily: F.mono, fontSize: 18.5, fontWeight: 700 }}>{fmtWon(c.total)}</div>
                   {c.fixedPortion > 0 && <div style={{ color: T.goldSoft, fontSize: 13 }}>할부 {fmtWon(c.fixedPortion)} 포함</div>}
                 </div>
@@ -530,14 +579,13 @@ export function LedgerView({ ctx }) {
         <div style={paperCard(T)}>
           {totalsLine}
           {combined.map(({ kind, item }) => {
-            if (kind === "balance") return <BalanceRow key={item.id} b={item} onDelete={() => removeBalance(item.id)} />;
+            if (kind === "balance") return <BalanceRow key={item.id} b={item} accountName={data.accounts.length > 1 ? data.accounts.find((a) => a.id === (item.accountId || data.accounts[0]?.id))?.name : null} onDelete={() => removeBalance(item.id)} />;
             if (kind === "receivable") return <ReceivableRow key={item.id} ctx={ctx} e={item} cat={catMap[item.categoryId]} onDelete={() => remove(item.id)} />;
             return (
               <div key={item.id}>
                 <LedgerRow e={item} cat={catMap[item.categoryId]}
                   methodLabel={(item.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === (item.cardId || data.cards[0]?.id))?.name || "카드") : "현금"}
                   methodColor={(item.paymentMethod || "cash") === "card" ? T.gold : T.good}
-                  dateNode={<div style={{ color: T.mode === "dark" ? "#5A5138" : "#9A8E6E", fontSize: 12.5, fontFamily: F.mono }}>{item.date}</div>}
                   onEdit={() => startEdit(item)} />
                 {editingId === item.id && renderEditForm(item)}
               </div>
