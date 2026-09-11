@@ -213,6 +213,7 @@ function findAccount(accounts, text, pkg) {
 function alreadyInLedger(entries, { amount, date, type, accountId, time }) {
   return (entries || []).some(
     (b) =>
+      b.auto &&
       Number(b.amount) === Number(amount) &&
       b.date === date &&
       b.type === type &&
@@ -241,6 +242,46 @@ function sameMoment(entry, time) {
   return entry.autoTime === time;
 }
 
+/*
+  **먼저 적혀 있던 기록을 은행·카드 알림으로 바로잡는다**(2026-09-11).
+
+  손으로 적었거나 앱이 스스로 만든 기록(auto 아님)이 이 알림과 같은 거래면, 새로
+  넣지 않고 그 기록을 알림이 알려 준 대로 고친 뒤 '확인됨'(bankConfirmed)으로 표시한다.
+  한 번 맞춰진 기록은 다시 짝이 되지 않는다 — 같은 금액이 진짜로 두 번 나갔을 때
+  두 번째 알림을 삼키지 않기 위해서다. 예전엔 같은 날·같은 금액이면 몇 번이든
+  같은 기록 하나에 다 걸려 넘어갔다.
+
+  앱이 짐작으로 적는 자리가 둘 있어서 날짜·통장까지 바로잡는다.
+    · 카드값 '결제하기'는 무조건 첫 번째 통장에서 출금으로 적는다. 실제로 다른
+      통장에서 나갔으면 은행 알림이 그 통장에 또 적혀 **두 번 빠졌다.**
+    · 자동이체(autoPayDay)는 정해 둔 날짜로 출금을 적는다. 주말 등으로 실제 출금일이
+      다르면 날짜가 안 맞아 같은 건으로 못 알아보고 **두 번 빠졌다.** 그래서 고정지출에
+      딸린 기록은 같은 달·같은 통장이면 날짜가 달라도 같은 건으로 본다.
+  은행이 알려 준 날짜·통장이 진실이다. 이체(한 쌍)는 옮기지 않고 확인만 한다.
+*/
+function reconcileBalance(entries, { amount, dir, bDate, bKey, accountId, firstAccountId }) {
+  const acctOf = (b) => b.accountId || firstAccountId;
+  const open = (b) => !b.auto && !b.bankConfirmed && b.type === dir && Number(b.amount) === Number(amount);
+  const list = entries || [];
+  const hit =
+    list.find((b) => open(b) && b.date === bDate && acctOf(b) === accountId) ||
+    // 다른 통장으로 옮기는 건 앱이 통장을 짐작한 기록만 — 카드값 '결제하기'(첫 통장에 적는다).
+    // 손으로 적은 지출의 출금까지 옮기면 우연히 같은 금액인 다른 통장 거래에 끌려간다.
+    list.find((b) => open(b) && !b.transferId && b.date === bDate && /카드값 결제$/.test(String(b.memo || ""))) ||
+    list.find((b) => open(b) && !b.transferId && b.linkedFixedId && String(b.date).slice(0, 7) === bKey && acctOf(b) === accountId);
+  if (!hit) return null;
+  const fixed = hit.transferId ? { bankConfirmed: true } : { date: bDate, accountId, bankConfirmed: true };
+  return list.map((b) => (b.id === hit.id ? { ...b, ...fixed } : b));
+}
+
+/** 카드도 같다 — 손으로 먼저 적어 둔 같은 결제면 넣지 않고 확인만 한다 */
+function reconcileExpense(expenses, { amount, date, cardId }) {
+  const hit = (expenses || []).find((e) => !e.auto && !e.bankConfirmed && (e.paymentMethod || "cash") === "card"
+    && (e.cardId || null) === cardId && Number(e.amount) === Number(amount) && e.date === date);
+  if (!hit) return null;
+  return expenses.map((e) => (e.id === hit.id ? { ...e, bankConfirmed: true } : e));
+}
+
 /** 문자에 찍힌 결제 시각 "17:15". 없으면 null */
 function timeOf(text) {
   const m = String(text || "").match(/(?:^|[^\d])(\d{1,2}):(\d{2})(?!\d)/);
@@ -260,6 +301,7 @@ function timeOf(text) {
 function alreadyRecorded(expenses, { amount, date, cardId, time }) {
   return expenses.some(
     (e) =>
+      e.auto &&
       Number(e.amount) === Number(amount) &&
       e.date === date &&
       (e.cardId || null) === (cardId || null) &&
@@ -415,6 +457,8 @@ export function autoRecordPayments(data, items, held = []) {
   let cards = data.cards;
   let balanceEntries = data.balanceEntries || [];
   let fixedExpenses = data.fixedExpenses || [];
+  const balanceEntries0 = balanceEntries;
+  const fixedExpenses0 = fixedExpenses;
 
   /*
     처리 완료로 적는 달은 '지금'이 아니라 **그 결제가 실제로 일어난 달**이다.
@@ -539,6 +583,12 @@ export function autoRecordPayments(data, items, held = []) {
         눌러야 했는데, 앱이 스스로 만든 출금(카드값 결제·출금처리)이나 같은 알림이
         두 번 온 것이라 넣을 이유가 없다. 넘겼다는 건 알림 문구로 알린다.
       */
+      const fixedUp = reconcileBalance(balanceEntries, { amount, dir, bDate, bKey, accountId: acc.id, firstAccountId: data.accounts?.[0]?.id });
+      if (fixedUp) {
+        balanceEntries = fixedUp;
+        skipped.push(item);
+        continue;
+      }
       if (alreadyInLedger(balanceEntries, { amount, date: bDate, type: dir, accountId: acc.id, time })
         || (dir === "out" && paidFixedHit(fixedExpenses, { amount, isCard: false, accountId: acc.id, text }, bKey))) {
         skipped.push(item);
@@ -627,7 +677,15 @@ export function autoRecordPayments(data, items, held = []) {
       continue;
     }
 
-    /* 이미 적혀 있는 결제면 넘긴다 — 같은 알림이 두 번 왔거나 손으로 먼저 적은 것 */
+    /* 손으로 먼저 적어 둔 결제면 넣지 않고 확인 표시만 한다 */
+    const confirmed = reconcileExpense(expenses, { amount, date, cardId: card.id });
+    if (confirmed) {
+      expenses = confirmed;
+      skipped.push(item);
+      continue;
+    }
+
+    /* 이미 자동으로 들어간 결제면 넘긴다 — 같은 결제가 두 곳에서 알려 온 것 */
     if (alreadyRecorded(expenses, { amount, date, cardId: card.id, time })
       || paidFixedHit(fixedExpenses, { amount, isCard: true, cardId: card.id, text }, eKey)) {
       skipped.push(item);
@@ -681,7 +739,9 @@ export function autoRecordPayments(data, items, held = []) {
     registered.push(expense);
   }
 
-  if (registered.length === 0 && undone.length === 0) {
+  const changed = expenses !== data.expenses || cards !== data.cards
+    || balanceEntries !== (data.balanceEntries || balanceEntries0) || fixedExpenses !== (data.fixedExpenses || fixedExpenses0);
+  if (!changed) {
     return { next: data, registered, leftover, dropped, undone, skipped };
   }
   return {

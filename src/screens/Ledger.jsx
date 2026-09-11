@@ -251,16 +251,25 @@ export function LedgerView({ ctx }) {
         next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Math.max(0, Number(c.bill || 0) - Number(exp.amount)) } : c));
         // "정기결제 카드반영" 항목을 홈의 완료취소 대신 여기서 바로 지우면, 원래 고정지출의
         // paidMonths가 이미 없어진 이 항목을 계속 가리키게 됨 — 그 연결을 같이 끊어줌.
+        // 이번 달만 보면 안 된다(2026-09-11): 자동 등록은 결제가 일어난 달에 표시를
+        // 적으므로(12/31 결제를 1/1에 읽으면 12월), 지난달 표시가 남아 그 달이 계속
+        // 처리된 것으로 보였다. 이 기록을 가리키는 표시면 달과 상관없이 푼다.
         if (exp.isCardAdjustment) {
           next.fixedExpenses = data.fixedExpenses.map((x) => {
-            if (!(x.paidMonths && x.paidMonths[curKey] === id)) return x;
+            const months = Object.keys(x.paidMonths || {}).filter((k) => x.paidMonths[k] === id);
+            if (!months.length) return x;
             const pm = { ...x.paidMonths };
-            delete pm[curKey];
+            months.forEach((k) => delete pm[k]);
             return { ...x, paidMonths: pm };
           });
         }
       } else if (exp.linkedBalanceId) {
-        next.balanceEntries = (next.balanceEntries || data.balanceEntries || []).filter((b) => b.id !== exp.linkedBalanceId);
+        // 은행 알림으로 들어온 출금(auto)에 이어 둔 지출이면 그 출금은 남긴다 — 은행이
+        // 알려 준 실제 돈의 움직임이라, 지출 기록을 지운다고 없던 일이 되지 않는다
+        const linkedB = (data.balanceEntries || []).find((b) => b.id === exp.linkedBalanceId);
+        if (!linkedB?.auto) {
+          next.balanceEntries = (next.balanceEntries || data.balanceEntries || []).filter((b) => b.id !== exp.linkedBalanceId);
+        }
       }
     } else if (exp.settled) {
       if (exp.settlementCardDelta && exp.settlementCardId) {
@@ -346,10 +355,15 @@ export function LedgerView({ ctx }) {
     if (editPaymentMethod === "cash" && !editAccountId) return showToast("통장을 선택해주세요");
 
     let next = { ...data };
+    // 은행 알림으로 들어온 출금(auto)에 이어 둔 지출이면 그 출금은 건드리지 않는다.
+    // 예전엔 수정할 때마다 딸린 출금을 지우고 새로 만들어서, 은행이 알려 준 기록이
+    // 앱이 만든 기록으로 바뀌어 버렸다(자동 표시도, 은행 날짜·금액도 사라짐).
+    const linkedB = exp.linkedBalanceId ? (data.balanceEntries || []).find((b) => b.id === exp.linkedBalanceId) : null;
+    const keepBank = !!linkedB?.auto;
     if ((exp.paymentMethod || "cash") === "card") {
       const oldCid = exp.cardId || data.cards[0]?.id;
       next.cards = data.cards.map((c) => (c.id === oldCid ? { ...c, bill: Math.max(0, Number(c.bill || 0) - Number(exp.amount)) } : c));
-    } else if (exp.linkedBalanceId) {
+    } else if (exp.linkedBalanceId && !keepBank) {
       next.balanceEntries = (data.balanceEntries || []).filter((b) => b.id !== exp.linkedBalanceId);
     }
 
@@ -357,6 +371,8 @@ export function LedgerView({ ctx }) {
     let newLinkedBalanceId = null;
     if (editPaymentMethod === "card") {
       next.cards = (next.cards || data.cards).map((c) => (c.id === editCardId ? { ...c, bill: Number(c.bill || 0) + n } : c));
+    } else if (keepBank) {
+      newLinkedBalanceId = linkedB.id;   // 은행 기록은 그대로, 연결만 유지
     } else {
       newLinkedBalanceId = "b" + Date.now();
       next.balanceEntries = [...(next.balanceEntries || data.balanceEntries || []), { id: newLinkedBalanceId, type: "out", amount: n, date: editDate, memo: `${catName}${editMemo.trim() ? " · " + editMemo.trim() : ""}`, accountId: editAccountId }];

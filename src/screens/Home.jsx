@@ -213,7 +213,15 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
                 */
                 paidId ? (
                   <button
-                    onClick={() => { if (window.confirm(`${f.name} ${isCard ? "카드반영" : "출금처리"}를 취소할까요?\n함께 적힌 ${isCard ? "카드 기록" : "출금 기록"}도 지워져요.`)) unmarkFixedPaid(ctx, f); }}
+                    onClick={() => {
+                      // 알림으로 들어온 기록이면 지우지 않고 연결만 푼다 — 확인창도 그대로 말한다
+                      const linked = (isCard ? data.expenses : data.balanceEntries || []).find((x) => x.id === paidId);
+                      const what = isCard ? "카드 기록" : "출금 기록";
+                      const msg = linked?.auto
+                        ? `${f.name} ${isCard ? "카드반영" : "출금처리"}를 취소할까요?\n알림으로 들어온 ${what}은 그대로 두고 연결만 풀어요.`
+                        : `${f.name} ${isCard ? "카드반영" : "출금처리"}를 취소할까요?\n함께 적힌 ${what}도 지워져요.`;
+                      if (window.confirm(msg)) unmarkFixedPaid(ctx, f);
+                    }}
                     aria-label={`${f.name} ${isCard ? "카드반영" : "출금처리"} 완료 · 누르면 취소`}
                     style={{ display: "flex", alignItems: "center", gap: 3, background: "none", border: `1px solid ${T.good}`, borderRadius: 8, padding: "0 10px", minHeight: 32, cursor: "pointer", color: T.good, fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
                     <Check size={13} strokeWidth={2.5} aria-hidden="true" />완료
@@ -282,11 +290,50 @@ function reconcileCard(ctx, card, actualTotal) {
   showToast(`${card.name} 카드값을 ${fmtWon(actual)}로 맞췄어요`);
 }
 
+/*
+  **이미 알림으로 들어온 같은 거래가 있으면 새로 만들지 않고 거기에 잇는다**(2026-09-11).
+
+  금액이 같은 고정지출이 여럿이면(10만 원짜리 셋) 은행 알림만으로는 어느 건지 못 가려서
+  그냥 '출금'으로 들어간다. 그 뒤 사람이 '주택청약 출금처리'를 누르면 예전엔 출금을
+  하나 더 만들어 **통장에서 두 번 빠졌다.** 이제 이번 달·같은 통장(카드)·같은 금액의
+  자동 기록 중 아직 어느 고정지출에도 안 이어진 게 있으면 그걸 이 항목에 잇는다.
+  이름 조각이 메모에 든 것을 먼저 고른다.
+*/
+function findAutoMatch(list, f, amount, curKey, same) {
+  const name = String(f.name || "").replace(/[^가-힣A-Za-z0-9]/g, "").slice(0, 4);
+  const cands = (list || []).filter((x) => x.auto && Number(x.amount) === Number(amount) && String(x.date).slice(0, 7) === curKey && same(x));
+  return cands.find((x) => name.length >= 2 && String(x.memo || "").includes(name)) || cands[0] || null;
+}
+
 function markFixedPaid(ctx, f, info) {
   const { data, persist, showToast, curKey } = ctx;
   const isCard = (f.paymentMethod || "cash") === "card";
   let next = { ...data };
   let marker;
+  if (isCard) {
+    const cidOk = f.cardId && data.cards.some((c) => c.id === f.cardId) ? f.cardId : data.cards[0]?.id;
+    const hit = findAutoMatch(data.expenses, f, info.amount, curKey,
+      (e) => (e.paymentMethod || "cash") === "card" && e.cardId === cidOk && !e.isCardAdjustment && e.reimbursedAmount == null);
+    if (hit) {
+      // 카드값에는 이미 들어가 있다. 정기결제로 표시만 바꿔 예산에서 두 번 안 세게 한다.
+      next.expenses = data.expenses.map((e) => (e.id === hit.id ? { ...e, isCardAdjustment: true, memoBefore: e.memo, memo: `${f.name} · 정기결제 카드반영` } : e));
+      next.fixedExpenses = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, paidMonths: { ...(x.paidMonths || {}), [curKey]: hit.id } } : x));
+      persist(next);
+      showToast(`카드 알림으로 이미 들어온 ${fmtWon(info.amount)}에 연결했어요`);
+      return;
+    }
+  } else {
+    const aidOk = f.accountId && data.accounts.some((a) => a.id === f.accountId) ? f.accountId : data.accounts[0]?.id;
+    const hit = findAutoMatch(data.balanceEntries, f, info.amount, curKey,
+      (b) => b.type === "out" && !b.linkedFixedId && !b.transferId && (b.accountId || data.accounts[0]?.id) === aidOk);
+    if (hit) {
+      next.balanceEntries = data.balanceEntries.map((b) => (b.id === hit.id ? { ...b, linkedFixedId: f.id, linkedFixedMonth: curKey, memoBefore: b.memo, memo: `${f.name} 자동이체` } : b));
+      next.fixedExpenses = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, paidMonths: { ...(x.paidMonths || {}), [curKey]: hit.id } } : x));
+      persist(next);
+      showToast(`은행 알림으로 이미 들어온 ${fmtWon(info.amount)} 출금에 연결했어요`);
+      return;
+    }
+  }
   if (isCard) {
     // f.cardId가 그 사이에 삭제된 카드를 가리킬 수 있음(카드 삭제는 fixedExpenses를
     // 안 건드림) — 확인 안 하면 어느 카드값도 안 늘어나는데 반영됐다고 뜸.
@@ -317,6 +364,40 @@ function unmarkFixedPaid(ctx, f) {
   const isCard = (f.paymentMethod || "cash") === "card";
   const marker = f.paidMonths?.[curKey];
   let next = { ...data };
+  /*
+    **알림으로 들어온 기록은 지우지 않고 연결만 푼다**(2026-09-11).
+
+    카드·은행 알림으로 들어온 기록은 실제로 돈이 움직였다는 증거다. 예전엔 '완료'를
+    취소하면 그것까지 지웠는데, 사람이 뜻하는 건 "이건 그 고정지출이 아니다"이지
+    "이 결제가 없었다"가 아니다. 보통 결제·출금으로 되돌려 둔다.
+  */
+  const linked = typeof marker === "string"
+    ? (isCard ? data.expenses : data.balanceEntries || []).find((x) => x.id === marker)
+    : null;
+  if (linked && linked.auto) {
+    if (isCard) {
+      next.expenses = data.expenses.map((x) => {
+        if (x.id !== marker) return x;
+        const { isCardAdjustment, memoBefore, ...rest } = x;
+        return { ...rest, memo: memoBefore ?? x.memo };
+      });
+    } else {
+      next.balanceEntries = data.balanceEntries.map((b) => {
+        if (b.id !== marker) return b;
+        const { linkedFixedId, linkedFixedMonth, memoBefore, ...rest } = b;
+        return { ...rest, memo: memoBefore ?? b.memo };
+      });
+    }
+    next.fixedExpenses = data.fixedExpenses.map((x) => {
+      if (x.id !== f.id) return x;
+      const pm = { ...(x.paidMonths || {}) };
+      delete pm[curKey];
+      return { ...x, paidMonths: pm };
+    });
+    persist(next);
+    showToast("연결을 풀었어요 · 알림으로 들어온 기록은 그대로예요");
+    return;
+  }
   if (isCard) {
     const adjExpense = typeof marker === "string" ? data.expenses.find((x) => x.id === marker && x.isCardAdjustment) : null;
     // adjExpense가 있으면(2026-08-21 이후 반영분) 그 금액 그대로 되돌리고 기록도 지움.

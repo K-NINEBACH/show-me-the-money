@@ -124,17 +124,49 @@ export function AddView({ ctx }) {
     if (payMethod === "card" && !cardId) return showToast("설정에서 카드를 먼저 등록해주세요");
     if (payMethod === "cash" && !accountId) return showToast("설정에서 통장을 먼저 등록해주세요");
     const catName = data.categories.find((c) => c.id === categoryId)?.name || "지출";
-    const linkedBalanceId = payMethod === "cash" ? "b" + Date.now() : null;
+
+    /*
+      **알림으로 이미 들어온 결제를 손으로 또 적는 걸 막는다**(2026-09-11).
+
+      결제 알림이 자동으로 기록되는데, 습관대로 기록 탭에서 또 적으면 같은 결제가 두 번
+      잡힌다. 자동 기록은 카테고리가 비어 있으니 사람이 원하는 건 대개 거기에 카테고리를
+      붙이는 것이다. 그래서 '확인'이 새로 만들지 않고 붙이는 쪽이다 — 무심코 확인을 눌러도
+      두 번 잡히지 않는다.
+    */
+    if (payMethod === "card") {
+      const dup = data.expenses.find((e) => e.auto && (e.paymentMethod || "cash") === "card" && e.cardId === cardId
+        && Number(e.amount) === n && e.date === date);
+      if (dup && window.confirm(`같은 날 ${fmtWon(n)} 카드 결제가 알림으로 이미 기록돼 있어요${dup.memo ? ` (${dup.memo})` : ""}.\n\n확인 — 그 기록에 이 카테고리·메모를 붙여요\n취소 — 하나 더 새로 적어요`)) {
+        persist({ ...data, expenses: data.expenses.map((e) => (e.id === dup.id ? { ...e, categoryId, memo: memo.trim() || e.memo } : e)) });
+        setAmount(""); setMemo("");
+        showToast("알림으로 들어온 기록에 카테고리를 붙였어요");
+        return;
+      }
+    }
+
+    /*
+      현금(통장) 지출은 출금을 하나 딸려 만든다. 그런데 은행 알림으로 같은 출금이 이미
+      들어와 있으면 그걸 또 만들면 통장에서 두 번 빠진다. 아직 아무 지출에도 안 이어진
+      같은 날·같은 통장·같은 금액의 자동 출금이 있으면 새로 만들지 않고 거기에 잇는다.
+    */
+    const firstAcc = data.accounts?.[0]?.id;
+    const bankOut = payMethod === "cash"
+      ? (data.balanceEntries || []).find((b) => b.auto && b.type === "out" && !b.linkedFixedId && !b.transferId
+          && Number(b.amount) === n && b.date === date && (b.accountId || firstAcc) === accountId
+          && !data.expenses.some((e) => e.linkedBalanceId === b.id))
+      : null;
+
+    const linkedBalanceId = payMethod === "cash" ? (bankOut ? bankOut.id : "b" + Date.now()) : null;
     const expense = { id: "e" + Date.now(), amount: n, categoryId, date, memo: memo.trim(), paymentMethod: payMethod, cardId: payMethod === "card" ? cardId : null, linkedBalanceId };
     let next = { ...data, expenses: [...data.expenses, expense] };
     if (payMethod === "card") {
       next.cards = data.cards.map((c) => (c.id === cardId ? { ...c, bill: Number(c.bill || 0) + n } : c));
-    } else {
+    } else if (!bankOut) {
       next.balanceEntries = [...(next.balanceEntries || []), { id: linkedBalanceId, type: "out", amount: n, date, memo: `${catName}${memo.trim() ? " · " + memo.trim() : ""}`, accountId }];
     }
     persist(next);
     setAmount(""); setMemo("");
-    showToast(payMethod === "card" ? "카드값에 반영했어요" : "통장에서 차감했어요");
+    showToast(payMethod === "card" ? "카드값에 반영했어요" : bankOut ? "은행 알림으로 들어온 출금에 이었어요" : "통장에서 차감했어요");
   };
 
   return (

@@ -121,7 +121,7 @@ export function PaymentInbox({ ctx, onPick }) {
               {!cancel && <button
                 onClick={() => {
                   onPick(item.text);
-                  dismissInbox(i);
+                  dismissInbox(item);
                 }}
                 aria-label={`${amountText} ${r.merchant || ""} 기록 화면에 채우기`}
                 style={{
@@ -139,7 +139,7 @@ export function PaymentInbox({ ctx, onPick }) {
                 채우기
               </button>}
               <button
-                onClick={() => dismissInbox(i)}
+                onClick={() => dismissInbox(item)}
                 aria-label={`${amountText} ${r.merchant || ""} ${cancel ? "취소 알림" : "알림"} 버리기`}
                 style={{
                   minHeight: 36,

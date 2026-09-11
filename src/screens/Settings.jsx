@@ -298,9 +298,15 @@ export function SettingsView({ ctx }) {
       {inNativeApp() && (
         <>
           <SectionLabel>결제 알림</SectionLabel>
-          <Field label="카드 결제를 자동으로 기록">
+          {/*
+            제목이 예전엔 '카드 결제를 자동으로 기록'이었는데, 이 스위치 하나가 은행
+            입출금·결제 취소·할부 등록까지 전부 켜고 끈다. 라벨이 말하는 것보다 하는
+            일이 넓었다 — 이 저장소에서 여러 번 나온 '라벨과 실제가 어긋남'이다.
+          */}
+          <Field label="결제 알림을 자동으로 기록">
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <button
+                role="switch" aria-checked={!!data.autoRecord} aria-label="결제 알림을 자동으로 기록"
                 onClick={() => persist({ ...data, autoRecord: !data.autoRecord })}
                 style={{
                   width: 52, height: 30, borderRadius: 15, border: "none", cursor: "pointer",
@@ -316,14 +322,17 @@ export function SettingsView({ ctx }) {
               </button>
               <span style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.5 }}>
                 {data.autoRecord
-                  ? "카드 승인 알림이 오면 확인 없이 바로 기록해요. 자동으로 들어간 줄에는 내역에서 '자동' 표시가 붙어요."
+                  ? "카드·은행 알림이 오면 확인 없이 바로 기록해요. 자동으로 들어간 줄에는 내역에서 '자동' 표시가 붙어요."
                   : "알림을 모아만 두고, 기록 탭에서 확인하고 등록해요."}
               </span>
             </div>
           </Field>
-          <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, marginTop: -4, marginBottom: 10 }}>
-            은행 입출금도 자동으로 넣어 통장 잔고를 맞춰요. 카드값 결제처럼 앱이 이미 만든 출금과 겹치면 넣지 않아요.
-          </div>
+          {data.autoRecord && (
+            <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.6, marginTop: -4, marginBottom: 10 }}>
+              결제를 취소하면 기록에서 빼고, 할부는 할부(고정지출)로 등록해요. 이미 적어 둔 거래와 겹치면
+              새로 넣지 않고 그 기록을 은행이 알려 준 날짜·통장으로 바로잡아요. 어느 카드·통장인지 모를 때만 기록 탭 알림함에 남아요.
+            </div>
+          )}
 
           <Field label="알림이 잘 들어오고 있나">
             <div style={{ color: T.cream, fontSize: 14.5, lineHeight: 1.9, fontFamily: F.mono }}>

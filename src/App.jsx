@@ -376,7 +376,9 @@ function AppInner() {
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,
     pendingText, clearPendingText: () => setPendingText(null),
-    inbox, dismissInbox: (i) => setInbox((prev) => prev.filter((_, n) => n !== i)),
+    // 번호가 아니라 알림 자체(문구+받은 시각)로 지운다 — 목록은 15초마다 늘고 자동 처리로
+    // 줄기도 해서, 누르는 순간 번호가 당겨지면 엉뚱한 알림이 지워질 수 있었다
+    inbox, dismissInbox: (item) => setInbox((prev) => prev.filter((p) => !(p.text === item.text && p.at === item.at))),
   };
 
   const S = {
