@@ -139,23 +139,23 @@ export function AddView({ ctx }) {
 
   return (
     <div>
-      <div style={{ color: T.cream, fontFamily: F.display, fontSize: 20.5, fontWeight: 700, marginBottom: 16 }}>기록</div>
+      <h1 style={{ margin: "0 0 16px", color: T.cream, fontFamily: F.display, fontSize: 20.5, fontWeight: 700 }}>기록</h1>
 
       <PaymentInbox ctx={ctx} onPick={fillFrom} />
 
       <Field label="결제 수단">
         <div style={{ display: "flex", gap: 8 }}>
           {(data.cards || []).length > 0 && (
-            <button onClick={() => setPayMethod("card")}
+            <button onClick={() => setPayMethod("card")} aria-pressed={payMethod === "card"}
               style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "card" ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: payMethod === "card" ? T.gold + "22" : "transparent", color: T.cream, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
               <CreditCard size={14} /> 카드
             </button>
           )}
-          <button onClick={() => setPayMethod("cash")}
+          <button onClick={() => setPayMethod("cash")} aria-pressed={payMethod === "cash"}
             style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "cash" ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: payMethod === "cash" ? T.good + "22" : "transparent", color: T.cream, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
             <Wallet size={14} /> 현금(통장)
           </button>
-          <button onClick={() => setPayMethod("installment")}
+          <button onClick={() => setPayMethod("installment")} aria-pressed={payMethod === "installment"}
             style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "installment" ? `2px solid ${T.warn}` : `1px solid ${T.border}`, background: payMethod === "installment" ? T.warn + "22" : "transparent", color: T.cream, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
             <Repeat size={14} /> 할부(고정지출)
           </button>
@@ -173,23 +173,23 @@ export function AddView({ ctx }) {
           </button>
           {showPaste && (
             <div style={{ marginBottom: 16 }}>
-              <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="예: [현대카드] 승인 12,000원 07/20 14:23 스타벅스"
+              <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="예: [현대카드] 승인 12,000원 07/20 14:23 스타벅스" aria-label="결제 문자"
                 style={{ ...inputSty(T), height: 80, fontSize: 14.5, marginBottom: 8 }} />
               <button onClick={applyParse} style={primaryBtn(T)}>읽어오기</button>
             </div>
           )}
 
-          <Field label="금액">
-            <MoneyInput value={amount} onChange={setAmount} big />
+          <Field label="금액" htmlFor="add-amount">
+            <MoneyInput value={amount} onChange={setAmount} big id="add-amount" />
             <QuickAmountButtons amount={amount} setAmount={setAmount} />
           </Field>
 
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ color: T.muted, fontSize: 15, marginBottom: 7 }}>카테고리</div>
+              <label htmlFor="add-category" style={{ display: "block", color: T.muted, fontSize: 15, marginBottom: 7 }}>카테고리</label>
               <div style={{ position: "relative" }}>
-                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 9, height: 9, borderRadius: "50%", background: data.categories.find((c) => c.id === categoryId)?.color || T.muted, pointerEvents: "none" }} />
-                <select value={categoryId}
+                <span aria-hidden="true" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 9, height: 9, borderRadius: "50%", background: data.categories.find((c) => c.id === categoryId)?.color || T.muted, pointerEvents: "none" }} />
+                <select id="add-category" value={categoryId}
                   onChange={(e) => { if (e.target.value === "__new__") setNewCatMode(true); else { setCategoryId(e.target.value); setNewCatMode(false); } }}
                   style={{ ...inputSty(T), paddingLeft: 28, appearance: "auto" }}>
                   {data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -199,16 +199,16 @@ export function AddView({ ctx }) {
             </div>
             {payMethod === "card" && (data.cards || []).length > 0 && (
               <div style={{ flex: 1 }}>
-                <div style={{ color: T.muted, fontSize: 15, marginBottom: 7 }}>카드</div>
-                <select value={cardId} onChange={(e) => setCardId(e.target.value)} style={inputSty(T)}>
+                <label htmlFor="add-card" style={{ display: "block", color: T.muted, fontSize: 15, marginBottom: 7 }}>카드</label>
+                <select id="add-card" value={cardId} onChange={(e) => setCardId(e.target.value)} style={inputSty(T)}>
                   {data.cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
             )}
             {payMethod === "cash" && (data.accounts || []).length > 1 && (
               <div style={{ flex: 1 }}>
-                <div style={{ color: T.muted, fontSize: 15, marginBottom: 7 }}>통장</div>
-                <select value={accountId} onChange={(e) => setAccountId(e.target.value)} style={inputSty(T)}>
+                <label htmlFor="add-account" style={{ display: "block", color: T.muted, fontSize: 15, marginBottom: 7 }}>통장</label>
+                <select id="add-account" value={accountId} onChange={(e) => setAccountId(e.target.value)} style={inputSty(T)}>
                   {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
@@ -217,10 +217,10 @@ export function AddView({ ctx }) {
 
           {newCatMode && (
             <div style={{ marginTop: -8, marginBottom: 16, background: T.bg2, borderRadius: 10, padding: 12 }}>
-              <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="표기내역" style={{ ...inputSty(T), marginBottom: 8 }} autoFocus />
+              <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="표기내역" aria-label="새 카테고리 이름" style={{ ...inputSty(T), marginBottom: 8 }} autoFocus />
               <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                {PALETTE.map((col) => (
-                  <button key={col} onClick={() => setNewCatColor(col)}
+                {PALETTE.map((col, i) => (
+                  <button key={col} onClick={() => setNewCatColor(col)} aria-label={`색 ${i + 1}`} aria-pressed={newCatColor === col}
                     style={{ width: 24, height: 24, borderRadius: "50%", background: col, border: newCatColor === col ? `2px solid ${T.cream}` : "2px solid transparent", cursor: "pointer" }} />
                 ))}
               </div>
@@ -230,17 +230,17 @@ export function AddView({ ctx }) {
 
           <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ color: T.muted, fontSize: 15, marginBottom: 7 }}>날짜</div>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputSty(T)} />
+              <label htmlFor="add-date" style={{ display: "block", color: T.muted, fontSize: 15, marginBottom: 7 }}>날짜</label>
+              <input id="add-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputSty(T)} />
             </div>
             <div style={{ flex: 1.4 }}>
-              <div style={{ color: T.muted, fontSize: 15, marginBottom: 7 }}>메모 (선택)</div>
-              <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+              <label htmlFor="add-memo" style={{ display: "block", color: T.muted, fontSize: 15, marginBottom: 7 }}>메모 (선택)</label>
+              <input id="add-memo" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
             </div>
           </div>
 
           <button onClick={submit} style={{ ...primaryBtn(T), padding: "14px 0", fontSize: 16.5 }}>
-            <Check size={16} style={{ marginRight: 6, verticalAlign: -3 }} />
+            <Check size={16} aria-hidden="true" style={{ marginRight: 6, verticalAlign: -3 }} />
             기록하기
           </button>
         </>

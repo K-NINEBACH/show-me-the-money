@@ -146,7 +146,7 @@ export function CalendarView({ ctx }) {
                       </span>
                       {e.reimbursedAmount != null && <span style={{ fontSize: 11.5, marginLeft: 6, fontWeight: 700, color: T.good }}>정산받음 {fmtWon(e.reimbursedAmount)}</span>}
                     </div>
-                    {e.memo && <div style={{ color: T.mode === "dark" ? "#7A6E52" : "#8A7E5E", fontSize: 13 }}>{e.memo}</div>}
+                    {e.memo && <div style={{ color: T.inkMuted, fontSize: 13 }}>{e.memo}</div>}
                   </div>
                   <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 15 }}>{fmtWon(e.amount)}</div>
                 </div>

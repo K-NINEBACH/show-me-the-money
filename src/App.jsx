@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
 import { STORAGE_KEY } from "./lib/constants";
-import { THEMES, DARK, ThemeContext, F } from "./lib/theme";
+import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
 import { defaultData, migrate, autoProcessFixed, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
 import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup, inNativeApp } from "./lib/native";
@@ -171,6 +171,7 @@ function AppInner() {
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 1800); };
 
   const T = (data && THEMES[data.theme]) || THEMES.dark;
+  useEffect(() => { applyThemeVars(T); }, [T]);
 
   /*
     자동 백업 — 화면을 벗어날 때 한 번.
@@ -327,13 +328,13 @@ function AppInner() {
     appShell: { background: `radial-gradient(circle at 50% -10%, ${T.bg2}, ${T.bg} 60%)`, minHeight: "100vh", display: "flex", flexDirection: "column", fontFamily: F.body },
     screen: { flex: 1, overflowY: "auto", padding: "20px 16px 12px", paddingBottom: 90 },
     nav: { position: "fixed", bottom: 0, left: 0, right: 0, display: "flex", background: T.navBg, borderTop: `1px solid ${T.goldSoft}55`, backdropFilter: "blur(8px)", padding: "8px 4px calc(8px + env(safe-area-inset-bottom))" },
-    toast: { position: "fixed", bottom: 84, left: "50%", transform: "translateX(-50%)", background: T.gold, color: "#23190C", padding: "8px 16px", borderRadius: 20, fontSize: 16, fontWeight: 600, boxShadow: "0 4px 16px rgba(0,0,0,0.3)" },
+    toast: { position: "fixed", bottom: 84, left: "50%", transform: "translateX(-50%)", background: T.gold, color: T.onGold, padding: "8px 16px", borderRadius: 20, fontSize: 16, fontWeight: 600, boxShadow: "0 4px 16px rgba(0,0,0,0.3)", whiteSpace: "nowrap" },
   };
 
   return (
     <ThemeContext.Provider value={T}>
       <div style={S.appShell}>
-        <div style={S.screen}>
+        <main style={S.screen}>
           {tab === "home" && <HomeView ctx={ctx} />}
           {tab === "add" && <AddView ctx={ctx} />}
           {tab === "ledger" && <LedgerView ctx={ctx} />}
@@ -343,7 +344,7 @@ function AppInner() {
               {tab === "settings" && <SettingsView ctx={ctx} />}
             </Suspense>
           )}
-        </div>
+        </main>
         <nav style={S.nav}>
           <NavBtn icon={HomeIcon} label="홈" active={tab === "home"} onClick={() => setTab("home")} />
           <NavBtn icon={Plus} label="기록" active={tab === "add"} onClick={() => setTab("add")} />
@@ -351,7 +352,8 @@ function AppInner() {
           <NavBtn icon={Calendar} label="달력" active={tab === "calendar"} onClick={() => setTab("calendar")} />
           <NavBtn icon={Settings} label="설정" active={tab === "settings"} onClick={() => setTab("settings")} />
         </nav>
-        {toast && <div style={S.toast}>{toast}</div>}
+        {/* 자리는 늘 두고 글자만 바꾼다 — 그래야 스크린리더가 매번 읽어 준다 */}
+        <div role="status" aria-live="polite" style={toast ? S.toast : { position: "fixed", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>{toast}</div>
       </div>
     </ThemeContext.Provider>
   );

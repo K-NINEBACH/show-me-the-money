@@ -24,6 +24,32 @@
       * { box-sizing: border-box; }
       input, select { font-family: inherit; }
       ::-webkit-scrollbar { display: none; }
+
+      /* 한글은 단어 중간에서 줄을 바꾸지 않는다 — '할부(고정지출)'이 '고정지/출'로
+         잘리던 것. 너무 긴 한 덩어리만 어쩔 수 없이 끊는다. */
+      body { word-break: keep-all; overflow-wrap: break-word; }
+
+      /* 지금 어느 칸·버튼에 있는지. 색은 테마가 --focus로 넣어 준다(theme.js).
+         예전엔 입력칸이 outline:none만 하고 대신할 표시가 없었다. */
+      :focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: 2px; }
+      input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 1px; }
+
+      /* 누르면 살짝 눌린다 — 버튼이 눌렸다는 손맛. 값은 better-ui 그대로(0.96, 150ms).
+         움직임 줄이기를 켠 사람에겐 아예 안 건다(opt-in). */
+      @media (prefers-reduced-motion: no-preference) {
+        button { transition-property: scale; transition-duration: 150ms; transition-timing-function: ease-out; }
+        button:active:not(:disabled) { scale: 0.96; }
+      }
+
+      /* 움직임 줄이기를 켠 사람에겐 인라인에 박힌 전환(게이지 링 등)도 끈다. */
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
     </style>
   </head>
   <body style="margin:0;">

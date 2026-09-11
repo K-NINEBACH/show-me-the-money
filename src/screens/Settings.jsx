@@ -352,7 +352,7 @@ export function SettingsView({ ctx }) {
               {noti.access !== true && (
                 <button
                   onClick={openNotificationSettings}
-                  style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: T.gold, color: "#23190C", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
+                  style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: T.gold, color: T.onGold, fontSize: 15, fontWeight: 700, cursor: "pointer" }}
                 >
                   권한 설정 열기
                 </button>
