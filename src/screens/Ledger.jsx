@@ -479,7 +479,7 @@ export function LedgerView({ ctx }) {
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button onClick={cancelEdit} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.ink, fontSize: 14, cursor: "pointer" }}>취소</button>
         <button onClick={() => saveEdit(e)} style={{ flex: 2, ...primaryBtn(T), padding: "9px 0" }}>저장</button>
-        <button onClick={() => { if (remove(e.id)) setEditingId(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, padding: 6, flexShrink: 0 }}><Trash2 size={18} /></button>
+        <button onClick={() => { if (remove(e.id)) setEditingId(null); }} aria-label="이 기록 삭제" style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><Trash2 size={18} aria-hidden="true" /></button>
       </div>
     </div>
   );

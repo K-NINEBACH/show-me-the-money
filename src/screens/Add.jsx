@@ -372,12 +372,12 @@ function InstallmentForm({ ctx }) {
                   </div>
                 </div>
                 {info.active && (
-                  <button onClick={() => { setOverrideEditId(f.id); setOverrideInput(String(info.amount)); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold }}><Pencil size={14} /></button>
+                  <button onClick={() => { setOverrideEditId(f.id); setOverrideInput(String(info.amount)); }} aria-label={`${f.name} 이번 달 금액 수정`} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><Pencil size={14} aria-hidden="true" /></button>
                 )}
-                <button onClick={() => setReassignEditId(reassignEditId === f.id ? null : f.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.good }}>
-                  {(f.paymentMethod || "cash") === "card" ? <CreditCard size={14} /> : <Wallet size={14} />}
+                <button onClick={() => setReassignEditId(reassignEditId === f.id ? null : f.id)} aria-label={`${f.name} 결제 ${(f.paymentMethod || "cash") === "card" ? "카드" : "통장"} 바꾸기`} aria-expanded={reassignEditId === f.id} style={{ background: "none", border: "none", cursor: "pointer", color: T.good, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}>
+                  {(f.paymentMethod || "cash") === "card" ? <CreditCard size={14} aria-hidden="true" /> : <Wallet size={14} aria-hidden="true" />}
                 </button>
-                <button onClick={() => removeFixed(f.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger }}><X size={15} /></button>
+                <button onClick={() => removeFixed(f.id)} aria-label={`${f.name} 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
               </div>
               {overrideEditId === f.id && (
                 <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
