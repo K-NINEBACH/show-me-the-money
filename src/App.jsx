@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
 import { STORAGE_KEY, INBOX_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
@@ -202,7 +202,17 @@ function AppInner() {
     catch { showToast("저장에 실패했어요"); }
   }, []);
 
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 1800); };
+  /*
+    새 알림 문구가 뜨면 앞 문구의 타이머를 끊는다. 예전엔 앞 타이머가 그대로 살아
+    있어서 연달아 뜬 뒤 문구를 일찍 지웠다 — 결제가 자동으로 들어가고 곧바로 취소가
+    오면 "기록에서 뺐어요"가 뜨자마자 사라졌다.
+  */
+  const toastTimer = useRef(null);
+  const showToast = (msg) => {
+    clearTimeout(toastTimer.current);
+    setToast(msg);
+    toastTimer.current = setTimeout(() => setToast(""), 1800);
+  };
 
   const T = (data && THEMES[data.theme]) || THEMES.dark;
   useEffect(() => { applyThemeVars(T); }, [T]);
