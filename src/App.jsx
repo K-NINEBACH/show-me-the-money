@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
-import { STORAGE_KEY } from "./lib/constants";
+import { STORAGE_KEY, INBOX_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
 import { defaultData, migrate, autoProcessFixed, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
 import { NavBtn } from "./components/common";
@@ -83,11 +83,38 @@ function AppInner() {
     여기서는 받아만 둔다. 이 중에 무엇을 자동으로 넣을지는 바로 아래 효과가
     auto-record.js의 규칙으로 정하고, 확실하지 않은 것은 알림함에 남는다.
   */
-  const [inbox, setInbox] = useState([]);
+  /*
+    **알림함은 휴대폰에 저장한다.**
+
+    껍데기는 여기서 가져가는 순간 자기 큐를 비운다. 그런데 알림함이 메모리에만
+    있어서, 애매해서 보류된 알림은 앱을 닫는 순간 양쪽 어디에도 남지 않았다.
+    "애매하면 알림함에 남겨 사람이 나중에 넣는다"가 사실은 "앱을 켜 둔 동안만"
+    이었던 것이다. 보지도 못한 알림은 나중에 넣을 수도 없다.
+
+    가계부 데이터와 다른 칸(INBOX_KEY)에 둔다. 한 번 판단한 표시(checked)도 같이
+    저장되므로, 다시 켜도 보류한 것을 자동으로 재판단하지 않는다.
+  */
+  const [inbox, setInbox] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(INBOX_KEY) || "[]");
+      return Array.isArray(saved) ? saved : [];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(INBOX_KEY, JSON.stringify(inbox)); } catch { /* 저장 못 해도 앱은 돈다 */ }
+  }, [inbox]);
   useEffect(() => {
     const pull = () => {
       const got = pullPendingPayments();
-      if (got.length) setInbox((prev) => [...prev, ...got]);
+      if (!got.length) return;
+      /*
+        같은 문구는 한 번만. 껍데기가 다시 연결될 때 알림창에 남은 것을 한 번 더
+        훑어 넘기는데, 이미 알림함에 있는 걸 또 쌓으면 같은 줄이 늘어난다.
+        광고 같은 게 섞여 끝없이 쌓이지 않게 최근 50건만 둔다.
+      */
+      setInbox((prev) => [...prev, ...got.filter((g) => !prev.some((p) => p.text === g.text))].slice(-50));
     };
     pull();
     window.addEventListener("passbook-native-resume", pull);
