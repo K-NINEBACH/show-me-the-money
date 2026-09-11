@@ -1,7 +1,7 @@
 // Home tab: balance card, spending-goal ring, card bills, transit quick-add,
 // plus the money-moving actions (settle, reconcile, pay card, mark fixed paid).
-import { useState, useEffect } from "react";
-import { HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Repeat, ClipboardPaste } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Repeat, ClipboardPaste, ChevronRight, Check } from "lucide-react";
 import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, monthLabel, todayISO, parsePaymentText, sortFixedList, fixedInfo } from "../lib/data";
 import { MoneyInput, QuickAmountButtons } from "../components/common";
@@ -16,16 +16,33 @@ export function HomeView({ ctx }) {
   const dashOffset = dashArray * (1 - Math.min(budgetRatio, 1));
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
   const [budgetOpen, setBudgetOpen] = useState(false);
+  const budgetRef = useRef(null);
+
+  /*
+    배너를 누르면 처리할 목록으로 곧장 데려간다.
+
+    예전엔 "아래에서 출금처리 하세요"라는 글자만 있었는데, 정작 그 버튼들은 맨
+    아래 작은 '펼치기'를 눌러야 나오는 접힌 영역 안에 있었다. 배너 자체는 눌러도
+    아무 일이 없었고. 가리키는 곳에 아무것도 안 보이는 안내는 없는 것만 못하다.
+  */
+  const goToUnpaid = () => {
+    setBudgetOpen(true);
+    requestAnimationFrame(() => budgetRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
 
   return (
     <div>
       <BalanceCard ctx={ctx} accountBalance={accountBalance} />
 
       {unpaidFixed.length > 0 && (
-        <div style={{ marginTop: 10, background: T.warn + "18", border: `1px solid ${T.warn}66`, borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ color: T.warn, fontSize: 14, fontWeight: 700 }}>출금처리 안 한 고정지출 {unpaidFixed.length}건</span>
-          <span style={{ color: T.muted, fontSize: 13, flex: 1 }}>실제로 빠져나갔으면 아래에서 출금처리 하세요</span>
-        </div>
+        <button onClick={goToUnpaid}
+          style={{ width: "100%", marginTop: 10, background: T.warn + "18", border: `1px solid ${T.warn}66`, borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, cursor: "pointer", textAlign: "start", fontFamily: "inherit" }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: "block", color: T.warn, fontSize: 14.5, fontWeight: 700 }}>출금처리 안 한 고정지출 {unpaidFixed.length}건</span>
+            <span style={{ display: "block", color: T.muted, fontSize: 13, marginTop: 2 }}>빠져나간 게 있으면 눌러서 처리하세요</span>
+          </span>
+          <ChevronRight size={18} color={T.warn} aria-hidden="true" style={{ flexShrink: 0 }} />
+        </button>
       )}
 
       <div style={{ textAlign: "center", marginBottom: 4, marginTop: 22 }}>
@@ -37,15 +54,17 @@ export function HomeView({ ctx }) {
 
       <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 8px" }}>
         <div style={{ position: "relative", width: 176, height: 176 }}>
-          <svg width="176" height="176" viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r="54" fill="none" stroke={T.mode === "dark" ? "#2A2F4C" : "#DCCBA0"} strokeWidth="10" />
+          {/* 링은 그림일 뿐이고 숫자는 가운데 글자가 전한다 */}
+          <svg width="176" height="176" viewBox="0 0 120 120" aria-hidden="true">
+            {/* 바탕 링: 테마를 따라가게 — 예전엔 밝은 테마 전부에 베이지(#DCCBA0)가 박혀 있었다 */}
+            <circle cx="60" cy="60" r="54" fill="none" stroke={T.mode === "dark" ? "#2A2F4C" : T.paperLine} strokeWidth="10" />
             <circle cx="60" cy="60" r="54" fill="none" stroke={ringColor} strokeWidth="10" strokeLinecap="round"
               strokeDasharray={dashArray} strokeDashoffset={dashOffset} transform="rotate(-90 60 60)"
               style={{ transition: "stroke-dashoffset 0.6s ease, stroke 0.4s" }} />
           </svg>
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
             <div style={{ color: T.muted, fontSize: 13, marginBottom: 2 }}>{over ? "목표 초과" : "이번 달 운용 가능"}</div>
-            <div style={{ color: over ? T.danger : T.cream, fontFamily: F.mono, fontWeight: 600, fontSize: 19.5, lineHeight: 1.15, textAlign: "center" }}>
+            <div style={{ color: over ? T.danger : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 600, fontSize: 19.5, lineHeight: 1.15, textAlign: "center" }}>
               {over ? "-" : ""}{fmtWon(Math.abs(remaining))}
             </div>
             <div style={{ color: T.goldSoft, fontSize: 13, marginTop: 4 }}>
@@ -75,10 +94,10 @@ export function HomeView({ ctx }) {
 
       {(fixedActive.length > 0 || fixedCardActive.length > 0 || receivables.length > 0) && (
         <>
-          <button onClick={() => setBudgetOpen(!budgetOpen)}
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: "8px 2px", marginBottom: budgetOpen ? 8 : 4 }}>
-            <span style={{ color: T.goldSoft, fontSize: 13, fontWeight: 700 }}>예산 관리</span>
-            <span style={{ color: T.muted, fontSize: 12 }}>{budgetOpen ? "접기 ▲" : "펼치기 ▼"}</span>
+          <button ref={budgetRef} onClick={() => setBudgetOpen(!budgetOpen)} aria-expanded={budgetOpen}
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: "12px 2px", marginBottom: budgetOpen ? 8 : 4, scrollMarginTop: 12 }}>
+            <span style={{ color: T.goldSoft, fontSize: 14, fontWeight: 700 }}>예산 관리{unpaidFixed.length > 0 ? ` · 처리할 것 ${unpaidFixed.length}건` : ""}</span>
+            <span style={{ color: T.muted, fontSize: 13 }}>{budgetOpen ? "접기 ▲" : "펼치기 ▼"}</span>
           </button>
           {budgetOpen && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
@@ -120,7 +139,7 @@ function ReceivablesCard({ ctx, receivables, catMap }) {
           {settlingId === r.id && (
             <div style={{ marginTop: 4, marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
               <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 5 }}>실제 상환받은 금액 (부족분→카드값, 초과분→통장)</div>
-              <MoneyInput value={repaidInput} onChange={setRepaidInput} autoFocus />
+              <MoneyInput value={repaidInput} onChange={setRepaidInput} autoFocus ariaLabel="실제 상환받은 금액" />
               <QuickAmountButtons amount={repaidInput} setAmount={setRepaidInput} />
               <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                 <button onClick={() => setSettlingId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 14.5, cursor: "pointer" }}>취소</button>
@@ -185,10 +204,25 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
             <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 6 }}>
               <span style={{ fontFamily: F.mono, color: T.muted, fontSize: 13.5 }}>{fmtWon(f.info.amount)}</span>
               {needsAction && (
+                /*
+                  '완료'는 상태처럼 보이지만 누르면 처리를 되돌린다 — 딸린 출금 기록
+                  (알림에서 자동으로 들어온 것 포함)이 지워지고 카드값도 빠진다.
+                  예전엔 확인 없이 바로 지워서, 목록을 훑다 스치기만 해도 기록이
+                  사라졌고 되살릴 길이 없었다. 이제 무엇이 지워지는지 묻는다.
+                  버튼도 손가락 크기로 키웠다(예전 높이 20px 남짓, 글자 11px).
+                */
                 paidId ? (
-                  <button onClick={() => unmarkFixedPaid(ctx, f)} style={{ background: "none", border: `1px solid ${T.good}`, borderRadius: 6, padding: "3px 6px", cursor: "pointer", color: T.good, fontSize: 11, fontWeight: 700 }}>완료</button>
+                  <button
+                    onClick={() => { if (window.confirm(`${f.name} ${isCard ? "카드반영" : "출금처리"}를 취소할까요?\n함께 적힌 ${isCard ? "카드 기록" : "출금 기록"}도 지워져요.`)) unmarkFixedPaid(ctx, f); }}
+                    aria-label={`${f.name} ${isCard ? "카드반영" : "출금처리"} 완료 · 누르면 취소`}
+                    style={{ display: "flex", alignItems: "center", gap: 3, background: "none", border: `1px solid ${T.good}`, borderRadius: 8, padding: "0 10px", minHeight: 32, cursor: "pointer", color: T.good, fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    <Check size={13} strokeWidth={2.5} aria-hidden="true" />완료
+                  </button>
                 ) : (
-                  <button onClick={() => markFixedPaid(ctx, f, f.info)} style={{ background: T.good, border: "none", borderRadius: 6, padding: "3px 6px", cursor: "pointer", color: "#fff", fontSize: 11, fontWeight: 700 }}>{isCard ? "카드반영" : "출금처리"}</button>
+                  <button onClick={() => markFixedPaid(ctx, f, f.info)}
+                    style={{ background: T.good, border: "none", borderRadius: 8, padding: "0 10px", minHeight: 32, cursor: "pointer", color: T.mode === "dark" ? "#000000" : "#FFFFFF", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    {isCard ? "카드반영" : "출금처리"}
+                  </button>
                 )
               )}
             </span>
@@ -354,18 +388,18 @@ function CardsBlock({ ctx, cardTotals }) {
               {c.fixedPortion > 0 && <div style={{ color: T.goldSoft, fontSize: 13 }}>이번 달 할부 {fmtWon(c.fixedPortion)} 포함</div>}
             </div>
             <button onClick={() => { setReconcileId(reconcileId === c.id ? null : c.id); setReconcileInput(String(c.total || "")); }}
-              style={{ padding: "7px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, fontSize: 13.5, cursor: "pointer" }}>
+              style={{ padding: "0 12px", minHeight: 40, borderRadius: 8, border: `1px solid ${T.field}`, background: "transparent", color: T.muted, fontSize: 13.5, cursor: "pointer" }}>
               맞추기
             </button>
             <button onClick={() => payCard(ctx, c)} disabled={!c.total}
-              style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: c.total ? T.gold : T.border, color: c.total ? "#23190C" : T.muted, fontSize: 14.5, fontWeight: 700, cursor: c.total ? "pointer" : "default" }}>
+              style={{ padding: "0 14px", minHeight: 40, borderRadius: 8, border: "none", background: c.total ? T.gold : T.border, color: c.total ? T.onGold : T.muted, fontSize: 14.5, fontWeight: 700, cursor: c.total ? "pointer" : "default" }}>
               결제하기
             </button>
           </div>
           {reconcileId === c.id && (
             <div style={{ marginTop: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
               <div style={{ color: T.muted, fontSize: 12, marginBottom: 5 }}>카드 앱에 찍힌 이번 달 청구 총액(할부 포함)을 그대로 입력하면 맞춰요.</div>
-              <MoneyInput value={reconcileInput} onChange={setReconcileInput} />
+              <MoneyInput value={reconcileInput} onChange={setReconcileInput} ariaLabel="맞출 금액" />
               <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                 <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13, cursor: "pointer" }}>취소</button>
                 <button onClick={() => { reconcileCard(ctx, c, reconcileInput); setReconcileId(null); }} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>맞추기</button>
@@ -432,9 +466,9 @@ function TransitQuickAdd({ ctx }) {
     <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px", marginBottom: 14 }}>
       <div style={{ color: T.muted, fontSize: 14, marginBottom: 2 }}>대중교통비 빠른입력</div>
       <div style={{ color: T.muted, fontSize: 12, marginBottom: 8 }}>계기판에 뜨는 이번 달 누적 금액을 그대로 입력하면, 이전 값을 대체해서 갱신돼요 (더해지지 않아요).</div>
-      <MoneyInput value={amount} onChange={setAmount} placeholder="이번 달 누적 금액" />
+      <MoneyInput value={amount} onChange={setAmount} placeholder="이번 달 누적 금액" ariaLabel="대중교통비 이번 달 누적 금액" />
       {data.cards.length > 1 && (
-        <select value={cardId} onChange={(e) => setCardId(e.target.value)} style={{ ...inputSty(T), marginTop: 8 }}>
+        <select value={cardId} onChange={(e) => setCardId(e.target.value)} aria-label="대중교통비 결제 카드" style={{ ...inputSty(T), marginTop: 8 }}>
           {data.cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       )}
@@ -517,7 +551,7 @@ function BalanceCard({ ctx, accountBalance }) {
               {reconcileId === a.id && (
                 <div style={{ padding: "8px 0" }}>
                   <div style={{ color: T.muted, fontSize: 12, marginBottom: 5 }}>통장 앱에 찍힌 실제 잔액을 입력하면 차액을 자동으로 맞춰요</div>
-                  <MoneyInput value={reconcileInput} onChange={setReconcileInput} />
+                  <MoneyInput value={reconcileInput} onChange={setReconcileInput} ariaLabel="맞출 금액" />
                   <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                     <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13, cursor: "pointer" }}>취소</button>
                     <button onClick={() => { reconcileAccount(ctx, a, reconcileInput); setReconcileId(null); }} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>맞추기</button>
@@ -533,7 +567,7 @@ function BalanceCard({ ctx, accountBalance }) {
           {reconcileId === accountTotals[0].id ? (
             <div style={{ background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 8, padding: 8 }}>
               <div style={{ color: T.muted, fontSize: 12, marginBottom: 5 }}>통장 앱에 찍힌 실제 잔액을 입력하면 차액을 자동으로 맞춰요</div>
-              <MoneyInput value={reconcileInput} onChange={setReconcileInput} />
+              <MoneyInput value={reconcileInput} onChange={setReconcileInput} ariaLabel="맞출 금액" />
               <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                 <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13, cursor: "pointer" }}>취소</button>
                 <button onClick={() => { reconcileAccount(ctx, accountTotals[0], reconcileInput); setReconcileId(null); }} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>맞추기</button>
@@ -574,7 +608,7 @@ function BalanceCard({ ctx, accountBalance }) {
               </button>
               {showPaste && (
                 <div>
-                  <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="예: 국민은행 입금 500,000원 07/20 14:23"
+                  <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="예: 국민은행 입금 500,000원 07/20 14:23" aria-label="입출금 문자"
                     style={{ ...inputSty(T), height: 70, fontSize: 14, marginBottom: 6 }} />
                   <button onClick={applyParse} style={primaryBtn(T)}>읽어오기</button>
                 </div>
@@ -584,25 +618,25 @@ function BalanceCard({ ctx, accountBalance }) {
           {(data.accounts || []).length > 1 && (
             mode === "transfer" ? (
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <select value={accountId} onChange={(e) => setAccountId(e.target.value)} style={inputSty(T)}>
+                <select value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="통장" style={inputSty(T)}>
                   {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
                 <span style={{ color: T.muted, fontSize: 13 }}>→</span>
-                <select value={toAccountId} onChange={(e) => setToAccountId(e.target.value)} style={inputSty(T)}>
+                <select value={toAccountId} onChange={(e) => setToAccountId(e.target.value)} aria-label="받는 통장" style={inputSty(T)}>
                   <option value="" disabled>받는 통장</option>
                   {data.accounts.filter((a) => a.id !== accountId).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
             ) : (
-              <select value={accountId} onChange={(e) => setAccountId(e.target.value)} style={inputSty(T)}>
+              <select value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="통장" style={inputSty(T)}>
                 {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             )
           )}
-          <MoneyInput value={amount} onChange={setAmount} placeholder="금액" autoFocus />
+          <MoneyInput value={amount} onChange={setAmount} placeholder="금액" autoFocus ariaLabel="금액" />
           <QuickAmountButtons amount={amount} setAmount={setAmount} />
-          <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" style={{ ...inputSty(T), marginTop: 4 }} />
-          <button onClick={submit} style={{ ...primaryBtn(T), background: mode === "in" ? T.good : mode === "transfer" ? T.gold : T.danger, color: mode === "transfer" ? "#23190C" : "#fff", marginTop: 4 }}>
+          <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" aria-label="메모" style={{ ...inputSty(T), marginTop: 4 }} />
+          <button onClick={submit} style={{ ...primaryBtn(T), background: mode === "in" ? T.good : mode === "transfer" ? T.gold : T.danger, color: mode === "transfer" ? T.onGold : "#fff", marginTop: 4 }}>
             {mode === "in" ? "입금 기록" : mode === "transfer" ? "이체 기록" : "출금 기록"}
           </button>
         </div>
