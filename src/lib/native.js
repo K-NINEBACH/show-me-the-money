@@ -55,6 +55,30 @@ export function pendingCount() {
   }
 }
 
+/**
+ * 껍데기 진단(1.1부터): 리스너 연결 여부, 배터리 최적화, 마지막으로 본 알림,
+ * 금액이 든 알림을 결제로 봤는지 최근 30건. 옛 껍데기거나 없으면 null.
+ */
+export function diagnostics() {
+  const b = bridge();
+  if (!b?.diagnostics) return null;
+  try {
+    return JSON.parse(b.diagnostics() || "null");
+  } catch {
+    return null;
+  }
+}
+
+/** 배터리 최적화에서 빼 달라고 묻는 창을 연다(1.1부터) */
+export function openBatterySettings() {
+  const b = bridge();
+  try {
+    b?.openBatterySettings?.();
+  } catch {
+    /* 못 열어도 앱은 돈다 */
+  }
+}
+
 /** 알림 접근 권한이 켜져 있나. 껍데기가 없으면 null(해당 없음). */
 export function hasNotificationAccess() {
   const b = bridge();

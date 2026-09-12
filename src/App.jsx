@@ -1,11 +1,23 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
-import { STORAGE_KEY, INBOX_KEY, SEEN_KEY } from "./lib/constants";
+import { STORAGE_KEY, INBOX_KEY, SEEN_KEY, ALERT_LOG_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
 import { defaultData, migrate, autoProcessFixed, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
 import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup, inNativeApp } from "./lib/native";
-import { autoRecordPayments } from "./lib/auto-record";
+import { autoRecordPayments, isCancelText } from "./lib/auto-record";
+
+/*
+  받은 알림을 어떻게 처리했는지 남긴다(진단용, 최근 40건). 결제가 안 들어왔을 때
+  웹이 받아 놓고 넘긴 건지, 애초에 못 받은 건지 설정 화면에서 가를 수 있게.
+*/
+function logAlerts(rows) {
+  if (!rows.length) return;
+  try {
+    const old = JSON.parse(localStorage.getItem(ALERT_LOG_KEY) || "[]");
+    localStorage.setItem(ALERT_LOG_KEY, JSON.stringify([...old, ...rows.map((r) => ({ ...r, loggedAt: Date.now() }))].slice(-40)));
+  } catch { /* 못 적어도 앱은 돈다 */ }
+}
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { HomeView } from "./screens/Home";
 import { AddView } from "./screens/Add";
@@ -117,7 +129,9 @@ function AppInner() {
       let seen = [];
       try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"); } catch { seen = []; }
       const got = pulled.filter((g) => !seen.includes(g.text));
+      logAlerts(pulled.filter((g) => seen.includes(g.text)).map((g) => ({ text: g.text, at: g.at, outcome: "이미 받은 알림이라 무시" })));
       try { localStorage.setItem(SEEN_KEY, JSON.stringify([...seen, ...got.map((g) => g.text)].slice(-500))); } catch { /* 못 적어도 앱은 돈다 */ }
+      logAlerts(got.map((g) => ({ text: g.text, at: g.at, outcome: "받음" })));
       if (!got.length) return;
       /*
         같은 문구는 한 번만. 껍데기가 다시 연결될 때 알림창에 남은 것을 한 번 더
@@ -161,6 +175,14 @@ function AppInner() {
     if (fresh.length === 0 && dropped.length === 0) return;
     const keep = new Set(leftover);
     const gone = new Set(dropped);
+    const skip = new Set(skipped);
+    logAlerts(fresh.map((i) => ({
+      text: i.text, at: i.at,
+      outcome: keep.has(i) ? "알림함에 남김(어느 카드·통장인지 모름 등)"
+        : gone.has(i) ? "결제·취소 짝이라 안 넣음"
+        : skip.has(i) ? "이미 적힌 거래라 넘김"
+        : isCancelText(i.text) ? "취소 → 기록 되돌림" : "자동 기록함",
+    })));
     // 판단이 끝난 것만 남기고 표시해 둔다 — 넣은 것과 짝이 맞아 치운 것은 목록에서 빠진다
     setInbox(inbox.filter((i) => !gone.has(i) && (i.checked || keep.has(i))).map((i) => (i.checked ? i : { ...i, checked: true })));
     const msgs = [];

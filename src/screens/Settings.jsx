@@ -3,8 +3,43 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, migrate, todayISO } from "../lib/data";
-import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings } from "../lib/native";
+import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings, diagnostics, openBatterySettings } from "../lib/native";
+import { ALERT_LOG_KEY } from "../lib/constants";
+import { parsePaymentText } from "../lib/data";
 import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../components/common";
+
+/** "3분 전", "2시간 전", "어제" — 진단 화면용 */
+function ago(ms) {
+  if (!ms) return "없음";
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 1) return "방금";
+  if (m < 60) return `${m}분 전`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}시간 전`;
+  return `${Math.round(h / 24)}일 전`;
+}
+
+/*
+  **최근 결제 알림이 각각 어떻게 됐는지.** 껍데기가 본 기록(1.1부터)과 웹의 처리 기록을
+  문구로 이어 붙인다. 결제가 안 들어왔을 때 어디서 끊겼는지 — 껍데기가 결제로 안 봤는지,
+  앱으로 아직 안 왔는지, 웹이 받아서 넘겼는지 — 한눈에 갈린다.
+*/
+function recentAlerts(diag) {
+  let web = [];
+  try { web = JSON.parse(localStorage.getItem(ALERT_LOG_KEY) || "[]"); } catch { web = []; }
+  const lastOutcome = (text) => [...web].reverse().find((w) => w.text === text)?.outcome;
+  if (diag?.log?.length) {
+    return [...diag.log].reverse().slice(0, 10).map((l) => ({
+      text: l.text, at: l.at,
+      result: !l.accepted ? "결제로 안 봄(껍데기에서 걸러짐)" : lastOutcome(l.text) || "아직 앱으로 안 가져옴",
+      bad: !l.accepted,
+    }));
+  }
+  // 옛 껍데기(진단 없음) — 웹이 받은 것만
+  const seen = new Set();
+  return [...web].reverse().filter((w) => (seen.has(w.text) ? false : seen.add(w.text))).slice(0, 10)
+    .map((w) => ({ text: w.text, at: w.at, result: w.outcome }));
+}
 
 /** "가계부-백업-2026-09-09.json" → "2026-09-09". 못 읽으면 파일 이름 그대로. */
 function backupDay(name) {
@@ -37,8 +72,8 @@ export function SettingsView({ ctx }) {
     건지, 껍데기가 못 잡은 건지, 잡았는데 앱이 안 가져간 건지 구분이 안 돼서
     어디를 고쳐야 할지도 모른다.
   */
-  const [noti, setNoti] = useState(() => ({ access: hasNotificationAccess(), pending: pendingCount() }));
-  const refreshNoti = () => setNoti({ access: hasNotificationAccess(), pending: pendingCount() });
+  const [noti, setNoti] = useState(() => ({ access: hasNotificationAccess(), pending: pendingCount(), diag: diagnostics() }));
+  const refreshNoti = () => setNoti({ access: hasNotificationAccess(), pending: pendingCount(), diag: diagnostics() });
   const exportJson = JSON.stringify(data, null, 2);
   const doExport = () => {
     setShowExport(true); setShowImport(false);
@@ -342,6 +377,21 @@ export function SettingsView({ ctx }) {
                   {noti.access === true ? "켜짐" : noti.access === false ? "꺼짐" : "알 수 없음"}
                 </span>
               </div>
+              {noti.diag && (
+                <>
+                  <div>
+                    알림 받는 중 ·{" "}
+                    <span style={{ color: noti.diag.connected ? T.good : T.danger, fontWeight: 700 }}>{noti.diag.connected ? "연결됨" : "끊김"}</span>
+                  </div>
+                  <div>
+                    마지막으로 본 알림 · <span style={{ fontWeight: 700 }}>{ago(noti.diag.last?.at)}</span>
+                  </div>
+                  <div>
+                    배터리 최적화 ·{" "}
+                    <span style={{ color: noti.diag.batteryOptimized ? T.warn : T.good, fontWeight: 700 }}>{noti.diag.batteryOptimized ? "켜짐(알림을 놓칠 수 있어요)" : "꺼짐"}</span>
+                  </div>
+                </>
+              )}
               <div>
                 아직 안 가져온 알림 ·{" "}
                 <span style={{ fontWeight: 700 }}>{noti.pending === null ? "알 수 없음" : `${noti.pending}건`}</span>
@@ -358,6 +408,14 @@ export function SettingsView({ ctx }) {
               >
                 지금 가져오기
               </button>
+              {noti.diag?.batteryOptimized && (
+                <button
+                  onClick={() => { openBatterySettings(); setTimeout(refreshNoti, 1500); }}
+                  style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: T.gold, color: T.onGold, fontSize: 15, fontWeight: 700, cursor: "pointer" }}
+                >
+                  배터리 최적화 끄기
+                </button>
+              )}
               {noti.access !== true && (
                 <button
                   onClick={openNotificationSettings}
@@ -368,9 +426,33 @@ export function SettingsView({ ctx }) {
               )}
             </div>
             <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, marginTop: 8 }}>
-              권한이 꺼져 있으면 알림을 아예 못 봐요. 권한이 켜져 있는데도 계속 0건이면,
-              권한을 껐다 다시 켜서 알림 읽기를 다시 이어주세요.
+              {noti.diag && !noti.diag.connected
+                ? "알림 받기가 끊겨 있어요. 앱을 다시 열면 다시 이어요. 계속 끊기면 배터리 최적화를 끄거나, 알림 읽기 권한을 껐다 켜 주세요."
+                : "권한이 꺼져 있으면 알림을 아예 못 봐요. 결제했는데 아래 목록에 안 보이면, 알림 읽기 권한을 껐다 다시 켜 주세요."}
             </div>
+          </Field>
+
+          {/* 결제가 안 들어왔을 때 어디서 끊겼는지 — 이 목록 한 장이면 갈린다 */}
+          <Field label="최근 결제 알림">
+            {(() => {
+              const rows = recentAlerts(noti.diag);
+              if (!rows.length) {
+                return <div style={{ color: T.muted, fontSize: 13.5 }}>아직 받은 결제 알림이 없어요.</div>;
+              }
+              return rows.map((row, i) => {
+                const r = parsePaymentText(row.text || "");
+                return (
+                  <div key={`${row.at}-${i}`} style={{ padding: "7px 0", borderTop: i ? `1px dashed ${T.border}` : "none" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: T.cream, fontSize: 14 }}>
+                      <span style={{ fontFamily: F.mono, fontWeight: 700 }}>{r.amount ? fmtWon(Number(r.amount)) : "금액 못 읽음"}</span>
+                      <span style={{ color: T.muted, fontSize: 12.5 }}>{ago(row.at)}</span>
+                    </div>
+                    <div style={{ color: T.muted, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.text}</div>
+                    <div style={{ color: row.bad ? T.danger : T.good, fontSize: 12.5, fontWeight: 700 }}>{row.result}</div>
+                  </div>
+                );
+              });
+            })()}
           </Field>
         </>
       )}

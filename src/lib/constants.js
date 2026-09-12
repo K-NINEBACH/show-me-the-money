@@ -12,6 +12,9 @@ export const INBOX_KEY = "passbook-inbox-v1";
 // 이미 한 번 받아 처리한 알림 문구. 껍데기는 다시 연결될 때(재시작·업데이트) 알림창에
 // 남은 알림을 또 넘기는데, 이걸로 두 번 처리하지 않는다. 가계부 데이터와 다른 칸.
 export const SEEN_KEY = "passbook-seen-v1";
+
+// 받은 알림을 어떻게 처리했는지 최근 40건(진단용). "왜 안 들어왔지"를 설정에서 보게.
+export const ALERT_LOG_KEY = "passbook-alertlog-v1";
 export const PALETTE = ["#C79A46", "#5B8A62", "#B6473F", "#3E6E8E", "#8A5FA0", "#C97C3D", "#4E7A6B", "#A85C7A"];
 // Trimmed from 6 to the 4 actually used often — a full row of 6 buttons was
 // mostly just visual weight on every money input across the app.
