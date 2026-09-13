@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react"
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
 import { STORAGE_KEY, INBOX_KEY, SEEN_KEY, SEEN_DEAL_KEY, ALERT_LOG_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
-import { defaultData, migrate, autoProcessFixed, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
+import { defaultData, migrate, autoProcessFixed, repairMisdatedAuto, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
 import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup, inNativeApp } from "./lib/native";
 import { autoRecordPayments, isCancelText, dealKey } from "./lib/auto-record";
@@ -256,11 +256,16 @@ function AppInner() {
         const res = localStorage.getItem(STORAGE_KEY);
         if (res) {
           const loaded = migrate(JSON.parse(res));
-          const processed = autoProcessFixed(loaded);
+          // 날짜를 잘못 읽어 엉뚱한 달에 들어간 자동 기록을 원래 알림 문구로 바로잡는다(data.js 설명 참고)
+          let seenTexts = [];
+          try { seenTexts = JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"); } catch { seenTexts = []; }
+          const repaired = repairMisdatedAuto(loaded, seenTexts);
+          const processed = autoProcessFixed(repaired.data);
           setData(processed);
           if (processed !== loaded) {
             try { localStorage.setItem(STORAGE_KEY, JSON.stringify(processed)); } catch {}
           }
+          if (repaired.count) setTimeout(() => showToast(`날짜가 잘못 들어간 자동 기록 ${repaired.count}건을 바로잡았어요`), 600);
         } else setData(defaultData());
       } catch { setData(defaultData()); }
       finally { setLoaded(true); }

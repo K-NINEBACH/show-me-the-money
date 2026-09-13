@@ -110,6 +110,67 @@ export function autoProcessFixed(d) {
 }
 
 
+/*
+  **날짜가 잘못 들어간 자동 기록을 바로잡는다**(2026-09-14).
+
+  2026-09-10 아침, 기업은행 출금 알림("…다음납입예정일-258-******-01-011 09/10 07:16")의
+  계좌번호 끝을 날짜로 읽어 851,362원이 **1월 1일로** 들어갔다. 파서는 그날 고쳤지만 이미
+  들어간 기록은 그대로였다. 그래서 9월 내역에 없고, K9 할부는 '출금처리 안 함'으로 남아
+  홈의 잔여금액에서 **두 번 빠졌다**(통장 잔액에서 한 번, 안 나간 고정지출로 한 번).
+
+  자동 기록은 알림을 받자마자 만들어서 id의 숫자가 곧 만든 시각이다. 그 시각과 기록 날짜가
+  60일 넘게 어긋나면 잘못 읽은 것으로 본다(알림창에 두 달 넘게 남은 알림은 없다고 봐도 된다).
+  휴대폰에 남은 원래 문구(texts — 이미 받은 알림 목록)에서 같은 금액·같은 시각의 것을 찾아
+  지금 파서로 다시 읽고, 못 찾으면 만든 날로 둔다. 통장 출금이면 그 달의 같은 통장·같은
+  금액 고정지출이 딱 하나일 때 처리 완료로 잇는다 — 사람이 출금처리를 누른 것과 같다.
+  바로잡은 건 dateRepaired로 표시하고, 몇 건인지 돌려준다(화면이 알림 문구로 알린다).
+*/
+export function repairMisdatedAuto(d, texts = []) {
+  const localDate = (ms) => { const t = new Date(ms); t.setMinutes(t.getMinutes() - t.getTimezoneOffset()); return t.toISOString().slice(0, 10); };
+  const fixDate = (item) => {
+    if (!item.auto || item.isAdjustment || item.dateRepaired) return null;
+    const digits = String(item.id || "").replace(/\D/g, "");
+    if (digits.length !== 13) return null;
+    const created = Number(digits);
+    const gap = (created - new Date(`${item.date}T12:00:00`).getTime()) / 864e5;
+    if (!(gap > 60 || gap < -60)) return null;
+    const src = texts.find((t) => Number(parsePaymentText(String(t)).amount) === Number(item.amount) && (!item.autoTime || String(t).includes(item.autoTime)));
+    const again = src ? parsePaymentText(String(src)).date : null;
+    const near = again && Math.abs(created - new Date(`${again}T12:00:00`).getTime()) / 864e5 < 60;
+    return near ? again : localDate(created);
+  };
+
+  let count = 0;
+  let fixedExpenses = d.fixedExpenses || [];
+  const first = d.accounts?.[0]?.id;
+  const balanceEntries = (d.balanceEntries || []).map((b) => {
+    const date = fixDate(b);
+    if (!date) return b;
+    count++;
+    let next = { ...b, date, dateRepaired: b.date };
+    const key = date.slice(0, 7);
+    if (b.type === "out" && !b.linkedFixedId && !b.transferId) {
+      const acct = b.accountId || first;
+      const hits = fixedExpenses.filter((f) => (f.paymentMethod || "cash") !== "card" && (f.accountId || first) === acct
+        && !(f.paidMonths && f.paidMonths[key]) && fixedInfo(f, key).active && Number(fixedInfo(f, key).amount) === Number(b.amount));
+      if (hits.length === 1) {
+        const f = hits[0];
+        next = { ...next, linkedFixedId: f.id, linkedFixedMonth: key, memoBefore: b.memo, memo: `${f.name} 자동이체` };
+        fixedExpenses = fixedExpenses.map((x) => (x.id === f.id ? { ...x, paidMonths: { ...(x.paidMonths || {}), [key]: b.id } } : x));
+      }
+    }
+    return next;
+  });
+  const expenses = (d.expenses || []).map((e) => {
+    const date = fixDate(e);
+    if (!date) return e;
+    count++;
+    return { ...e, date, dateRepaired: e.date };
+  });
+  if (!count) return { data: d, count };
+  return { data: { ...d, balanceEntries, expenses, fixedExpenses }, count };
+}
+
 export function fmtWon(n) { return Math.round(n).toLocaleString("ko-KR") + "원"; }
 
 /*
