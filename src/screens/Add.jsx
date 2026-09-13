@@ -151,7 +151,7 @@ export function AddView({ ctx }) {
     */
     const firstAcc = data.accounts?.[0]?.id;
     const bankOut = payMethod === "cash"
-      ? (data.balanceEntries || []).find((b) => b.auto && b.type === "out" && !b.linkedFixedId && !b.transferId
+      ? (data.balanceEntries || []).find((b) => b.auto && !b.isAdjustment && b.type === "out" && !b.linkedFixedId && !b.transferId
           && Number(b.amount) === n && b.date === date && (b.accountId || firstAcc) === accountId
           && !data.expenses.some((e) => e.linkedBalanceId === b.id))
       : null;

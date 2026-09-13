@@ -59,6 +59,19 @@ function looksLikeCardApproval(text) {
 }
 
 /*
+  **문자로 온 '결제'는 카드 말이 있어야 카드 결제다**(2026-09-13).
+
+  문자함을 통째로 읽으면 간편결제·쇼핑몰의 "결제 완료 12,000원"도 들어온다. 포인트나
+  페이머니로 냈을 수 있고, 카드로 냈으면 카드사 문자가 따로 온다. 예전엔 카드가 하나뿐이면
+  이런 문자가 그 카드 결제로 들어갔다. 카드사 문자는 '승인'이나 '카드'·'체크'가 꼭 있다.
+  보낸 앱이 카드사·은행이면 예전처럼 본다.
+*/
+function cardApproval(text, pkg) {
+  if (!looksLikeCardApproval(text)) return false;
+  return !!issuerOf(pkg) || /승인|카드|체크/.test(text);
+}
+
+/*
   카드 결제 취소로 보이나. 통장 '출금취소'는 카드 취소가 아니다 — 입출금 말이
   섞여 있으면 여기서 뺀다.
 */
@@ -147,9 +160,38 @@ function issuerOfName(name) {
   return ISSUERS.find((it) => it.keys.some((k) => n.includes(k))) || null;
 }
 
+/*
+  **문자는 맨 앞의 보낸 곳 이름으로 가린다**(2026-09-13).
+
+  문자로 온 것은 보낸 앱이 문자 앱이라 패키지로 못 가린다. 예전엔 그때 이름 두 글자를
+  문구 **아무 데서나** 찾았는데, 가맹점 이름이 끼어들었다 — 현대카드 문자의 '롯데마트'가
+  롯데카드에 붙었다. 카드·통장이 하나뿐이면 아예 안 보고 붙여서, KB국민체크 문자가
+  현대카드에, 기업은행 출금이 국민은행에 붙었다. 잔액 자동 맞춤(2026-09-13)이 붙은 뒤로는
+  국민은행 잔액이 기업은행 잔액으로 덮어써지기까지 한다.
+
+  카드·은행 문자는 보낸 곳 이름으로 시작한다("[KB국민체크]", "현대카드 승인", "[IBK기업]").
+  '[Web발신]'과 앞의 전화번호(문자 앱 알림 제목)를 걷어 내고 앞부분에서만 찾는다.
+*/
+function issuerOfHead(text) {
+  const head = String(text || "")
+    .replace(/[[(]?\s*web\s*발신\s*[\])]?/gi, " ")
+    .replace(/^[^가-힣A-Za-z]+/, "")
+    .slice(0, 12);
+  let best = null;
+  let at = Infinity;
+  for (const it of ISSUERS) {
+    for (const k of it.keys) {
+      const i = head.indexOf(k);
+      if (i >= 0 && i < at) { best = it; at = i; }
+    }
+  }
+  return best;
+}
+
 function pickOne(list, text, pkg) {
   if (!list || list.length === 0) return null;
-  const issuer = issuerOf(pkg);
+  const byPkg = issuerOf(pkg);
+  const issuer = byPkg || issuerOfHead(text);
 
   /*
     **하나뿐이어도 '다른 은행'이면 붙이지 않는다.**
@@ -169,7 +211,13 @@ function pickOne(list, text, pkg) {
     return only;
   }
 
-  if (issuer) return pickByKeys(list, issuer.keys);
+  if (byPkg) return pickByKeys(list, byPkg.keys);
+  if (issuer) {
+    const hit = pickByKeys(list, issuer.keys);
+    if (hit) return hit;
+    // 그 이름의 카드·통장이 없으면, 이름에 다른 회사가 안 적힌 것(별명) 중에서만 고른다
+    list = list.filter((x) => !issuerOfName(x.name));
+  }
 
   for (const x of list) {
     const key = String(x.name || "").replace(/[^가-힣A-Za-z]/g, "").slice(0, 2);
@@ -548,7 +596,9 @@ export function autoRecordPayments(data, items, held = []) {
     if (!acc) return;
     const adjust = (diff, memo) => {
       balanceEntries = [...balanceEntries, {
-        id: `b${Date.now()}s${seq++}`, type: diff > 0 ? "in" : "out", amount: Math.abs(diff), date,
+        // id의 숫자가 곧 만든 시각이다(createdTime) — 글자를 끼우면 숫자가 이어 붙어 열 배 뒤로
+        // 정렬된다. 같은 묶음의 기록(Date.now()+건수)과 안 겹치게 1초 뒤로 둔다
+        id: "b" + (Date.now() + 1000 + seq++), type: diff > 0 ? "in" : "out", amount: Math.abs(diff), date,
         memo, accountId, isAdjustment: true, auto: true,
       }];
     };
@@ -598,7 +648,7 @@ export function autoRecordPayments(data, items, held = []) {
     const amount = Number(r.amount);
     const pkg = item?.pkg;
     const isCancel = looksLikeCardCancel(text);
-    const isApproval = !isCancel && looksLikeCardApproval(text);
+    const isApproval = !isCancel && cardApproval(text, pkg);
     const card = (isCancel || isApproval) && amount > 0 ? findCard(cards, text, pkg) : null;
     return { item, text, r, amount, pkg, isCancel, isApproval, card };
   };
@@ -665,7 +715,7 @@ export function autoRecordPayments(data, items, held = []) {
       continue;
     }
 
-    const card = looksLikeCardApproval(text) ? findCard(cards, text, pkg) : null;
+    const card = cardApproval(text, pkg) ? findCard(cards, text, pkg) : null;
 
     /*
       카드로 못 붙이면 통장 입출금으로 시도한다. 순서가 중요하다 —

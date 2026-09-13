@@ -125,7 +125,7 @@ function ReceivableRow({ ctx, e, cat, onDelete }) {
 */
 function BalanceRow({ b, accountName, onDelete }) {
   const T = useTheme();
-  const kind = b.type === "in" ? "입금" : "출금";
+  const kind = b.isAdjustment ? "잔액 맞춤" : b.type === "in" ? "입금" : "출금";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
       {b.type === "in" ? <ArrowDownCircle size={15} color={T.good} aria-hidden="true" style={{ flexShrink: 0, marginInline: -3.5 }} /> : <ArrowUpCircle size={15} color={T.danger} aria-hidden="true" style={{ flexShrink: 0, marginInline: -3.5 }} />}
@@ -232,8 +232,24 @@ export function LedgerView({ ctx }) {
   // 금액으로는 들어가 있는데, 옆의 건수는 카드 지출 개수만 세고 있어서 "전체 흐름"에서
   // 있었던 것과 같은 건수·금액 불일치가 있었음 — 부족분에 걸린 대리결제 건수도 같이 셈.
   const cardListCount = categoryExpenses.length + cardShortfallReceivables.length;
-  const balanceInTotal = categoryBalance.filter((b) => b.type === "in").reduce((s, b) => s + Number(b.amount), 0);
-  const balanceOutTotal = categoryBalance.filter((b) => b.type === "out").reduce((s, b) => s + Number(b.amount), 0);
+  // 잔액 맞춤은 들어오거나 나간 돈이 아니다 — 첫 자동 맞춤 한 번에 '입금 합계'가 통장 잔액만큼 부풀었다
+  const balanceMoves = categoryBalance.filter((b) => !b.isAdjustment);
+  const adjustCount = categoryBalance.length - balanceMoves.length;
+  const balanceInTotal = balanceMoves.filter((b) => b.type === "in").reduce((s, b) => s + Number(b.amount), 0);
+  const balanceOutTotal = balanceMoves.filter((b) => b.type === "out").reduce((s, b) => s + Number(b.amount), 0);
+
+  /*
+    **이미 결제한 카드값에 들어 있던 지출인가**(2026-09-13).
+
+    카드값(bill)은 누적 한 칸이라, 지난달에 쓰고 '결제하기'로 이미 낸 지출을 지우거나
+    금액을 고치면 **이번 달 카드값이** 그만큼 줄거나 늘었다. 잘못 들어간 옛 기록을 정리할
+    때 딱 그렇게 되고, 그만큼 여유가 부풀었다. 결제한 시각(paidAtMs)보다 먼저 만든
+    기록이면 이미 낸 돈이라 지금 카드값은 건드리지 않는다.
+  */
+  const paidBefore = (exp, cardId) => {
+    const card = data.cards.find((c) => c.id === cardId);
+    return !!card?.paidAtMs && createdTime(exp) > 0 && createdTime(exp) <= card.paidAtMs;
+  };
 
   // Returns whether the delete actually happened, so callers (like the edit-form's
   // 삭제 button) know whether to also close the form or leave it open on cancel.
@@ -248,7 +264,9 @@ export function LedgerView({ ctx }) {
       }
       if ((exp.paymentMethod || "cash") === "card") {
         const cid = exp.cardId || data.cards[0]?.id;
-        next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Math.max(0, Number(c.bill || 0) - Number(exp.amount)) } : c));
+        if (!paidBefore(exp, cid)) {
+          next.cards = data.cards.map((c) => (c.id === cid ? { ...c, bill: Math.max(0, Number(c.bill || 0) - Number(exp.amount)) } : c));
+        }
         // "정기결제 카드반영" 항목을 홈의 완료취소 대신 여기서 바로 지우면, 원래 고정지출의
         // paidMonths가 이미 없어진 이 항목을 계속 가리키게 됨 — 그 연결을 같이 끊어줌.
         // 이번 달만 보면 안 된다(2026-09-11): 자동 등록은 결제가 일어난 달에 표시를
@@ -279,7 +297,8 @@ export function LedgerView({ ctx }) {
       }
     }
     persist(next);
-    showToast("삭제했어요");
+    const settled = !exp.isReceivable && (exp.paymentMethod || "cash") === "card" && paidBefore(exp, exp.cardId || data.cards[0]?.id);
+    showToast(settled ? "삭제했어요 · 이미 결제한 카드값이라 지금 카드값은 그대로예요" : "삭제했어요");
     return true;
   };
   const [editingId, setEditingId] = useState(null);
@@ -360,9 +379,13 @@ export function LedgerView({ ctx }) {
     // 앱이 만든 기록으로 바뀌어 버렸다(자동 표시도, 은행 날짜·금액도 사라짐).
     const linkedB = exp.linkedBalanceId ? (data.balanceEntries || []).find((b) => b.id === exp.linkedBalanceId) : null;
     const keepBank = !!linkedB?.auto;
-    if ((exp.paymentMethod || "cash") === "card") {
-      const oldCid = exp.cardId || data.cards[0]?.id;
-      next.cards = data.cards.map((c) => (c.id === oldCid ? { ...c, bill: Math.max(0, Number(c.bill || 0) - Number(exp.amount)) } : c));
+    // 이미 결제한 카드값에 들어 있던 지출을 같은 카드 그대로 고치면 카드값은 안 건드린다
+    const wasCard = (exp.paymentMethod || "cash") === "card";
+    const oldCid = exp.cardId || data.cards[0]?.id;
+    const settledCard = wasCard && paidBefore(exp, oldCid);
+    const keepBill = settledCard && editPaymentMethod === "card" && editCardId === oldCid;
+    if (wasCard) {
+      if (!settledCard) next.cards = data.cards.map((c) => (c.id === oldCid ? { ...c, bill: Math.max(0, Number(c.bill || 0) - Number(exp.amount)) } : c));
     } else if (exp.linkedBalanceId && !keepBank) {
       next.balanceEntries = (data.balanceEntries || []).filter((b) => b.id !== exp.linkedBalanceId);
     }
@@ -370,7 +393,7 @@ export function LedgerView({ ctx }) {
     const catName = data.categories.find((c) => c.id === editCategoryId)?.name || "지출";
     let newLinkedBalanceId = null;
     if (editPaymentMethod === "card") {
-      next.cards = (next.cards || data.cards).map((c) => (c.id === editCardId ? { ...c, bill: Number(c.bill || 0) + n } : c));
+      if (!keepBill) next.cards = (next.cards || data.cards).map((c) => (c.id === editCardId ? { ...c, bill: Number(c.bill || 0) + n } : c));
     } else if (keepBank) {
       newLinkedBalanceId = linkedB.id;   // 은행 기록은 그대로, 연결만 유지
     } else {
@@ -495,6 +518,7 @@ export function LedgerView({ ctx }) {
   else if (category === "balance") totalsLine = (
     <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>
       <span style={{ color: T.good }}>입금 합계 {fmtWon(balanceInTotal)}</span> · <span style={{ color: T.danger }}>출금 합계 {fmtWon(balanceOutTotal)}</span>
+      {adjustCount > 0 && <div style={{ color: T.muted, fontSize: 12.5, fontWeight: 400, marginTop: 2 }}>잔액 맞춤 {adjustCount}건은 합계에서 뺐어요</div>}
     </div>
   );
   else totalsLine = (

@@ -355,7 +355,8 @@ function reconcileCard(ctx, card, actualTotal) {
 */
 function findAutoMatch(list, f, amount, curKey, same) {
   const name = String(f.name || "").replace(/[^가-힣A-Za-z0-9]/g, "").slice(0, 4);
-  const cands = (list || []).filter((x) => x.auto && Number(x.amount) === Number(amount) && String(x.date).slice(0, 7) === curKey && same(x));
+  // 잔액 맞춤(isAdjustment)도 auto지만 거래가 아니다 — 잇는 대상에서 뺀다
+  const cands = (list || []).filter((x) => x.auto && !x.isAdjustment && Number(x.amount) === Number(amount) && String(x.date).slice(0, 7) === curKey && same(x));
   return cands.find((x) => name.length >= 2 && String(x.memo || "").includes(name)) || cands[0] || null;
 }
 
@@ -480,7 +481,11 @@ function payCard(ctx, card) {
   const fixedPortion = Number(card.fixedPortion || 0);
   const total = billOnly + fixedPortion;
   if (!total || total <= 0) return showToast("결제할 금액이 없어요");
-  const nextCards = data.cards.map((c) => (c.id === card.id ? { ...c, bill: 0 } : c));
+  const { curKey } = ctx;
+  // 이번 달 할부 몫을 냈다고 적는다 — 안 적으면 내자마자 카드값에 다시 뜬다(App.jsx cardTotals)
+  const nextCards = data.cards.map((c) => (c.id === card.id
+    ? { ...c, bill: 0, paidAtMs: Date.now(), ...(fixedPortion > 0 ? { installPaid: { [curKey]: Number(c.installPaid?.[curKey] || 0) + fixedPortion } } : {}) }
+    : c));
   const aid = data.accounts?.[0]?.id;
 
   /*
@@ -492,7 +497,7 @@ function payCard(ctx, card) {
     같은 날·같은 금액의 출금이 있으면 그게 이 결제라고 본다.
   */
   const already = (data.balanceEntries || []).some(
-    (b) => b.type === "out" && Number(b.amount) === total && b.date === todayISO(),
+    (b) => b.type === "out" && !b.isAdjustment && Number(b.amount) === total && b.date === todayISO(),
   );
 
   const nextEntries = already

@@ -118,6 +118,9 @@ function AppInner() {
   useEffect(() => {
     try { localStorage.setItem(INBOX_KEY, JSON.stringify(inbox)); } catch { /* 저장 못 해도 앱은 돈다 */ }
   }, [inbox]);
+  // 알림을 가져오는 타이머는 한 번만 걸려서 inbox를 직접 못 본다 — 최신 값을 여기로
+  const inboxRef = useRef(inbox);
+  inboxRef.current = inbox;
   useEffect(() => {
     const pull = () => {
       const pulled = pullPendingPayments();
@@ -137,16 +140,26 @@ function AppInner() {
       try { deals = JSON.parse(localStorage.getItem(SEEN_DEAL_KEY) || "[]"); } catch { deals = []; }
       const got = [];
       const twice = [];
+      /*
+        먼저 온 쪽이 알림함에 보류돼 있으면 버리지 않고 **나중 것으로 바꿔 다시 판단한다.**
+        문자는 보낸 앱으로 은행을 못 가려 보류될 수 있는데, 같은 거래가 은행 앱 알림으로
+        오면 그쪽은 가려진다. 나중 것을 버리면 가려질 수 있는 거래가 알림함에 남는다.
+      */
+      const replaced = new Set();
       for (const g of fresh) {
         const k = dealKey(g.text);
-        if (k && deals.includes(k)) { twice.push(g); continue; }
-        if (k) deals.push(k);
+        if (k && deals.includes(k)) {
+          const held = inboxRef.current.find((i) => i.checked && !replaced.has(i.text) && dealKey(i.text) === k);
+          if (!held) { twice.push(g); continue; }
+          replaced.add(held.text);
+        } else if (k) deals.push(k);
         got.push(g);
       }
       try { localStorage.setItem(SEEN_DEAL_KEY, JSON.stringify(deals.slice(-300))); } catch { /* 못 적어도 앱은 돈다 */ }
       logAlerts(twice.map((g) => ({ text: g.text, at: g.at, outcome: "같은 거래가 문자·알림으로 또 와서 무시" })));
       logAlerts(got.map((g) => ({ text: g.text, at: g.at, outcome: "받음" })));
       if (!got.length) return;
+      if (replaced.size) setInbox((prev) => prev.filter((p) => !replaced.has(p.text)));
       /*
         같은 문구는 한 번만. 껍데기가 다시 연결될 때 알림창에 남은 것을 한 번 더
         훑어 넘기는데, 이미 알림함에 있는 걸 또 쌓으면 같은 줄이 늘어난다.
@@ -371,9 +384,18 @@ function AppInner() {
     // f.cardId가 (예: JSON 백업을 통해 들어온) 이미 삭제된 카드를 가리키면 어느 카드와도
     // 매칭이 안 돼서 이 할부 몫이 예산 계산에서 통째로 조용히 빠짐 — 유효하지 않으면
     // 첫 카드로 몰아서 최소한 어딘가엔 집계되게 함.
-    const fixedPortion = fixedCardInstallment
+    const installThisMonth = fixedCardInstallment
       .filter((f) => (f.cardId && cards.some((cc) => cc.id === f.cardId) ? f.cardId : cards[0]?.id) === c.id)
       .reduce((s, f) => s + Number(f.info.amount), 0);
+    /*
+      **'결제하기'로 이미 낸 이번 달 할부 몫은 뺀다**(2026-09-13).
+
+      결제하기는 일시불(bill)과 이번 달 할부 몫을 같이 내는데, bill만 0으로 돌리고 할부 몫은
+      매번 새로 계산돼서 **내자마자 그대로 다시 떴다.** 버튼이 살아 있어 또 누르면 할부가
+      통장에서 두 번 빠졌고, 여유와 통장 기준 여유도 이미 낸 할부를 한 번 더 뺐다.
+      낸 금액을 달별로 적어 두고(installPaid) 그만큼만 뺀다 — 낸 뒤 새 할부가 생기면 그건 남는다.
+    */
+    const fixedPortion = Math.max(0, installThisMonth - Number(c.installPaid?.[curKey] || 0));
     return { ...c, fixedPortion, total: Number(c.bill || 0) + fixedPortion };
   });
   const cardBillTotal = cardTotals.reduce((s, c) => s + c.total, 0);

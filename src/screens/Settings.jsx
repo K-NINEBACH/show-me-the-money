@@ -201,7 +201,8 @@ export function SettingsView({ ctx }) {
   const resetCardBill = (cardId) => {
     const card = data.cards.find((c) => c.id === cardId);
     if (!window.confirm(`"${card?.name}" 카드값 ${fmtWon(card?.bill || 0)}을 0원으로 초기화할까요? 결제 처리한 걸로 간주하는 거라 되돌릴 수 없어요.`)) return;
-    persist({ ...data, cards: data.cards.map((c) => (c.id === cardId ? { ...c, bill: 0 } : c)) });
+    // 결제한 시점을 남긴다 — 이전 기록을 지우거나 고쳐도 지금 카드값이 안 흔들리게(Ledger의 paidBefore)
+    persist({ ...data, cards: data.cards.map((c) => (c.id === cardId ? { ...c, bill: 0, paidAtMs: Date.now() } : c)) });
     setAdjustCardId(null);
     showToast("카드값을 초기화했어요");
   };
