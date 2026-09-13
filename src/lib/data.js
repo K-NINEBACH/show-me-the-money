@@ -45,6 +45,7 @@ export function migrate(raw) {
     d.cards = [{ id: "card1", name: "카드", bill: legacyBill }];
   }
   if (Array.isArray(raw.accounts) && raw.accounts.length) {
+    // bankSync({at, balance} — 은행 알림 잔액으로 마지막에 맞춘 시점, 2026-09-13)는 없어도 되는 칸이라 그대로 넘긴다
     d.accounts = raw.accounts.map((a) => ({ initialBalance: 0, ...a }));
   } else {
     d.accounts = [{ id: "acc1", name: "통장", initialBalance: raw.account?.initialBalance || 0 }];

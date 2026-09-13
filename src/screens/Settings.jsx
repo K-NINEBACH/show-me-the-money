@@ -3,7 +3,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, migrate, todayISO } from "../lib/data";
-import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings, diagnostics, openBatterySettings } from "../lib/native";
+import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings, diagnostics, openBatterySettings, requestSmsAccess } from "../lib/native";
 import { ALERT_LOG_KEY } from "../lib/constants";
 import { parsePaymentText } from "../lib/data";
 import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../components/common";
@@ -24,16 +24,38 @@ function ago(ms) {
   문구로 이어 붙인다. 결제가 안 들어왔을 때 어디서 끊겼는지 — 껍데기가 결제로 안 봤는지,
   앱으로 아직 안 왔는지, 웹이 받아서 넘겼는지 — 한눈에 갈린다.
 */
-function recentAlerts(diag) {
+/*
+  **처리 기록이 없다고 '안 가져왔다'고 하지 않는다**(2026-09-13).
+
+  예전엔 웹 기록에서 못 찾으면 무조건 "아직 앱으로 안 가져옴"이라고 적었다. 그런데
+  대기가 0건인데도 그렇게 뜬 줄이 있었다 — 웹 기록은 40줄(알림 하나에 두 줄)이라
+  껍데기 기록(30건)보다 먼저 밀려나고, 껍데기는 문구를 200자로 잘라 적어서 글자가
+  안 맞기도 했다. 이제 앞 200자로 잇고, 그래도 없으면 실제 내역에 그 금액이 있는지 본다.
+*/
+const clip = (t) => String(t || "").trim().slice(0, 200);
+function recentAlerts(diag, data, pending) {
   let web = [];
   try { web = JSON.parse(localStorage.getItem(ALERT_LOG_KEY) || "[]"); } catch { web = []; }
-  const lastOutcome = (text) => [...web].reverse().find((w) => w.text === text)?.outcome;
+  const lastOutcome = (text) => [...web].reverse().find((w) => clip(w.text) === clip(text))?.outcome;
+  const inLedger = (text) => {
+    const r = parsePaymentText(text || "");
+    const amount = Number(r.amount);
+    if (!amount) return false;
+    const near = (d) => !r.date || d === r.date;
+    return (data.expenses || []).some((e) => Number(e.amount) === amount && near(e.date))
+      || (data.balanceEntries || []).some((b) => !b.isAdjustment && Number(b.amount) === amount && near(b.date))
+      || (data.fixedExpenses || []).some((f) => Number(f.purchaseAmount) === amount);
+  };
   if (diag?.log?.length) {
-    return [...diag.log].reverse().slice(0, 10).map((l) => ({
-      text: l.text, at: l.at,
-      result: !l.accepted ? "결제로 안 봄(껍데기에서 걸러짐)" : lastOutcome(l.text) || "아직 앱으로 안 가져옴",
-      bad: !l.accepted,
-    }));
+    return [...diag.log].reverse().slice(0, 10).map((l) => {
+      if (!l.accepted) return { text: l.text, at: l.at, result: "결제로 안 봄(껍데기에서 걸러짐)", bad: true };
+      const done = lastOutcome(l.text);
+      if (done) return { text: l.text, at: l.at, result: done };
+      if (pending) return { text: l.text, at: l.at, result: "아직 앱으로 안 가져옴" };
+      return inLedger(l.text)
+        ? { text: l.text, at: l.at, result: "내역에 있음" }
+        : { text: l.text, at: l.at, result: "가져왔지만 내역에 없음", bad: true };
+    });
   }
   // 옛 껍데기(진단 없음) — 웹이 받은 것만
   const seen = new Set();
@@ -365,7 +387,8 @@ export function SettingsView({ ctx }) {
           {data.autoRecord && (
             <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.6, marginTop: -4, marginBottom: 10 }}>
               결제를 취소하면 기록에서 빼고, 할부는 할부(고정지출)로 등록해요. 이미 적어 둔 거래와 겹치면
-              새로 넣지 않고 그 기록을 은행이 알려 준 날짜·통장으로 바로잡아요. 어느 카드·통장인지 모를 때만 기록 탭 알림함에 남아요.
+              새로 넣지 않고 그 기록을 은행이 알려 준 날짜·통장으로 바로잡아요. 은행 알림에 잔액이 찍혀 있으면 통장 잔액도
+              그 값에 맞춰요. 어느 카드·통장인지 모를 때만 기록 탭 알림함에 남아요.
             </div>
           )}
 
@@ -390,6 +413,12 @@ export function SettingsView({ ctx }) {
                     배터리 최적화 ·{" "}
                     <span style={{ color: noti.diag.batteryOptimized ? T.warn : T.good, fontWeight: 700 }}>{noti.diag.batteryOptimized ? "켜짐(알림을 놓칠 수 있어요)" : "꺼짐"}</span>
                   </div>
+                  <div>
+                    문자함 읽기 ·{" "}
+                    {noti.diag.sms
+                      ? <span style={{ color: noti.diag.sms.granted ? T.good : T.warn, fontWeight: 700 }}>{noti.diag.sms.granted ? (noti.diag.sms.lastScan ? `허용됨 · ${ago(noti.diag.sms.lastScan)} 읽음` : "허용됨") : "꺼짐"}</span>
+                      : <span style={{ color: T.muted, fontWeight: 700 }}>앱 업데이트(1.2) 필요</span>}
+                  </div>
                 </>
               )}
               <div>
@@ -408,6 +437,14 @@ export function SettingsView({ ctx }) {
               >
                 지금 가져오기
               </button>
+              {noti.diag?.sms && !noti.diag.sms.granted && (
+                <button
+                  onClick={() => { requestSmsAccess(); setTimeout(refreshNoti, 4000); }}
+                  style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: T.gold, color: T.onGold, fontSize: 15, fontWeight: 700, cursor: "pointer" }}
+                >
+                  문자 읽기 허용
+                </button>
+              )}
               {noti.diag?.batteryOptimized && (
                 <button
                   onClick={() => { openBatterySettings(); setTimeout(refreshNoti, 1500); }}
@@ -435,7 +472,7 @@ export function SettingsView({ ctx }) {
           {/* 결제가 안 들어왔을 때 어디서 끊겼는지 — 이 목록 한 장이면 갈린다 */}
           <Field label="최근 결제 알림">
             {(() => {
-              const rows = recentAlerts(noti.diag);
+              const rows = recentAlerts(noti.diag, data, noti.pending);
               if (!rows.length) {
                 return <div style={{ color: T.muted, fontSize: 13.5 }}>아직 받은 결제 알림이 없어요.</div>;
               }

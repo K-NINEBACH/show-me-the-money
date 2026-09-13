@@ -13,7 +13,11 @@ export const INBOX_KEY = "passbook-inbox-v1";
 // 남은 알림을 또 넘기는데, 이걸로 두 번 처리하지 않는다. 가계부 데이터와 다른 칸.
 export const SEEN_KEY = "passbook-seen-v1";
 
-// 받은 알림을 어떻게 처리했는지 최근 40건(진단용). "왜 안 들어왔지"를 설정에서 보게.
+// 이미 받은 거래(날짜·시각·금액·종류). 같은 문자가 문자 앱 알림과 문자함 두 길로 오면
+// 글자가 달라 SEEN_KEY로는 못 거른다 — auto-record.js의 dealKey 설명 참고.
+export const SEEN_DEAL_KEY = "passbook-seendeal-v1";
+
+// 받은 알림을 어떻게 처리했는지 최근 150줄(진단용). "왜 안 들어왔지"를 설정에서 보게.
 export const ALERT_LOG_KEY = "passbook-alertlog-v1";
 export const PALETTE = ["#C79A46", "#5B8A62", "#B6473F", "#3E6E8E", "#8A5FA0", "#C97C3D", "#4E7A6B", "#A85C7A"];
 // Trimmed from 6 to the 4 actually used often — a full row of 6 buttons was

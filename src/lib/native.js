@@ -79,6 +79,19 @@ export function openBatterySettings() {
   }
 }
 
+/**
+ * 문자함을 읽어도 되는지 묻는다(1.2부터). 허용하면 껍데기가 앱을 열 때마다 문자함에서
+ * 아직 안 본 결제 문자를 찾아 넘긴다 — 알림을 놓쳐도 문자함에는 남아 있으니까.
+ */
+export function requestSmsAccess() {
+  const b = bridge();
+  try {
+    b?.requestSmsAccess?.();
+  } catch {
+    /* 못 물어도 앱은 돈다 */
+  }
+}
+
 /** 알림 접근 권한이 켜져 있나. 껍데기가 없으면 null(해당 없음). */
 export function hasNotificationAccess() {
   const b = bridge();

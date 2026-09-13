@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
-import { STORAGE_KEY, INBOX_KEY, SEEN_KEY, ALERT_LOG_KEY } from "./lib/constants";
+import { STORAGE_KEY, INBOX_KEY, SEEN_KEY, SEEN_DEAL_KEY, ALERT_LOG_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
 import { defaultData, migrate, autoProcessFixed, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
 import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup, inNativeApp } from "./lib/native";
-import { autoRecordPayments, isCancelText } from "./lib/auto-record";
+import { autoRecordPayments, isCancelText, dealKey } from "./lib/auto-record";
 
 /*
   받은 알림을 어떻게 처리했는지 남긴다(진단용, 최근 40건). 결제가 안 들어왔을 때
@@ -15,7 +15,8 @@ function logAlerts(rows) {
   if (!rows.length) return;
   try {
     const old = JSON.parse(localStorage.getItem(ALERT_LOG_KEY) || "[]");
-    localStorage.setItem(ALERT_LOG_KEY, JSON.stringify([...old, ...rows.map((r) => ({ ...r, loggedAt: Date.now() }))].slice(-40)));
+    // 알림 하나에 두 줄(받음·처리 결과)이 쌓인다 — 껍데기 기록(30건)보다 넉넉히 둬야 설정에서 안 끊긴다
+    localStorage.setItem(ALERT_LOG_KEY, JSON.stringify([...old, ...rows.map((r) => ({ ...r, loggedAt: Date.now() }))].slice(-150)));
   } catch { /* 못 적어도 앱은 돈다 */ }
 }
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -128,9 +129,22 @@ function AppInner() {
       */
       let seen = [];
       try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"); } catch { seen = []; }
-      const got = pulled.filter((g) => !seen.includes(g.text));
+      const fresh = pulled.filter((g) => !seen.includes(g.text));
       logAlerts(pulled.filter((g) => seen.includes(g.text)).map((g) => ({ text: g.text, at: g.at, outcome: "이미 받은 알림이라 무시" })));
-      try { localStorage.setItem(SEEN_KEY, JSON.stringify([...seen, ...got.map((g) => g.text)].slice(-500))); } catch { /* 못 적어도 앱은 돈다 */ }
+      try { localStorage.setItem(SEEN_KEY, JSON.stringify([...seen, ...fresh.map((g) => g.text)].slice(-500))); } catch { /* 못 적어도 앱은 돈다 */ }
+      // 글자는 달라도 같은 거래(문자 앱 알림과 문자함에서 같은 문자)면 한 번만 — dealKey 설명 참고
+      let deals = [];
+      try { deals = JSON.parse(localStorage.getItem(SEEN_DEAL_KEY) || "[]"); } catch { deals = []; }
+      const got = [];
+      const twice = [];
+      for (const g of fresh) {
+        const k = dealKey(g.text);
+        if (k && deals.includes(k)) { twice.push(g); continue; }
+        if (k) deals.push(k);
+        got.push(g);
+      }
+      try { localStorage.setItem(SEEN_DEAL_KEY, JSON.stringify(deals.slice(-300))); } catch { /* 못 적어도 앱은 돈다 */ }
+      logAlerts(twice.map((g) => ({ text: g.text, at: g.at, outcome: "같은 거래가 문자·알림으로 또 와서 무시" })));
       logAlerts(got.map((g) => ({ text: g.text, at: g.at, outcome: "받음" })));
       if (!got.length) return;
       /*
@@ -170,26 +184,37 @@ function AppInner() {
     const fresh = inbox.filter((i) => !i.checked);
     const heldBefore = inbox.filter((i) => i.checked);
     // 보류된 것도 넘긴다 — 자동으로 넣지는 않고, 결제·취소 짝을 맞출 때만 쓴다
-    const { next, registered, leftover, dropped, undone, skipped } = autoRecordPayments(data, fresh, heldBefore);
+    const { next, registered, leftover, dropped, undone, skipped, synced } = autoRecordPayments(data, fresh, heldBefore);
     // 새로 온 것도, 치울 짝도 없으면 아무 상태도 안 바꾼다 — 안 그러면 이 효과가 끝없이 돈다
     if (fresh.length === 0 && dropped.length === 0) return;
     const keep = new Set(leftover);
     const gone = new Set(dropped);
     const skip = new Set(skipped);
+    const won = (n) => `${n > 0 ? "+" : "-"}${Math.abs(n).toLocaleString("ko-KR")}원`;
+    const syncOf = new Map(synced.map((s) => [s.item, s]));
     logAlerts(fresh.map((i) => ({
       text: i.text, at: i.at,
-      outcome: keep.has(i) ? "알림함에 남김(어느 카드·통장인지 모름 등)"
+      outcome: (keep.has(i) ? "알림함에 남김(어느 카드·통장인지 모름 등)"
         : gone.has(i) ? "결제·취소 짝이라 안 넣음"
         : skip.has(i) ? "이미 적힌 거래라 넘김"
-        : isCancelText(i.text) ? "취소 → 기록 되돌림" : "자동 기록함",
+        : isCancelText(i.text) ? "취소 → 기록 되돌림" : "자동 기록함")
+        + (syncOf.has(i) ? ` · 잔액을 은행과 맞춤(${won(syncOf.get(i).diff)})` : ""),
     })));
     // 판단이 끝난 것만 남기고 표시해 둔다 — 넣은 것과 짝이 맞아 치운 것은 목록에서 빠진다
     setInbox(inbox.filter((i) => !gone.has(i) && (i.checked || keep.has(i))).map((i) => (i.checked ? i : { ...i, checked: true })));
     const msgs = [];
-    if (registered.length) msgs.push(`결제 ${registered.length}건 자동으로 기록했어요`);
+    // 통장 입출금을 '결제'라고 부르면 안 된다 — 여유에 들어가는 것과 잔액만 바뀌는 것은 다르다
+    const moves = registered.filter((x) => x.type === "in" || x.type === "out").length;
+    const pays = registered.length - moves;
+    if (pays) msgs.push(`결제 ${pays}건 자동으로 기록했어요`);
+    if (moves) msgs.push(`통장 입출금 ${moves}건 자동으로 기록했어요`);
     if (undone.length) msgs.push(`취소된 결제 ${undone.length}건을 기록에서 뺐어요`);
     if (dropped.length) msgs.push(`결제 후 취소된 ${Math.round(dropped.length / 2)}건은 넣지 않았어요`);
     if (skipped.length) msgs.push(`이미 적힌 거래 ${skipped.length}건은 넘겼어요`);
+    // 같은 통장을 여러 번 맞췄으면 합쳐서 한 번만 알린다
+    const byAcc = new Map();
+    for (const s of synced) byAcc.set(s.accountId, { name: s.name, diff: (byAcc.get(s.accountId)?.diff || 0) + s.diff });
+    for (const s of byAcc.values()) if (s.diff) msgs.push(`${s.name} 잔액을 은행과 맞췄어요(${won(s.diff)})`);
     if (next !== data) persist(next);
     if (msgs.length) showToast(msgs.join(" · "));
     // eslint-disable-next-line react-hooks/exhaustive-deps

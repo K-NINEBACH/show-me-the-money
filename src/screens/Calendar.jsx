@@ -28,7 +28,8 @@ export function CalendarView({ ctx }) {
   const incomeDays = useMemo(() => {
     const set = new Set();
     (data.balanceEntries || []).forEach((b) => {
-      if (b.type === "in" && b.date.slice(0, 7) === viewKey) set.add(Number(b.date.slice(8, 10)));
+      // 잔액 맞춤은 들어온 돈이 아니다 — 은행과 맞추며 생긴 차액일 뿐
+      if (b.type === "in" && !b.isAdjustment && b.date.slice(0, 7) === viewKey) set.add(Number(b.date.slice(8, 10)));
     });
     return set;
   }, [data.balanceEntries, viewKey]);

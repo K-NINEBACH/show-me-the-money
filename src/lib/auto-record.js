@@ -44,8 +44,15 @@ const POSITIVE = /승인|결제/;
 */
 const CARD_NOT_APPROVAL = /취소|환불|거절|실패|예정|안내|청구/;
 
+/*
+  광고 문자 — 법으로 '(광고)'를 달게 돼 있다. "(광고) 결제 시 3,000원 할인"은 금액과
+  '결제'가 다 있어서, 카드가 하나뿐이면 카드 결제로 들어갈 수 있었다(2026-09-13).
+*/
+const AD = /[([]\s*광고\s*[)\]]/;
+
 /** 카드 결제로 보이나 */
 function looksLikeCardApproval(text) {
+  if (AD.test(text)) return false;
   if (!POSITIVE.test(text)) return false;
   if (CARD_NOT_APPROVAL.test(text)) return false;
   return true;
@@ -56,6 +63,7 @@ function looksLikeCardApproval(text) {
   섞여 있으면 여기서 뺀다.
 */
 function looksLikeCardCancel(text) {
+  if (AD.test(text)) return false;
   if (!/취소|환불/.test(text)) return false;
   if (/거절|실패|출금|입금|이체/.test(text)) return false;
   return true;
@@ -187,7 +195,7 @@ const IN_WORDS = /입금|이체입금|받으심/;
 const OUT_WORDS = /출금|이체출금|자동이체|납부/;
 
 function bankDirection(text) {
-  if (NEGATIVE.test(text)) return null;
+  if (NEGATIVE.test(text) || AD.test(text)) return null;
   if (IN_WORDS.test(text)) return "in";
   if (OUT_WORDS.test(text)) return "out";
   return null;
@@ -214,6 +222,8 @@ function alreadyInLedger(entries, { amount, date, type, accountId, time }) {
   return (entries || []).some(
     (b) =>
       b.auto &&
+      // 잔액 맞춤은 거래가 아니다 — 같은 금액이 우연히 겹쳐도 짝으로 보면 안 된다
+      !b.isAdjustment &&
       Number(b.amount) === Number(amount) &&
       b.date === date &&
       b.type === type &&
@@ -286,6 +296,55 @@ function reconcileExpense(expenses, { amount, date, cardId }) {
 function timeOf(text) {
   const m = String(text || "").match(/(?:^|[^\d])(\d{1,2}):(\d{2})(?!\d)/);
   return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
+}
+
+/*
+  은행 알림에 찍힌 거래 후 잔액 "잔액1,392,375" → 1392375. 없으면 null.
+  마이너스 통장은 "잔액-120,000"처럼 온다. '잔액부족'처럼 숫자가 안 붙으면 잔액이 아니다.
+*/
+export function balanceOf(text) {
+  const m = String(text || "").match(/잔액\s*[:：]?\s*(-)?\s*(\d[\d,]*)/);
+  if (!m) return null;
+  const n = Number(m[2].replace(/,/g, ""));
+  if (!Number.isFinite(n)) return null;
+  return m[1] ? -n : n;
+}
+
+/** 앱이 아는 이 통장의 잔액 — App.jsx의 accountTotals와 같은 계산 */
+function ledgerBalance(accounts, entries, accountId) {
+  const first = accounts[0]?.id;
+  const acc = accounts.find((a) => a.id === accountId);
+  return (entries || []).reduce((s, b) => {
+    if ((b.accountId || first) !== accountId) return s;
+    if (b.type === "in") return s + Number(b.amount);
+    if (b.type === "out") return s - Number(b.amount);
+    return s;
+  }, Number(acc?.initialBalance || 0));
+}
+
+/*
+  **같은 거래인지 가르는 열쇠** — 날짜·시각·금액·종류(카드 결제/취소/입금/출금).
+
+  문자함을 직접 읽으면(껍데기 1.2) 같은 결제가 두 길로 온다. 문자 앱 알림은
+  "보낸 사람 + 본문", 문자함은 본문만이라 글자로는 다른 알림이다. 그대로 두면
+  결제는 시각으로 걸러지지만, 취소는 두 번째 것이 되돌릴 기록을 못 찾아 알림함에
+  뜨고, 애매해서 보류된 것은 알림함에 두 줄로 뜬다. 그래서 받는 자리에서 한 번 거른다.
+  시각이나 날짜가 없으면 열쇠를 안 만든다 — 그땐 다른 거래일 수 있다.
+*/
+export function dealKey(text) {
+  const t = String(text || "");
+  const r = parsePaymentText(t);
+  const amount = Number(r.amount);
+  const time = timeOf(t);
+  if (!amount || !time || !r.date) return null;
+  const kind = looksLikeCardCancel(t) ? "cancel" : looksLikeCardApproval(t) ? "card" : bankDirection(t) || "etc";
+  return `${r.date}|${time}|${amount}|${kind}`;
+}
+
+/** "2026-09-13 10:02" — 잔액을 맞춘 시점. 문자열 비교로 앞뒤를 가린다 */
+export function syncMoment(date = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())} ${p(date.getHours())}:${p(date.getMinutes())}`;
 }
 
 /*
@@ -459,6 +518,51 @@ export function autoRecordPayments(data, items, held = []) {
   let fixedExpenses = data.fixedExpenses || [];
   const balanceEntries0 = balanceEntries;
   const fixedExpenses0 = fixedExpenses;
+  let accounts = data.accounts || [];
+  const accounts0 = accounts;
+  const synced = [];
+  let seq = 0;
+
+  /*
+    **은행 알림의 잔액으로 통장 잔액을 맞춘다**(2026-09-13).
+
+    은행 입출금 알림에는 거래 뒤 잔액이 찍힌다("잔액1,392,375"). 그게 은행이 알려 준
+    진짜 잔액이다. 앱이 계산한 잔액이 다르면 차액만큼 '은행 잔액에 맞춤' 기록을 넣는다
+    (isAdjustment — 여유 계산에는 안 들어간다. 통장 입출금은 원래 안 들어간다).
+
+    이러면 알림을 몇 개 놓쳤든, 카드값 '결제하기'를 실제 출금보다 먼저 눌렀든, 다음
+    은행 알림 한 번에 잔액이 다시 맞는다. 사람이 '실제 잔액으로 맞추기'를 누르던 걸
+    알림이 올 때마다 대신 하는 것이다.
+
+    **순서가 뒤집히면 안 맞춘다.** 알림이 늦게 들어오는 일이 있다(리스너가 다시 붙으며
+    알림창을 훑을 때, 문자함을 뒤늦게 읽을 때). 마지막으로 맞춘 시점(bankSync.at)보다
+    앞선 거래의 잔액으로 맞추면 그 뒤 거래가 지워진다. 그런 알림으로 새 기록이 들어갔으면
+    그 거래는 이미 마지막 잔액에 들어 있던 것이라, 같은 금액을 되돌려 잔액을 그대로 둔다.
+    시각이 안 찍힌 알림은 앞뒤를 모르니 맞추지 않는다.
+  */
+  const syncBank = (item, accountId, text, date, time, added) => {
+    const bank = balanceOf(text);
+    if (bank == null || !time) return;
+    const at = `${date} ${time}`;
+    const acc = accounts.find((a) => a.id === accountId);
+    if (!acc) return;
+    const adjust = (diff, memo) => {
+      balanceEntries = [...balanceEntries, {
+        id: `b${Date.now()}s${seq++}`, type: diff > 0 ? "in" : "out", amount: Math.abs(diff), date,
+        memo, accountId, isAdjustment: true, auto: true,
+      }];
+    };
+    if (acc.bankSync?.at && at < acc.bankSync.at) {
+      if (added) adjust(added.type === "in" ? -Number(added.amount) : Number(added.amount), "은행 잔액에 이미 들어 있던 거래");
+      return;
+    }
+    const diff = bank - ledgerBalance(accounts, balanceEntries, accountId);
+    if (diff !== 0) {
+      adjust(diff, "은행 잔액에 맞춤");
+      synced.push({ item, accountId, name: acc.name, diff });
+    }
+    accounts = accounts.map((a) => (a.id === accountId ? { ...a, bankSync: { at, balance: bank } } : a));
+  };
 
   /*
     처리 완료로 적는 달은 '지금'이 아니라 **그 결제가 실제로 일어난 달**이다.
@@ -587,11 +691,13 @@ export function autoRecordPayments(data, items, held = []) {
       if (fixedUp) {
         balanceEntries = fixedUp;
         skipped.push(item);
+        syncBank(item, acc.id, text, bDate, time, null);
         continue;
       }
       if (alreadyInLedger(balanceEntries, { amount, date: bDate, type: dir, accountId: acc.id, time })
         || (dir === "out" && paidFixedHit(fixedExpenses, { amount, isCard: false, accountId: acc.id, text }, bKey))) {
         skipped.push(item);
+        syncBank(item, acc.id, text, bDate, time, null);
         continue;
       }
 
@@ -622,6 +728,7 @@ export function autoRecordPayments(data, items, held = []) {
       balanceEntries = [...balanceEntries, entry];
       if (hitOut) markPaid(hitOut.fixed.id, entryId, bKey);
       registered.push(entry);
+      syncBank(item, acc.id, text, bDate, time, entry);
       continue;
     }
 
@@ -740,16 +847,18 @@ export function autoRecordPayments(data, items, held = []) {
   }
 
   const changed = expenses !== data.expenses || cards !== data.cards
-    || balanceEntries !== (data.balanceEntries || balanceEntries0) || fixedExpenses !== (data.fixedExpenses || fixedExpenses0);
+    || balanceEntries !== (data.balanceEntries || balanceEntries0) || fixedExpenses !== (data.fixedExpenses || fixedExpenses0)
+    || accounts !== (data.accounts || accounts0);
   if (!changed) {
-    return { next: data, registered, leftover, dropped, undone, skipped };
+    return { next: data, registered, leftover, dropped, undone, skipped, synced };
   }
   return {
-    next: { ...data, expenses, cards, balanceEntries, fixedExpenses },
+    next: { ...data, expenses, cards, balanceEntries, fixedExpenses, ...(accounts !== accounts0 ? { accounts } : {}) },
     registered,
     leftover,
     dropped,
     undone,
     skipped,
+    synced,
   };
 }
