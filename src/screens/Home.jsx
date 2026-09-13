@@ -9,31 +9,28 @@ import { syncMoment } from "../lib/auto-record";
 
 export function HomeView({ ctx }) {
   const T = useTheme();
-  const { data, curKey, dayIntoCycle, cycleLen, remaining, budgetRatio,
-    fixedActive, fixedCardActive, cardTotals, receivables, accountBalance, hasGoal, unpaidFixed, unpaidFixedSum, realRemaining, todaySpent } = ctx;
+  const { data, curKey, dayIntoCycle, cycleLen,
+    fixedActive, fixedCardActive, cardTotals, receivables, accountBalance, unpaidFixed, unpaidFixedSum, todaySpent, cardBillTotal } = ctx;
 
   /*
-    **여유는 목표와 통장, 둘 중 작은 쪽이다**(2026-09-13).
+    **홈의 큰 숫자는 '통장 − (안 낸 카드값 + 안 나간 고정지출) = 잔여금액'**(2026-09-13, 사용자 요청).
 
-    게이지는 '목표에서 얼마 남았나'라서 통장이 카드값을 못 감당해도 넉넉하다고 한다.
-    목표 200만 · 통장 50만 · 카드값 100만이면 게이지는 100만 남았다고 하는데 실제로는
-    50만 적자다. 이 앱의 취지(적자만은 안 나게)에 비추면 그쪽이 더 급한 숫자다.
-    그래서 통장 기준 여유(safe)가 목표 기준보다 작으면 **게이지 자체가 그 숫자를 보여 준다** —
-    큰 초록 숫자 밑에 빨간 경고를 다는 식이면 눈은 큰 숫자만 본다. 목표 기준은 아래 줄로 내린다.
-    통장을 아예 안 쓰는 경우(잔액 0, 은행과 맞춘 적 없음)는 통장 기준을 안 쓴다.
+    예전엔 목표 지출액에서 얼마 남았나를 링으로 보여 줬다. 그런데 사용자가 이 앱을 쓰는
+    이유는 "통장금액보다 카드값이 더 높지만 않으면 되거든. 적어도 적자는 안 나게"다.
+    목표 기준 숫자는 통장이 카드값을 못 감당해도 넉넉하다고 할 수 있어서, 그 질문에 곧장
+    답하는 식을 그대로 보여 준다. 세 줄을 다 보여 주는 이유 — 결과만 있으면 왜 그 숫자인지
+    몰라서 믿기 어렵고, 틀렸을 때 어디가 틀렸는지(잔액? 카드값?)도 못 찾는다.
+
+    · 카드값은 **아직 안 낸 것** 전부다(bill + 이번 달 할부 몫). 지난달 걸 아직 안 냈으면
+      그것도 통장에서 나갈 돈이라 들어간다. 그래서 '이번 달 카드값'이 아니라 '안 낸 카드값'.
+    · 고정지출은 **아직 안 나간 것**만이다. 이미 나간 건 통장 잔액에 이미 빠져 있다.
+    · 통장 잔액은 은행 알림의 잔액으로 저절로 맞춰진다(auto-record.js syncBank).
   */
-  const safe = accountBalance - ctx.cardBillTotal - unpaidFixedSum;
+  const left = accountBalance - cardBillTotal - unpaidFixedSum;
+  const short = left < 0;
   const bankKnown = accountBalance !== 0 || (ctx.accountTotals || []).some((a) => a.bankSync);
-  const capped = bankKnown && hasGoal && safe < remaining;
-  const usable = capped ? safe : remaining;
-  const over = usable < 0;
-  // 링은 '목표 중 얼마나 썼나'. 통장 기준이면 목표에서 통장 여유를 뺀 만큼 쓴 것으로 그린다
-  const ratio = capped ? Math.min((ctx.spendingGoal - safe) / ctx.spendingGoal, 1.2) : budgetRatio;
-  const ringColor = ratio < 0.7 ? T.good : ratio < 1 ? T.warn : T.danger;
-  const dashArray = 2 * Math.PI * 54;
-  const dashOffset = dashArray * (1 - Math.min(Math.max(ratio, 0), 1));
   const daysLeft = Math.max(1, cycleLen - dayIntoCycle + 1);
-  const perDay = Math.floor(Math.max(0, usable) / daysLeft);
+  const perDay = Math.floor(Math.max(0, left) / daysLeft);
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
   const [budgetOpen, setBudgetOpen] = useState(false);
   const budgetRef = useRef(null);
@@ -52,7 +49,15 @@ export function HomeView({ ctx }) {
 
   return (
     <div>
-      <BalanceCard ctx={ctx} accountBalance={accountBalance} />
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        <h1 style={{ margin: 0, color: T.cream, fontFamily: F.display, fontSize: 21.5, fontWeight: 700 }}>
+          {monthLabel(curKey)} · {dayIntoCycle}일차
+        </h1>
+        <span style={{ color: T.goldSoft, fontSize: 13.5 }}>오늘 지출 {fmtWon(todaySpent)}</span>
+      </div>
+
+      <LeftoverCard T={T} balance={accountBalance} cardBill={cardBillTotal} fixed={unpaidFixedSum}
+        left={left} short={short} perDay={perDay} daysLeft={daysLeft} bankKnown={bankKnown} />
 
       {unpaidFixed.length > 0 && (
         <button onClick={goToUnpaid}
@@ -65,66 +70,9 @@ export function HomeView({ ctx }) {
         </button>
       )}
 
-      <div style={{ textAlign: "center", marginBottom: 4, marginTop: 22 }}>
-        <div style={{ color: T.cream, fontFamily: F.display, fontSize: 21.5, fontWeight: 700 }}>
-          {monthLabel(curKey)} · {dayIntoCycle}일차
-        </div>
-        <div style={{ color: T.goldSoft, fontSize: 13, marginTop: 4 }}>오늘 지출 {fmtWon(todaySpent)}</div>
+      <div style={{ marginTop: 10, marginBottom: 14 }}>
+        <BalanceCard ctx={ctx} accountBalance={accountBalance} />
       </div>
-
-      <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 8px" }}>
-        <div style={{ position: "relative", width: 176, height: 176 }}>
-          {/* 링은 그림일 뿐이고 숫자는 가운데 글자가 전한다 */}
-          <svg width="176" height="176" viewBox="0 0 120 120" aria-hidden="true">
-            {/* 바탕 링: 테마를 따라가게 — 예전엔 밝은 테마 전부에 베이지(#DCCBA0)가 박혀 있었다 */}
-            <circle cx="60" cy="60" r="54" fill="none" stroke={T.mode === "dark" ? "#2A2F4C" : T.paperLine} strokeWidth="10" />
-            <circle cx="60" cy="60" r="54" fill="none" stroke={ringColor} strokeWidth="10" strokeLinecap="round"
-              strokeDasharray={dashArray} strokeDashoffset={dashOffset} transform="rotate(-90 60 60)"
-              style={{ transition: "stroke-dashoffset 0.6s ease, stroke 0.4s" }} />
-          </svg>
-          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ color: capped ? (over ? T.danger : T.warn) : T.muted, fontSize: 13, marginBottom: 2, fontWeight: capped ? 700 : 400 }}>
-              {capped ? (over ? "통장 기준 모자람" : "통장 기준 운용 가능") : over ? "목표 초과" : "이번 달 운용 가능"}
-            </div>
-            <div style={{ color: over ? T.danger : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 600, fontSize: 19.5, lineHeight: 1.15, textAlign: "center" }}>
-              {over ? "-" : ""}{fmtWon(Math.abs(usable))}
-            </div>
-            <div style={{ color: T.goldSoft, fontSize: 13, marginTop: 4 }}>
-              {cycleLen - dayIntoCycle >= 0 ? `${cycleLen - dayIntoCycle}일 남음` : ""}
-            </div>
-          </div>
-        </div>
-      </div>
-      {!hasGoal && (
-        <div style={{ textAlign: "center", color: T.warn, fontSize: 14, marginTop: -4, marginBottom: 6 }}>
-          설정에서 이번 달 목표 지출액을 정해주세요
-        </div>
-      )}
-      {hasGoal && (
-        <div style={{ textAlign: "center", marginBottom: 6 }}>
-          {capped && (
-            <div style={{ color: safe < 0 ? T.danger : T.warn, fontSize: 14, fontWeight: 700, marginBottom: 2 }}>
-              {safe < 0
-                ? "카드값·고정지출을 내면 통장이 모자라요"
-                : "통장이 목표보다 빠듯해요"}
-              <span style={{ color: T.muted, fontSize: 12.5, fontWeight: 400 }}> · 목표 기준으론 {remaining < 0 ? "-" : ""}{fmtWon(Math.abs(remaining))}</span>
-            </div>
-          )}
-          {usable > 0 && (
-            <div style={{ color: T.cream, fontSize: 15, fontWeight: 700 }}>
-              하루 <span style={{ fontFamily: F.mono, fontVariantNumeric: "tabular-nums" }}>{fmtWon(perDay)}</span>씩 쓰면 맞아요
-              <span style={{ color: T.muted, fontSize: 12.5, fontWeight: 400 }}> · 오늘 포함 {daysLeft}일</span>
-            </div>
-          )}
-        </div>
-      )}
-      {unpaidFixedSum > 0 ? (
-        <div style={{ textAlign: "center", color: T.muted, fontSize: 12.5, marginBottom: 14 }}>
-          미처리 {fmtWon(unpaidFixedSum)} · 반영 전 여유 {fmtWon(Math.abs(realRemaining))}{realRemaining < 0 ? " 초과" : ""}
-        </div>
-      ) : (
-        <div style={{ marginBottom: 14 }} />
-      )}
 
       <SummaryCard ctx={ctx} />
 
@@ -150,6 +98,39 @@ export function HomeView({ ctx }) {
         </>
       )}
     </div>
+  );
+}
+
+/* 통장 − (안 낸 카드값 + 안 나간 고정지출) = 잔여금액. 식을 줄마다 그대로 적는다 */
+function LeftoverCard({ T, balance, cardBill, fixed, left, short, perDay, daysLeft, bankKnown }) {
+  const row = (label, amount, sign) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, padding: "3px 0" }}>
+      <span style={{ color: T.muted, fontSize: 14.5 }}>{sign && <span aria-hidden="true" style={{ display: "inline-block", width: "1.1em" }}>{sign}</span>}{label}</span>
+      <span style={{ color: T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: 16, fontWeight: 600 }}>{fmtWon(amount)}</span>
+    </div>
+  );
+  return (
+    <section aria-label="이번 달 잔여금액" style={{ background: T.bg2, border: `1.5px solid ${(short ? T.danger : T.good)}77`, borderRadius: 14, padding: "14px 16px" }}>
+      {row("통장 잔액", balance)}
+      {row("안 낸 카드값", cardBill, "−")}
+      {row("안 나간 고정지출", fixed, "−")}
+      <div style={{ borderTop: `1.5px solid ${T.border}`, margin: "8px 0 6px" }} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ color: short ? T.danger : T.good, fontSize: 15.5, fontWeight: 700 }}>
+          <span aria-hidden="true" style={{ display: "inline-block", width: "1.1em" }}>=</span>{short ? "모자라는 돈" : "잔여금액"}
+        </span>
+        <span style={{ color: short ? T.danger : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: 28, fontWeight: 700, lineHeight: 1.15 }}>
+          {short ? "-" : ""}{fmtWon(Math.abs(left))}
+        </span>
+      </div>
+      <div style={{ color: short ? T.danger : T.muted, fontSize: 13.5, marginTop: 6, textAlign: "end" }}>
+        {!bankKnown
+          ? "통장 잔액을 먼저 맞춰 주세요 — 아래 '실제 잔액으로 맞추기'"
+          : short
+            ? "카드값·고정지출을 내면 통장이 모자라요"
+            : <>하루 <span style={{ color: T.cream, fontWeight: 700, fontFamily: F.mono, fontVariantNumeric: "tabular-nums" }}>{fmtWon(perDay)}</span>씩 쓰면 맞아요 <span style={{ whiteSpace: "nowrap" }}>· 오늘 포함 {daysLeft}일</span></>}
+      </div>
+    </section>
   );
 }
 
@@ -631,8 +612,6 @@ function BalanceCard({ ctx, accountBalance }) {
   const [reconcileId, setReconcileId] = useState(null);
   const [reconcileInput, setReconcileInput] = useState("");
   const [toAccountId, setToAccountId] = useState("");
-  const owed = Number(ctx.cardBillTotal || 0) + Number(ctx.unpaidFixedSum || 0);
-  const safe = accountBalance - owed;
   const lastSync = accountTotals.map((a) => a.bankSync?.at).filter(Boolean).sort().slice(-1)[0];
 
   const submit = () => {
@@ -682,20 +661,6 @@ function BalanceCard({ ctx, accountBalance }) {
           {lastSync ? `은행 알림으로 ${agoAt(lastSync)} 맞춤 · 그 뒤 입출금은 실시간 반영` : "실제로 계좌에 있는 돈 · 입출금·현금결제만 실시간 반영"}
         </div>
       </button>
-      {/* 적자가 나는지 — 이 앱을 쓰는 이유. 통장에서 앞으로 나갈 돈을 다 뺀 값 */}
-      {owed > 0 && (
-        <div style={{ borderTop: `1px dashed ${T.border}`, paddingTop: 8, marginBottom: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ color: T.muted, fontSize: 13.5 }}>카드값·고정지출 다 내면</span>
-            <span style={{ color: safe < 0 ? T.danger : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: 17, fontWeight: 700 }}>
-              {safe < 0 ? `${fmtWon(-safe)} 모자라요` : `${fmtWon(safe)} 남아요`}
-            </span>
-          </div>
-          <div style={{ color: T.muted, fontSize: 12 }}>
-            {[ctx.cardBillTotal > 0 && `카드값 ${fmtWon(ctx.cardBillTotal)}`, ctx.unpaidFixedSum > 0 && `남은 고정지출 ${fmtWon(ctx.unpaidFixedSum)}`].filter(Boolean).join(" · ")}
-          </div>
-        </div>
-      )}
       {expanded && accountTotals.length > 1 && (
         <div style={{ marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
           {accountTotals.map((a) => (
