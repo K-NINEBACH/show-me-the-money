@@ -38,24 +38,31 @@ export function HomeView({ ctx }) {
   const daysLeft = Math.max(1, cycleLen - dayIntoCycle + 1);
 
   /*
-    **다음 달 월급이 들어온 뒤 여유**(2026-09-14, 사용자 요청 — "다음달 급여 들어오면 얼마
-    여유분 있는지도 알고싶어"). 통장 기준 결과에 이어서:
-      월급 들어온 뒤 여유 = 통장 기준 잔여금액 + 다음 달 월급 − 다음 달 통장 고정지출
+    **맨 위 한 장 — 다음 달 월급 기준, 통장까지 합쳐서**(2026-09-14, 사용자 선택).
+
+    사용자 요청 둘이 한 식으로 모였다 — "다음달 급여 들어오면 얼마 여유분 있는지"와 "다음달
+    월급기준에 현재 내 통장잔고도 넣어야 되는 거 아닌가". 통장을 넣으려면 통장에서 먼저 나갈 돈
+    (안 낸 카드값, 이번 달 안 나간 고정지출)도 같이 빼야 맞으므로, 결국 아래 통장 기준 결과에
+    다음 달 월급을 더하고 다음 달 고정지출을 뺀 값이 된다.
+      카드로 더 써도 되는 돈 = 통장 기준 잔여금액 + 다음 달 월급 − 다음 달 고정지출(통장 + 카드)
+    · 다음 달 고정지출은 **통장 + 카드(할부 몫·정기결제)** 둘 다다. 카드 쪽은 청구가 그다음 달이라
+      처음엔 뺐는데, 다음 달에 어차피 긁힐 돈이라 미리 빼는 게 맞다(사용자 지적).
     · 이번 달 카드 사용분(다음 달 청구)은 이미 '안 낸 카드값'에 들어 있어서 또 안 뺀다.
-    · 다음 달에 새로 쓸 카드값은 그다음 월급으로 나가니 안 넣는다 — 그래서 '카드 쓰기 전 기준'.
-    · 월급이 이미 들어왔으면(payIn) 통장 잔액에 들어 있으니 더하지 않는다.
-    월급을 안 적었고 입금도 못 찾았으면 이 부분을 안 보인다.
+    · 월급이 이미 들어왔으면(payIn) 통장 잔액에 들어 있으니 0원으로 적고 더하지 않는다.
+    · 처음 목적인 '월급만으로'(payLeft = 다음 달 월급 − 다음 달 통장 고정지출 − 이번 달 카드값)는
+      작은 줄로 남긴다.
   */
   const nextM = `${Number(ctx.nextKey.slice(5, 7))}월`;
-  const after = (ctx.monthlyPay || ctx.payIn) && bankKnown
-    ? {
-        month: nextM,
-        pay: ctx.payIn ? 0 : ctx.nextPay,
-        tag: ctx.payIn ? `${Number(ctx.payIn.date.slice(5, 7))}/${Number(ctx.payIn.date.slice(8, 10))} 들어옴 · 통장 잔액에 포함` : "예상",
-        fixed: ctx.nextFixedCash,
-        value: left + (ctx.payIn ? 0 : ctx.nextPay) - ctx.nextFixedCash,
-      }
-    : null;
+  const hasPay = !!(ctx.monthlyPay || ctx.payIn);
+  const top = {
+    month: nextM,
+    curMonth: `${Number(curKey.slice(5, 7))}월`,
+    pay: ctx.payIn ? 0 : ctx.nextPay,
+    tag: ctx.payIn ? `${Number(ctx.payIn.date.slice(5, 7))}/${Number(ctx.payIn.date.slice(8, 10))} 들어옴 · 통장 잔액에 포함` : "예상",
+    fixedCash: ctx.nextFixedCash,
+    fixedCard: ctx.nextFixedCard,
+    value: left + (ctx.payIn ? 0 : ctx.nextPay) - ctx.nextFixedCash - ctx.nextFixedCard,
+  };
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
   const [budgetOpen, setBudgetOpen] = useState(false);
   const budgetRef = useRef(null);
@@ -81,10 +88,11 @@ export function HomeView({ ctx }) {
         <span style={{ color: T.goldSoft, fontSize: 13.5 }}>오늘 지출 {fmtWon(todaySpent)}</span>
       </div>
 
-      <PayCard T={T} ctx={ctx} daysLeft={daysLeft} />
+      <PayCard T={T} ctx={ctx} daysLeft={daysLeft} top={top} hasPay={hasPay} bankKnown={bankKnown}
+        balance={accountBalance} cardBill={cardBillTotal} fixed={unpaidFixedSum} pending={ctx.payPending} />
       <div style={{ height: 10 }} />
       <LeftoverCard T={T} balance={accountBalance} cardBill={cardBillTotal} fixed={unpaidFixedSum} pending={ctx.payPending}
-        left={left} short={short} bankKnown={bankKnown} after={after} />
+        left={left} short={short} bankKnown={bankKnown} />
 
       {unpaidFixed.length > 0 && (
         <button onClick={goToUnpaid}
@@ -165,31 +173,43 @@ const cardBox = (T, bad) => ({ background: T.bg2, border: `1.5px solid ${(bad ? 
 const cardTitle = (T) => ({ color: T.goldSoft, fontSize: 13.5, fontWeight: 700, marginBottom: 4 });
 
 /*
-  **다음 달 월급 기준**(2026-09-14) — 이 앱을 만든 이유: 이번 달 카드값이 다음 달 월급을 넘지 않게.
-  계산은 App.jsx ctx(payLeft) 설명 참고. 월급을 안 적었으면 식 대신 적으라고 안내한다.
+  **다음 달 월급 기준 — 통장까지 합쳐서**(2026-09-14). 계산은 HomeView의 top 설명 참고.
+  이 앱을 만든 이유: 이번 달 카드값이 다음 달 월급을 넘지 않게. 사용자가 통장 잔고도 넣자고 해서
+  통장 + 월급 − 나갈 돈 전부로 바뀌었고, 처음의 '월급만으로'(payLeft)는 맨 아래 작은 줄로 남긴다.
 */
-function PayCard({ T, ctx, daysLeft }) {
-  const { curKey, nextKey, monthlyPay, payIn, nextPay, nextFixedCash, cardSpentThisCycle, cardInstallThisMonth, cardRecurThisMonth, cardThisMonth, payLeft } = ctx;
-  const m = (key) => `${Number(key.slice(5, 7))}월`;
-  const short = payLeft < 0;
-  const noPay = !monthlyPay && !payIn;
-  const perDay = Math.floor(Math.max(0, payLeft) / daysLeft);
-  const cardNote = [`일시불 ${fmtWon(cardSpentThisCycle)}`, cardInstallThisMonth > 0 && `할부 ${fmtWon(cardInstallThisMonth)}`, cardRecurThisMonth > 0 && `정기결제 ${fmtWon(cardRecurThisMonth)}`].filter(Boolean).join(" · ");
+function PayCard({ T, ctx, daysLeft, top, hasPay, bankKnown, balance, cardBill, fixed, pending }) {
+  const { payLeft } = ctx;
+  const short = top.value < 0;
+  const perDay = Math.floor(Math.max(0, top.value) / daysLeft);
   return (
-    <section aria-label="다음 달 월급 기준" style={cardBox(T, short && !noPay)}>
-      <div style={cardTitle(T)}>다음 달 월급 기준<span style={{ color: T.muted, fontWeight: 400 }}> · {m(curKey)} 카드값이 {m(nextKey)} 월급을 안 넘게</span></div>
-      <EqRow T={T} label="곧 들어올 월급" amount={nextPay} tag={payIn ? `${Number(payIn.date.slice(5, 7))}/${Number(payIn.date.slice(8, 10))} 들어옴` : "예상"} />
-      <EqRow T={T} label={`${m(nextKey)} 통장 고정지출`} amount={nextFixedCash} sign="−" />
-      <EqRow T={T} label={`${m(curKey)} 카드값`} amount={cardThisMonth} sign="−" note={`${cardNote} → ${m(nextKey)}에 청구`} />
-      {noPay ? (
+    <section aria-label="다음 달 월급 기준" style={cardBox(T, short && hasPay)}>
+      <div style={cardTitle(T)}>다음 달 월급 기준<span style={{ color: T.muted, fontWeight: 400 }}> · 통장까지 합쳐서</span></div>
+      <EqRow T={T} label="통장 잔액" amount={balance} />
+      {pending > 0 && <EqRow T={T} label={`아직 안 들어온 ${top.curMonth} 월급`} amount={pending} sign="+" />}
+      {hasPay && <EqRow T={T} label={`${top.month} 월급`} amount={top.pay} sign="+" tag={top.tag} />}
+      <EqRow T={T} label="안 낸 카드값" amount={cardBill} sign="−" note={`${top.curMonth}까지 쓴 것 · ${top.month}에 청구되는 것 포함`} />
+      <EqRow T={T} label={`${top.curMonth}에 안 나간 고정지출`} amount={fixed} sign="−" />
+      {hasPay && (
+        <EqRow T={T} label={`${top.month} 고정지출`} amount={top.fixedCash + top.fixedCard} sign="−"
+          note={`통장 ${fmtWon(top.fixedCash)} · 카드 할부·정기결제 ${fmtWon(top.fixedCard)}`} />
+      )}
+      {!hasPay ? (
         <div style={{ color: T.warn, fontSize: 14, fontWeight: 700, marginTop: 10 }}>설정에서 월급(실수령)을 적어 주세요</div>
       ) : (
         <>
-          <EqResult T={T} label="카드로 더 써도 되는 돈" shortLabel="월급을 넘은 돈" value={payLeft} />
+          <EqResult T={T} label="카드로 더 써도 되는 돈" shortLabel="월급 들어와도 모자라는 돈" value={top.value} />
           <div style={{ color: short ? T.danger : T.muted, fontSize: 13.5, marginTop: 6, textAlign: "end" }}>
-            {short
-              ? `${m(nextKey)} 월급으로 카드값·고정지출을 다 못 내요`
-              : <>하루 <span style={{ color: T.cream, fontWeight: 700, fontFamily: F.mono, fontVariantNumeric: "tabular-nums" }}>{fmtWon(perDay)}</span>씩 <span style={{ whiteSpace: "nowrap" }}>· {m(curKey)} 말일까지 {daysLeft}일</span></>}
+            {!bankKnown
+              ? "통장 잔액을 먼저 맞춰 주세요 — 아래 '실제 잔액으로 맞추기'"
+              : short
+                ? `${top.month} 월급이 들어와도 카드값·고정지출을 다 못 내요`
+                : <>하루 <span style={{ color: T.cream, fontWeight: 700, fontFamily: F.mono, fontVariantNumeric: "tabular-nums" }}>{fmtWon(perDay)}</span>씩 <span style={{ whiteSpace: "nowrap" }}>· {top.curMonth} 말일까지 {daysLeft}일</span></>}
+          </div>
+          {/* 처음 목적 그대로의 확인 — 통장 없이 월급만으로 다음 달 청구·고정지출을 낼 수 있나 */}
+          <div style={{ color: payLeft < 0 ? T.danger : T.muted, fontSize: 12.5, marginTop: 8, paddingTop: 6, borderTop: `1px dashed ${T.border}` }}>
+            통장 없이 {top.month} 월급만으로는{" "}
+            <span style={{ fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{payLeft < 0 ? "-" : ""}{fmtWon(Math.abs(payLeft))}</span>
+            {" "}({top.month} 월급 − {top.month} 통장 고정지출 − {top.curMonth} 카드값 {fmtWon(ctx.cardThisMonth)})
           </div>
         </>
       )}
@@ -198,7 +218,7 @@ function PayCard({ T, ctx, daysLeft }) {
 }
 
 /* 통장 − (안 낸 카드값 + 안 나간 고정지출) = 잔여금액. 식을 줄마다 그대로 적는다 */
-function LeftoverCard({ T, balance, cardBill, fixed, pending, left, short, bankKnown, after }) {
+function LeftoverCard({ T, balance, cardBill, fixed, pending, left, short, bankKnown }) {
   const row = (label, amount, sign) => <EqRow T={T} label={label} amount={amount} sign={sign} />;
   return (
     <section aria-label="지금 통장 기준" style={cardBox(T, short)}>
@@ -209,7 +229,7 @@ function LeftoverCard({ T, balance, cardBill, fixed, pending, left, short, bankK
       {row("안 낸 카드값", cardBill, "−")}
       {row("안 나간 고정지출", fixed, "−")}
       <EqResult T={T} label="잔여금액" shortLabel="모자라는 돈" value={left} />
-      {/* 하루 몫은 월급 기준 카드에만 둔다 — 한 화면에 '하루 N원'이 둘이면 어느 걸 따를지 모른다 */}
+      {/* 하루 몫은 맨 위 카드에만 둔다 — 한 화면에 '하루 N원'이 둘이면 어느 걸 따를지 모른다 */}
       <div style={{ color: short ? T.danger : T.muted, fontSize: 13.5, marginTop: 6, textAlign: "end" }}>
         {!bankKnown
           ? "통장 잔액을 먼저 맞춰 주세요 — 아래 '실제 잔액으로 맞추기'"
@@ -217,17 +237,6 @@ function LeftoverCard({ T, balance, cardBill, fixed, pending, left, short, bankK
             ? "카드값·고정지출을 내면 통장이 모자라요"
             : "카드값·고정지출을 다 내도 통장이 남아요"}
       </div>
-      {after && (
-        <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${T.border}` }}>
-          <div style={cardTitle(T)}>{after.month} 월급 들어온 뒤<span style={{ color: T.muted, fontWeight: 400 }}> · 위 결과에 이어서</span></div>
-          <EqRow T={T} label={`${after.month} 월급`} amount={after.pay} sign="+" tag={after.tag} />
-          <EqRow T={T} label={`${after.month} 통장 고정지출`} amount={after.fixed} sign="−" />
-          <EqResult T={T} label="월급 들어온 뒤 여유" shortLabel="월급 들어와도 모자라는 돈" value={after.value} size={24} />
-          <div style={{ color: after.value < 0 ? T.danger : T.muted, fontSize: 12.5, marginTop: 6, textAlign: "end" }}>
-            {after.month}에 카드 쓰기 전 기준 · {after.month} 카드값은 그다음 월급으로
-          </div>
-        </div>
-      )}
     </section>
   );
 }

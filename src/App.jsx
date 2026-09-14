@@ -461,6 +461,13 @@ function AppInner() {
     .map((f) => fixedInfo(f, nextKey))
     .filter((i) => i.active)
     .reduce((s, i) => s + Number(i.amount), 0);
+  // 다음 달 카드 고정지출(할부 몫 + 정기결제). 청구는 그다음 달이지만 다음 달에 어차피 긁히는 돈이라
+  // '월급 들어온 뒤 여유'에서는 미리 뺀다(2026-09-14 사용자 지적 — 빠져 있었다)
+  const nextFixedCard = data.fixedExpenses
+    .filter((f) => (f.paymentMethod || "cash") === "card")
+    .map((f) => fixedInfo(f, nextKey))
+    .filter((i) => i.active)
+    .reduce((s, i) => s + Number(i.amount), 0);
   const cardInstallThisMonth = fixedCardInstallment.reduce((s, f) => s + Number(f.info.amount), 0);
   const cardRecurThisMonth = fixedCardRecurring.reduce((s, f) => s + Number(f.info.amount), 0);
   const cardThisMonth = cardSpentThisCycle + cardInstallThisMonth + cardRecurThisMonth;
@@ -476,7 +483,7 @@ function AppInner() {
   const ctx = {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
-    nextKey, monthlyPay, payIn, nextPay, nextFixedCash, cardSpentThisCycle, cardInstallThisMonth, cardRecurThisMonth, cardThisMonth, payLeft, payPending,
+    nextKey, monthlyPay, payIn, nextPay, nextFixedCash, nextFixedCard, cardSpentThisCycle, cardInstallThisMonth, cardRecurThisMonth, cardThisMonth, payLeft, payPending,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,
     pendingText, clearPendingText: () => setPendingText(null),
     // 번호가 아니라 알림 자체(문구+받은 시각)로 지운다 — 목록은 15초마다 늘고 자동 처리로
