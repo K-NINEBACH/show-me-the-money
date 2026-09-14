@@ -77,8 +77,6 @@ export function SettingsView({ ctx }) {
   const T = useTheme();
   const { data, persist, showToast } = ctx;
   const [newCardName, setNewCardName] = useState("");
-  const [adjustCardId, setAdjustCardId] = useState(null);
-  const [cardAddInput, setCardAddInput] = useState("");
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountBalance, setNewAccountBalance] = useState("");
   const [payInput, setPayInput] = useState(String(data.monthlyPay || ""));
@@ -186,26 +184,6 @@ export function SettingsView({ ctx }) {
       )),
     });
   };
-  const addCardBill = (cardId) => {
-    const n = Number(cardAddInput);
-    if (!n || n <= 0) return showToast("금액을 입력해주세요");
-    // 그냥 bill만 늘리면 이 추가분이 내역 어디에도 안 남아서 나중에 "왜 카드값이
-    // 이렇게 됐지" 싶을 때 확인할 방법이 없었음. 카드 지출 하나로 남겨서 내역·이번
-    // 달 총 지출에도 정상적으로 잡히게 함(기록 탭에서 카드로 등록한 것과 동일하게).
-    const card = data.cards.find((c) => c.id === cardId);
-    const expense = { id: "e" + Date.now(), amount: n, categoryId: null, date: todayISO(), memo: "카드값 수동 추가", isReceivable: false, settled: false, repaidAmount: null, paymentMethod: "card", cardId, linkedBalanceId: null };
-    persist({ ...data, expenses: [...data.expenses, expense], cards: data.cards.map((c) => (c.id === cardId ? { ...c, bill: Number(c.bill || 0) + n } : c)) });
-    setCardAddInput("");
-    showToast(`${card?.name || "카드"}값에 더했어요 · 내역에서 확인할 수 있어요`);
-  };
-  const resetCardBill = (cardId) => {
-    const card = data.cards.find((c) => c.id === cardId);
-    if (!window.confirm(`"${card?.name}" 카드값 ${fmtWon(card?.bill || 0)}을 0원으로 초기화할까요? 결제 처리한 걸로 간주하는 거라 되돌릴 수 없어요.`)) return;
-    // 결제한 시점을 남긴다 — 이전 기록을 지우거나 고쳐도 지금 카드값이 안 흔들리게(Ledger의 paidBefore)
-    persist({ ...data, cards: data.cards.map((c) => (c.id === cardId ? { ...c, bill: 0, paidAtMs: Date.now() } : c)) });
-    setAdjustCardId(null);
-    showToast("카드값을 초기화했어요");
-  };
   const addAccount = () => {
     if (!newAccountName.trim()) return showToast("통장 이름을 입력하세요");
     const acc = { id: "acc" + Date.now(), name: newAccountName.trim(), initialBalance: Number(newAccountBalance) || 0 };
@@ -284,7 +262,7 @@ export function SettingsView({ ctx }) {
         </div>
         <QuickAmountButtons amount={payInput} setAmount={setPayInput} />
         <div style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.55, marginTop: 6 }}>
-          홈의 '다음 달 월급 기준'이 이 금액에서 다음 달 고정지출과 이번 달 카드값을 빼요.
+          홈의 '카드로 더 써도 되는 돈'은 통장 잔액 + 이 월급에서 안 낸 카드값과 남은·다음 달 고정지출을 뺀 값이에요.
           말일~다음 달 5일 사이에 월급 입금 알림이 오면 그 달은 실제 들어온 금액으로 계산해요.
         </div>
       </Field>
@@ -300,41 +278,35 @@ export function SettingsView({ ctx }) {
           ))}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <input value={newAccountName} onChange={(e) => setNewAccountName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
-          <MoneyInput value={newAccountBalance} onChange={setNewAccountBalance} placeholder="시작 잔액 (선택)" />
-          <QuickAmountButtons amount={newAccountBalance} setAmount={setNewAccountBalance} />
+          <input value={newAccountName} onChange={(e) => setNewAccountName(e.target.value)} placeholder="통장 이름 — 예: 국민은행" aria-label="새 통장 이름" style={inputSty(T)} />
+          <MoneyInput value={newAccountBalance} onChange={setNewAccountBalance} placeholder="지금 잔액 (몰라도 돼요)" ariaLabel="새 통장 지금 잔액" />
           <button onClick={addAccount} style={primaryBtn(T)}>통장 추가</button>
+        </div>
+        <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
+          이름에 은행 이름이 들어가야 은행 알림을 알아서 이 통장에 붙여요. 잔액은 은행 알림이 오면 저절로 맞춰져요.
         </div>
       </Field>
 
       <Field label="카드 관리">
         <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
+          {/*
+            이름만 둔다(2026-09-14). 예전엔 여기에 카드값(일시불만)과 '조정'(수동 추가·초기화)이 있었는데,
+            홈은 할부 포함 합계를 보여 줘서 같은 카드가 두 화면에서 다른 금액이었다(현대 1,314,856 vs
+            1,411,274). 카드값은 홈에서 보고, 맞추는 건 홈의 맞추기·명세서·결제 확인 알림이 한다.
+          */}
           {(data.cards || []).map((c) => (
-            <div key={c.id} style={{ borderBottom: `1px solid ${T.border}` }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px" }}>
-                <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
-                <span style={{ color: T.muted, fontFamily: F.mono, fontSize: 14 }}>{fmtWon(c.bill || 0)}</span>
-                <button onClick={() => { setAdjustCardId(adjustCardId === c.id ? null : c.id); setCardAddInput(""); }}
-                  style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", color: T.muted, fontSize: 12.5 }}>조정</button>
-                <button onClick={() => removeCard(c.id)} aria-label={`${c.name} 카드 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
-              </div>
-              {adjustCardId === c.id && (
-                <div style={{ padding: "0 8px 10px" }}>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                    <MoneyInput value={cardAddInput} onChange={setCardAddInput} placeholder="새로 결제한 금액" />
-                    <button onClick={() => addCardBill(c.id)} style={{ ...primaryBtn(T), width: 66 }}>추가</button>
-                  </div>
-                  <button onClick={() => resetCardBill(c.id)} style={{ width: "100%", background: "transparent", border: `1px solid ${T.danger}`, color: T.danger, borderRadius: 8, padding: "6px 0", fontSize: 13.5, cursor: "pointer" }}>
-                    카드값 초기화 (결제 처리)
-                  </button>
-                </div>
-              )}
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
+              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
+              <button onClick={() => removeCard(c.id)} aria-label={`${c.name} 카드 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
             </div>
           ))}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <input value={newCardName} onChange={(e) => setNewCardName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+          <input value={newCardName} onChange={(e) => setNewCardName(e.target.value)} placeholder="카드 이름 — 예: 현대카드" aria-label="새 카드 이름" style={inputSty(T)} />
           <button onClick={addCard} style={{ ...primaryBtn(T), width: 72 }}>추가</button>
+        </div>
+        <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
+          이름에 카드사 이름이 들어가야 결제 알림을 알아서 이 카드에 붙여요. 카드값은 홈에서 봐요.
         </div>
       </Field>
 
