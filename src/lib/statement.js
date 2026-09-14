@@ -1,4 +1,4 @@
-import { fixedInfo } from "./data";
+import { fixedInfo, monthKeyOffset } from "./data";
 
 /*
   **카드 명세서로 맞추기**(2026-09-14).
@@ -101,6 +101,55 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now()) {
     안 그러면 '이번 달 카드값'에서 일시불과 정기결제 예정으로 두 번 센다.
   */
   /*
+    **할부 금액을 명세서대로 고친다**(2026-09-14, 사용자 요청 — "자동으로 되게 하는 게 목적이야").
+
+    유이자 할부는 원금은 매달 같고 수수료가 남은 원금에 붙어서 **매달 줄어든다**. 앱엔 첫 달
+    금액(데스크탑 할부 100,316원)이 매달 그대로 적혀 있었는데 4회차 실제 청구는 96,418원이었다.
+    그래서 명세서의 "할부(4/12) 96,418" 줄로 같은 카드·같은 개월 수·같은 회차의 할부를 찾아 그 달
+    금액을 고친다(overrides — 지난 달 기록은 안 건드린다). 줄에 '이용금액 972,000'과 '수수료
+    15,418'이 있으면 남은 회차도 계산해 넣는다:
+      원금 = 이용금액 ÷ 개월(끝수는 마지막 회차), 수수료율 = 이번 수수료 ÷ 이번 회차 전 남은 원금,
+      다음 회차 = 원금 + 남은 원금 × 수수료율.
+    수수료가 없으면(무이자) 남은 회차도 이번 금액으로 둔다.
+  */
+  let fixedExpenses = data.fixedExpenses || [];
+  const installFixes = [];
+  const installMissing = [];
+  for (const r of installs) {
+    const m = r.merchant.match(/\((\d{1,2})\s*\/\s*(\d{1,2})\)/);
+    if (!m) { installMissing.push(r); continue; }
+    const k = Number(m[1]);
+    const n = Number(m[2]);
+    let hit = null;
+    let hitKey = null;
+    for (const mk of [key(to), monthKeyOffset(key(to), -1), monthKeyOffset(key(to), 1)]) {
+      const cands = fixedExpenses.filter((f) => (f.paymentMethod || "cash") === "card" && f.cardId === cardId
+        && Number(f.totalMonths) === n && fixedInfo(f, mk).installment === k);
+      if (cands.length) {
+        hit = cands.sort((a, b) => Math.abs(fixedInfo(a, mk).amount - r.amount) - Math.abs(fixedInfo(b, mk).amount - r.amount))[0];
+        hitKey = mk;
+        break;
+      }
+    }
+    if (!hit) { installMissing.push(r); continue; }
+    const num = (re) => { const x = r.merchant.match(re); return x ? Number(x[1].replace(/,/g, "")) : 0; };
+    const total = num(/이용\s*금액\s*([\d,]+)/);
+    const fee = num(/수수료\s*([\d,]+)/);
+    const overrides = { ...(hit.overrides || {}), [hitKey]: r.amount };
+    const P = total ? Math.floor(total / n) : 0;
+    const remainingBefore = total - P * (k - 1);
+    const rate = total && fee && remainingBefore > 0 ? fee / remainingBefore : 0;
+    for (let j = 1; k + j <= n; j++) {
+      const principal = k + j === n ? total - P * (n - 1) : P;
+      overrides[monthKeyOffset(hitKey, j)] = rate ? principal + Math.round((total - P * (k - 1 + j)) * rate) : r.amount;
+    }
+    const before = fixedInfo(hit, hitKey).amount;
+    fixedExpenses = fixedExpenses.map((f) => (f.id === hit.id ? { ...f, overrides } : f));
+    const nextAmt = k < n ? overrides[monthKeyOffset(hitKey, 1)] : null;
+    installFixes.push({ name: hit.name, month: hitKey, label: `${k}/${n}`, before, after: r.amount, nextAmt, projected: !!rate });
+  }
+
+  /*
     같은 금액 줄이 그달에 여럿이면(구글 30,000원과 주유 30,000원) 가맹점 이름에 정기결제 이름
     조각이 든 줄만 잇는다. 금액만 보고 아무 줄이나 이으면 주유가 '구글 정기결제'가 된다.
   */
@@ -114,7 +163,6 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now()) {
     if (f2.length >= 2 && r.merchant.toLowerCase().replace(/[^가-힣a-z0-9]/g, "").includes(f2)) return true;
     return toAdd.filter((o) => o.amount === r.amount && key(o.date) === key(r.date)).length === 1;
   });
-  let fixedExpenses = data.fixedExpenses || [];
   const added = toAdd.map((r, i) => {
     const id = "e" + (nowMs + i + 1);
     const f = recurFor(r, fixedExpenses);
@@ -136,6 +184,7 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now()) {
       rows: rows.length, from, to, statementTotal: sum(rows), statementBill, installTotal: sum(installs),
       matched: matched.length, added: added.length, addedSum: sum(added),
       extra, afterEndSum: sum(afterEnd), pendingAdjSum: sum(pendingAdj), billBefore: Number(card?.bill || 0), billAfter: bill,
+      installFixes, installMissing,
     },
     next: {
       ...data,

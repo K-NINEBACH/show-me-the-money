@@ -691,6 +691,15 @@ function StatementSync({ ctx, card }) {
           <div>앱에 이미 있음 {s.matched}건 · 새로 넣을 것 {s.added}건 {fmtWon(s.addedSum)}</div>
           <div>명세서에 없는 앱 기록 {s.extra.length}건{s.extra.length ? " — 적용 뒤에 목록으로 보여 드려요" : ""}</div>
           <div style={{ fontWeight: 700 }}>카드값(일시불) {fmtWon(s.billBefore)} → {fmtWon(s.billAfter)}</div>
+          {s.installFixes.map((f) => (
+            <div key={f.name + f.month} style={{ fontWeight: 700 }}>
+              {f.name} {Number(f.month.slice(5))}월({f.label}) {fmtWon(f.before)} → {fmtWon(f.after)}
+              {f.nextAmt != null && <span style={{ fontWeight: 400, color: T.muted }}> · 다음 달 {fmtWon(f.nextAmt)}{f.projected ? "(수수료 줄어드는 대로)" : ""}</span>}
+            </div>
+          ))}
+          {s.installMissing.length > 0 && (
+            <div style={{ color: T.warn }}>앱에서 못 찾은 할부 {s.installMissing.length}건 — {s.installMissing.map((r) => `${r.merchant} ${fmtWon(r.amount)}`).join(", ")}. 할부로 등록해 두면 다음부터 맞춰요.</div>
+          )}
           {(s.afterEndSum > 0 || s.pendingAdjSum > 0) && (
             <div style={{ color: T.muted }}>
               명세서 뒤 앱 기록 {fmtWon(s.afterEndSum)}{s.pendingAdjSum ? ` · 아직 청구 전 정기결제 ${fmtWon(s.pendingAdjSum)}` : ""} 포함
