@@ -6,6 +6,7 @@ import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, monthLabel, todayISO, parsePaymentText, sortFixedList, fixedInfo } from "../lib/data";
 import { MoneyInput, QuickAmountButtons } from "../components/common";
 import { syncMoment } from "../lib/auto-record";
+import { parseStatement, reconcileStatement } from "../lib/statement";
 
 export function HomeView({ ctx }) {
   const T = useTheme();
@@ -632,10 +633,86 @@ function CardsBlock({ ctx, cardTotals }) {
                 <button onClick={() => setReconcileId(null)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13, cursor: "pointer" }}>취소</button>
                 <button onClick={() => { reconcileCard(ctx, c, reconcileInput); setReconcileId(null); }} style={{ flex: 2, ...primaryBtn(T), padding: "7px 0" }}>맞추기</button>
               </div>
+              <StatementSync ctx={ctx} card={c} />
             </div>
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+/*
+  카드 앱의 '결제 예정' 이용내역을 붙여 넣어 한 줄씩 대조한다(lib/statement.js 설명 참고).
+  먼저 무엇이 바뀌는지 보여 주고 '적용'을 눌러야 바뀐다 — 한꺼번에 여러 건을 넣고 카드값을 덮어쓰는
+  일이라 되돌리기 어렵다. 적용 뒤엔 명세서에 없는 앱 기록을 목록으로 보여 주고 하나씩 지울 수 있다.
+*/
+function StatementSync({ ctx, card }) {
+  const T = useTheme();
+  const { data, persist, showToast } = ctx;
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [extras, setExtras] = useState(null);
+  const rows = text.trim() ? parseStatement(text) : [];
+  const plan = rows.length ? reconcileStatement(data, card.id, rows) : null;
+  const s = plan?.summary;
+  const apply = () => {
+    const fresh = reconcileStatement(data, card.id, rows);
+    if (!fresh) return;
+    persist(fresh.next);
+    setExtras(fresh.summary.extra);
+    setText("");
+    showToast(`명세서로 맞췄어요 · ${fresh.summary.added}건 넣고 카드값 ${fmtWon(fresh.summary.billAfter)}`);
+  };
+  // 명세서에 없는 기록 지우기 — 카드값은 이미 명세서로 맞춰서 건드리지 않는다
+  const dropExtra = (id) => {
+    persist({ ...data, expenses: data.expenses.filter((e) => e.id !== id) });
+    setExtras((list) => list.filter((e) => e.id !== id));
+  };
+  const small = { color: T.muted, fontSize: 12.5, lineHeight: 1.55 };
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} style={{ width: "100%", marginTop: 8, padding: "8px 0", borderRadius: 6, border: `1px dashed ${T.field}`, background: "transparent", color: T.cream, fontSize: 13.5, cursor: "pointer" }}>
+        카드 앱 이용내역 붙여 넣어 한 줄씩 맞추기
+      </button>
+    );
+  }
+  return (
+    <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${T.border}` }}>
+      <label htmlFor={`stmt-${card.id}`} style={{ ...small, display: "block", marginBottom: 5 }}>
+        카드 앱 '결제 예정' 이용내역을 한 줄에 하나씩 — <span style={{ fontFamily: F.mono }}>09/13 가맹점 86,491</span>. 그 전 청구는 이미 낸 걸로 봐요.
+      </label>
+      <textarea id={`stmt-${card.id}`} value={text} onChange={(e) => setText(e.target.value)} rows={5}
+        style={{ ...inputSty(T), width: "100%", boxSizing: "border-box", fontFamily: F.mono, fontSize: 13, resize: "vertical" }} />
+      {text.trim() && !s && <div style={{ ...small, color: T.warn, marginTop: 6 }}>읽을 수 있는 줄이 없어요. "09/13 가맹점 86,491" 모양인지 봐 주세요.</div>}
+      {s && (
+        <div style={{ ...small, color: T.cream, marginTop: 6 }}>
+          <div>명세서 {s.rows}건 · {fmtWon(s.statementTotal)}{s.installTotal ? ` (할부 ${fmtWon(s.installTotal)} 포함)` : ""} · {s.from.slice(5).replace("-", "/")}~{s.to.slice(5).replace("-", "/")}</div>
+          <div>앱에 이미 있음 {s.matched}건 · 새로 넣을 것 {s.added}건 {fmtWon(s.addedSum)}</div>
+          <div>명세서에 없는 앱 기록 {s.extra.length}건{s.extra.length ? " — 적용 뒤에 목록으로 보여 드려요" : ""}</div>
+          <div style={{ fontWeight: 700 }}>카드값(일시불) {fmtWon(s.billBefore)} → {fmtWon(s.billAfter)}</div>
+          {(s.afterEndSum > 0 || s.pendingAdjSum > 0) && (
+            <div style={{ color: T.muted }}>
+              명세서 뒤 앱 기록 {fmtWon(s.afterEndSum)}{s.pendingAdjSum ? ` · 아직 청구 전 정기결제 ${fmtWon(s.pendingAdjSum)}` : ""} 포함
+            </div>
+          )}
+          <button onClick={apply} style={{ ...primaryBtn(T), marginTop: 8, padding: "9px 0", fontSize: 14.5 }}>이대로 적용</button>
+        </div>
+      )}
+      {extras && extras.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ ...small, color: T.warn, fontWeight: 700 }}>명세서에 없는 앱 기록 {extras.length}건 — 중복이거나 잘못 들어간 것이면 지우세요</div>
+          {extras.map((e) => (
+            <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px dashed ${T.border}` }}>
+              <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 13.5 }}>{e.date.slice(5).replace("-", "/")} {e.memo || "(메모 없음)"}</span>
+              <span style={{ fontFamily: F.mono, color: T.cream, fontSize: 13.5 }}>{fmtWon(e.amount)}</span>
+              <button onClick={() => dropExtra(e.id)} aria-label={`${e.memo || ""} ${fmtWon(e.amount)} 지우기`}
+                style={{ minHeight: 32, padding: "0 10px", borderRadius: 6, border: `1px solid ${T.danger}`, background: "transparent", color: T.danger, fontSize: 12.5, cursor: "pointer" }}>지우기</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {extras && extras.length === 0 && <div style={{ ...small, color: T.good, marginTop: 8 }}>앱 기록이 명세서와 다 맞아요.</div>}
     </div>
   );
 }

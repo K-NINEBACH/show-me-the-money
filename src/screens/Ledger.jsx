@@ -54,6 +54,7 @@ export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, 
           {e.reimbursedAmount != null && <Badge color={T.good}>정산받음 {fmtWon(e.reimbursedAmount)}</Badge>}
           {/* 알림에서 확인 없이 들어온 줄 — 이상하면 이것만 훑어 지울 수 있게 */}
           {e.auto && <Badge color={T.inkMuted}>자동</Badge>}
+          {e.fromStatement && <Badge color={T.inkMuted}>명세서</Badge>}
         </div>
         {e.memo && <div style={rowSub(T)}>{e.memo}</div>}
         {dateNode || <div style={rowDate(T)}>{e.date}</div>}
