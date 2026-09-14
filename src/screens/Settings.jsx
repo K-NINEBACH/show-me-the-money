@@ -81,7 +81,7 @@ export function SettingsView({ ctx }) {
   const [cardAddInput, setCardAddInput] = useState("");
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountBalance, setNewAccountBalance] = useState("");
-  const [spendingGoalInput, setSpendingGoalInput] = useState(String(data.spendingGoal || ""));
+  const [payInput, setPayInput] = useState(String(data.monthlyPay || ""));
   const [showExport, setShowExport] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
@@ -116,9 +116,9 @@ export function SettingsView({ ctx }) {
     if (!window.confirm(`가져온 데이터(지출 기록 ${expenseCount}건 포함)로 지금 데이터를 전부 덮어쓸까요? 되돌릴 수 없어요.`)) return;
     const migrated = migrate(parsed);
     persist(migrated);
-    // spendingGoalInput은 마운트 시점 data로 한 번만 초기화되는 값이라, 가져오기로
-    // data.spendingGoal이 바뀌어도 이 화면을 벗어났다 오기 전까진 안 갱신됐음.
-    setSpendingGoalInput(String(migrated.spendingGoal || ""));
+    // payInput은 마운트 시점 data로 한 번만 초기화되는 값이라, 가져오기로
+    // data.monthlyPay가 바뀌어도 이 화면을 벗어났다 오기 전까진 안 갱신됐음.
+    setPayInput(String(migrated.monthlyPay || ""));
     setImportText(""); setShowImport(false);
     showToast("데이터를 불러왔어요");
   };
@@ -150,7 +150,7 @@ export function SettingsView({ ctx }) {
     const migrated = migrate(parsed);
     persist(migrated);
     // doImport와 같은 이유 — 입력창은 마운트 때 값에 멈춰 있어서 직접 맞춰줘야 함
-    setSpendingGoalInput(String(migrated.spendingGoal || ""));
+    setPayInput(String(migrated.monthlyPay || ""));
     setShowBackups(false);
     showToast(`${day} 백업으로 되돌렸어요`);
   };
@@ -237,7 +237,7 @@ export function SettingsView({ ctx }) {
       )),
     });
   };
-  const saveSpendingGoal = () => { const n = Number(spendingGoalInput); if (Number.isNaN(n) || n < 0) return showToast("올바른 금액을 입력해주세요"); persist({ ...data, spendingGoal: n }); showToast("목표 지출액을 저장했어요"); };
+  const savePay = () => { const n = Number(payInput); if (Number.isNaN(n) || n < 0) return showToast("올바른 금액을 입력해주세요"); persist({ ...data, monthlyPay: n }); showToast("월급을 저장했어요"); };
   const setTheme = (mode) => persist({ ...data, theme: mode });
   const removeCategory = (id) => {
     const cat = data.categories.find((c) => c.id === id);
@@ -276,14 +276,17 @@ export function SettingsView({ ctx }) {
         <div style={{ color: T.muted, fontSize: 13.5, marginTop: 10 }}>현재 테마: {THEMES[data.theme]?.label || "검정"}</div>
       </Field>
 
-      <SectionLabel>예산</SectionLabel>
-      <Field label="이번 달 목표 지출액">
+      <SectionLabel>월급</SectionLabel>
+      <Field label="월급(실수령)" htmlFor="set-pay">
         <div style={{ display: "flex", gap: 8 }}>
-          <MoneyInput value={spendingGoalInput} onChange={setSpendingGoalInput} />
-          <button onClick={saveSpendingGoal} style={{ ...primaryBtn(T), width: 72 }}>저장</button>
+          <MoneyInput id="set-pay" value={payInput} onChange={setPayInput} />
+          <button onClick={savePay} style={{ ...primaryBtn(T), width: 72 }}>저장</button>
         </div>
-        <QuickAmountButtons amount={spendingGoalInput} setAmount={setSpendingGoalInput} />
-        <div style={{ color: T.muted, fontSize: 14, marginTop: 6 }}>홈 화면의 원형 게이지는 이 금액에서 고정지출·카드값·대출 등 총지출을 뺀 값을 보여줘요.</div>
+        <QuickAmountButtons amount={payInput} setAmount={setPayInput} />
+        <div style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.55, marginTop: 6 }}>
+          홈의 '다음 달 월급 기준'이 이 금액에서 다음 달 고정지출과 이번 달 카드값을 빼요.
+          말일~다음 달 5일 사이에 월급 입금 알림이 오면 그 달은 실제 들어온 금액으로 계산해요.
+        </div>
       </Field>
 
       <SectionLabel>계좌 · 카드</SectionLabel>

@@ -16,7 +16,7 @@ export function Onboarding({ data, persist }) {
   const [categories, setCategories] = useState(data.categories);
   const [newCatName, setNewCatName] = useState("");
   const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
-  const [spendingGoal, setSpendingGoal] = useState("");
+  const [monthlyPay, setMonthlyPay] = useState("");
   const [themeId, setThemeId] = useState("dark");
   const T = THEMES[themeId] || THEMES.dark;
 
@@ -39,7 +39,7 @@ export function Onboarding({ data, persist }) {
       cards,
       accounts,
       categories,
-      spendingGoal: Number(spendingGoal) || 0,
+      monthlyPay: Number(monthlyPay) || 0,
       theme: themeId,
     });
   };
@@ -147,11 +147,11 @@ export function Onboarding({ data, persist }) {
 
         {step === 4 && (
           <OnboardStep>
-            <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>이번 달 목표 지출액</div>
-            <div style={{ color: T.muted, fontSize: 14.5, marginBottom: 20, textAlign: "center" }}>홈 화면의 원형 게이지 기준이 돼요. 나중에 바꿀 수 있고, 안 정해도 괜찮아요.</div>
+            <div style={{ color: T.cream, fontFamily: F.display, fontSize: 18.5, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>월급(실수령)</div>
+            <div style={{ color: T.muted, fontSize: 14.5, marginBottom: 20, textAlign: "center" }}>이번 달 카드값이 다음 달 월급을 넘지 않는지 보는 기준이 돼요. 나중에 설정에서 바꿀 수 있어요.</div>
             <div style={{ width: "100%", marginBottom: 20 }}>
-              <MoneyInput value={spendingGoal} onChange={setSpendingGoal} />
-              <QuickAmountButtons amount={spendingGoal} setAmount={setSpendingGoal} />
+              <MoneyInput value={monthlyPay} onChange={setMonthlyPay} ariaLabel="월급(실수령)" />
+              <QuickAmountButtons amount={monthlyPay} setAmount={setMonthlyPay} />
             </div>
             <div style={{ display: "flex", gap: 8, width: "100%" }}>
               <button onClick={back} style={navBtnStyle}>이전</button>
@@ -215,7 +215,7 @@ export function Onboarding({ data, persist }) {
                 {useCard && <div>· 카드: {cardName.trim() || "카드"}</div>}
                 <div>· 통장: {accountName.trim() || "통장"}{startBalance ? ` (${Number(startBalance).toLocaleString("ko-KR")}원)` : ""}</div>
                 <div>· 카테고리: {categories.map((c) => c.name).join(", ")}</div>
-                <div>· 목표 지출액: {spendingGoal ? `${Number(spendingGoal).toLocaleString("ko-KR")}원` : "나중에 설정"}</div>
+                <div>· 월급: {monthlyPay ? `${Number(monthlyPay).toLocaleString("ko-KR")}원` : "나중에 설정"}</div>
                 <div>· 테마: {THEMES[themeId]?.label}</div>
               </div>
               <button onClick={finish} style={{ ...primaryBtn(T), padding: "14px 28px", fontSize: 16.5, width: "auto" }}>시작하기</button>

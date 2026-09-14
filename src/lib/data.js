@@ -8,6 +8,7 @@ export const defaultData = () => ({
   onboarded: false,
   lastSeenMonth: null,
   spendingGoal: 0,
+  monthlyPay: 0,
   accounts: [{ id: "acc1", name: "통장", initialBalance: 0 }],
   cards: [{ id: "card1", name: "카드", bill: 0 }],
   categories: [
@@ -68,6 +69,12 @@ export function migrate(raw) {
   d.expenses = Array.isArray(raw.expenses) ? raw.expenses : [];
   d.balanceEntries = (Array.isArray(raw.balanceEntries) ? raw.balanceEntries : []).map((b) => ({ accountId: d.accounts[0]?.id || "acc1", ...b }));
   d.spendingGoal = Number(raw.spendingGoal ?? raw.salary) || 0;
+  /*
+    월급(실수령, 2026-09-14). 홈의 큰 숫자가 '다음 달 월급 − 다음 달 고정지출 − 이번 달 카드값'이
+    되면서 생겼다. spendingGoal(목표 지출액)에서 옮겨 오지 않는다 — 그 칸에 월급을 적었는지
+    예산을 적었는지 알 수 없고, 틀린 값으로 채우면 큰 숫자가 조용히 틀린다. 없으면 0, 홈이 적으라고 안내한다.
+  */
+  d.monthlyPay = Number(raw.monthlyPay) || 0;
   // Old backups may still carry pinLock/trash from a previous version of the app — drop them silently.
   delete d.pinLock;
   delete d.trash;
@@ -169,6 +176,24 @@ export function repairMisdatedAuto(d, texts = []) {
   });
   if (!count) return { data: d, count };
   return { data: { ...d, balanceEntries, expenses, fixedExpenses }, count };
+}
+
+/*
+  **이 달(cycleKey) 몫의 월급 입금을 찾는다**(2026-09-14).
+
+  사용자의 월급은 말일~다음 달 3일 사이에 들어오고, 그 돈으로 다음 달을 산다(그 달 카드값과
+  고정지출). 그래서 9월 몫 월급 = 9월 25일~10월 5일 사이에 들어온 월급이다.
+  월급으로 보는 입금: 적요에 '급여·월급·상여'가 있거나, 적어 둔 월급(pay)과 ±30% 안.
+  잔액 맞춤·통장끼리 이체는 뺀다. 여럿이면 가장 큰 것. 없으면 null — 그땐 적어 둔 월급을 쓴다.
+*/
+export function findPayDeposit(entries, pay, cycleKey) {
+  const from = `${cycleKey}-25`;
+  const to = `${monthKeyOffset(cycleKey, 1)}-05`;
+  const hits = (entries || []).filter((b) => b.type === "in" && !b.isAdjustment && !b.transferId
+    && b.date >= from && b.date <= to
+    && (/급여|월급|상여/.test(String(b.memo || "")) || (pay > 0 && Math.abs(Number(b.amount) - pay) <= pay * 0.3)));
+  if (!hits.length) return null;
+  return hits.reduce((a, b) => (Number(b.amount) > Number(a.amount) ? b : a));
 }
 
 export function fmtWon(n) { return Math.round(n).toLocaleString("ko-KR") + "원"; }

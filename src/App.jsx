@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react"
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
 import { STORAGE_KEY, INBOX_KEY, SEEN_KEY, SEEN_DEAL_KEY, ALERT_LOG_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
-import { defaultData, migrate, autoProcessFixed, repairMisdatedAuto, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
+import { defaultData, migrate, autoProcessFixed, repairMisdatedAuto, findPayDeposit, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
 import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup, inNativeApp } from "./lib/native";
 import { autoRecordPayments, isCancelText, dealKey } from "./lib/auto-record";
@@ -441,6 +441,34 @@ function AppInner() {
 
   const unpaidFixed = [...fixedActive, ...fixedCardRecurring].filter((f) => !(f.paidMonths && f.paidMonths[curKey]));
   const unpaidFixedSum = unpaidFixed.reduce((s, f) => s + Number(f.info.amount), 0);
+  /*
+    **월급 기준 — 이 앱을 만든 이유**(2026-09-14).
+
+    사용자는 "다음 달 월급이 들어온다는 전제로" 카드를 쓴다. 카드는 1일~말일에 쓴 게 다음 달에
+    청구되고, 월급은 말일~다음 달 3일에 들어와 그 청구와 다음 달 고정지출을 낸다. 그래서
+      카드로 더 써도 되는 돈 = 곧 들어올 월급 − 다음 달 통장 고정지출 − 이번 달 카드값
+    이번 달 카드값 = 이번 달 일시불(정기결제 카드반영 기록 제외 — 아래 정기결제로 센다)
+                   + 이번 달 카드 할부 몫 + 이번 달 카드 정기결제.
+    카드 'bill'을 안 쓰는 이유 — bill은 '결제하기'를 누를 때까지 쌓이는 한 칸이라 어느 달에
+    쓴 건지 모른다. 결제일(예: 14일)에 누르면 그달 1~13일 쓴 것까지 0이 됐다.
+  */
+  const nextKey = monthKeyOffset(curKey, 1);
+  const monthlyPay = Number(data.monthlyPay || 0);
+  const payIn = findPayDeposit(data.balanceEntries, monthlyPay, curKey);
+  const nextPay = payIn ? Number(payIn.amount) : monthlyPay;
+  const nextFixedCash = data.fixedExpenses
+    .filter((f) => (f.paymentMethod || "cash") !== "card")
+    .map((f) => fixedInfo(f, nextKey))
+    .filter((i) => i.active)
+    .reduce((s, i) => s + Number(i.amount), 0);
+  const cardInstallThisMonth = fixedCardInstallment.reduce((s, f) => s + Number(f.info.amount), 0);
+  const cardRecurThisMonth = fixedCardRecurring.reduce((s, f) => s + Number(f.info.amount), 0);
+  const cardThisMonth = cardSpentThisCycle + cardInstallThisMonth + cardRecurThisMonth;
+  const payLeft = nextPay - nextFixedCash - cardThisMonth;
+  // 이번 달 몫 월급(지난달 말~이번 달 초)이 아직 안 들어왔으면, 통장 식은 곧 들어올 그 돈을 더해서 본다
+  const prevPayIn = findPayDeposit(data.balanceEntries, monthlyPay, prevKey);
+  const payPending = monthlyPay > 0 && !prevPayIn && dayIntoCycle <= 5 ? monthlyPay : 0;
+
   const processedSpent = spent - unpaidFixedSum;
   const realRemaining = spendingGoal - processedSpent;
   const realBudgetRatio = hasGoal ? Math.min(processedSpent / spendingGoal, 1.2) : (processedSpent > 0 ? 1.2 : 0);
@@ -448,6 +476,7 @@ function AppInner() {
   const ctx = {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
+    nextKey, monthlyPay, payIn, nextPay, nextFixedCash, cardSpentThisCycle, cardInstallThisMonth, cardRecurThisMonth, cardThisMonth, payLeft, payPending,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,
     pendingText, clearPendingText: () => setPendingText(null),
     // 번호가 아니라 알림 자체(문구+받은 시각)로 지운다 — 목록은 15초마다 늘고 자동 처리로
