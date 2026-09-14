@@ -6,6 +6,8 @@ import { defaultData, migrate, autoProcessFixed, repairMisdatedAuto, findPayDepo
 import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup, inNativeApp } from "./lib/native";
 import { autoRecordPayments, isCancelText, dealKey } from "./lib/auto-record";
+import { fetchDrops, markApplied } from "./lib/drop";
+import { parseStatement, reconcileStatement } from "./lib/statement";
 
 /*
   받은 알림을 어떻게 처리했는지 남긴다(진단용, 최근 40건). 결제가 안 들어왔을 때
@@ -297,6 +299,62 @@ function AppInner() {
     있어서 연달아 뜬 뒤 문구를 일찍 지웠다 — 결제가 자동으로 들어가고 곧바로 취소가
     오면 "기록에서 뺐어요"가 뜨자마자 사라졌다.
   */
+  /*
+    **Claude가 넣어 둔 것 받기**(lib/drop.js 설명). 켤 때·돌아올 때 암호화된 받은편지함을 받아 풀고,
+    카드 명세서면 명세서로 맞추기(lib/statement.js)를 그대로 돌린다. 사람이 붙여 넣던 걸 대신한다.
+    카드는 보낸 쪽이 적은 이름 조각('롯데')이 든 카드가 딱 하나일 때만 — 못 찾으면 적용하지 않고
+    남겨 둔다(카드를 등록하면 다음에 적용된다).
+  */
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  useEffect(() => {
+    if (!loaded) return;
+    let busy = false;
+    const run = async () => {
+      if (busy || !dataRef.current) return;
+      busy = true;
+      try {
+        const msgs = await fetchDrops();
+        if (!msgs.length) return;
+        let d = dataRef.current;
+        const done = [];
+        const logs = [];
+        const notes = [];
+        for (const m of msgs) {
+          if (m.kind !== "statement") { done.push(m.id); continue; }
+          const hits = (d.cards || []).filter((c) => String(c.name).includes(m.card));
+          if (hits.length !== 1) {
+            logs.push({ at: Date.now(), id: m.id, text: `${m.card} 명세서 — 앱에서 그 카드를 못 찾아 아직 안 넣었어요` });
+            continue;
+          }
+          const card = hits[0];
+          const plan = reconcileStatement(d, card.id, parseStatement(m.text));
+          if (!plan) { done.push(m.id); continue; }
+          d = plan.next;
+          const s = plan.summary;
+          const inst = s.installFixes.map((f) => `${f.name} ${Number(f.after).toLocaleString("ko-KR")}원`).join(", ");
+          logs.push({ at: Date.now(), id: m.id, text: `${card.name} 명세서 ${s.rows}건(${s.statementTotal.toLocaleString("ko-KR")}원) — ${s.added}건 넣고 카드값 ${s.billAfter.toLocaleString("ko-KR")}원으로${inst ? ` · 할부 ${inst}` : ""}${s.extra.length ? ` · 명세서에 없는 앱 기록 ${s.extra.length}건(${s.extra.map((e) => `${e.date.slice(5)} ${e.memo || ""} ${Number(e.amount).toLocaleString("ko-KR")}원`).join(", ")})` : ""}` });
+          notes.push(`${card.name} 명세서를 맞췄어요(${s.added}건 넣음)`);
+          done.push(m.id);
+        }
+        if (d !== dataRef.current) persist(d);
+        markApplied(done, logs);
+        if (notes.length) showToast(`Claude가 넣어 둔 ${notes.join(" · ")}`);
+      } finally {
+        busy = false;
+      }
+    };
+    run();
+    const onVis = () => { if (document.visibilityState === "visible") run(); };
+    window.addEventListener("passbook-native-resume", run);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("passbook-native-resume", run);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+
   const toastTimer = useRef(null);
   const showToast = (msg) => {
     clearTimeout(toastTimer.current);

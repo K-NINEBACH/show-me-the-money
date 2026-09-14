@@ -5,6 +5,7 @@ import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn } from "../lib/t
 import { fmtWon, migrate, todayISO } from "../lib/data";
 import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings, diagnostics, openBatterySettings, requestSmsAccess } from "../lib/native";
 import { ALERT_LOG_KEY } from "../lib/constants";
+import { dropCode, showCode, dropLog } from "../lib/drop";
 import { parsePaymentText } from "../lib/data";
 import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../components/common";
 
@@ -80,6 +81,9 @@ export function SettingsView({ ctx }) {
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountBalance, setNewAccountBalance] = useState("");
   const [payInput, setPayInput] = useState(String(data.monthlyPay || ""));
+  const [code] = useState(() => dropCode());
+  // 설정을 열 때마다 새로 읽는다 — 앱이 방금 적용한 것이 바로 보이게
+  const drops = dropLog();
   const [showExport, setShowExport] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
@@ -308,6 +312,32 @@ export function SettingsView({ ctx }) {
         <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
           이름에 카드사 이름이 들어가야 결제 알림을 알아서 이 카드에 붙여요. 카드값은 홈에서 봐요.
         </div>
+      </Field>
+
+      {/*
+        Claude가 대신 넣기(lib/drop.js). 카드 명세서 캡처를 Claude에게 보여 주면 Claude가 옮겨 적어 이 코드로
+        잠가 올리고, 앱이 켤 때 받아서 알아서 맞춘다. 코드는 이 휴대폰에만 있다 — 처음 한 번 Claude에게 알려 준다.
+      */}
+      <SectionLabel>Claude가 대신 넣기</SectionLabel>
+      <Field label="받기 코드">
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ flex: 1, minWidth: 0, color: T.cream, fontFamily: F.mono, fontSize: 17, fontWeight: 700, letterSpacing: "0.04em", wordBreak: "break-all" }}>{showCode(code)}</span>
+          <button onClick={() => { navigator.clipboard?.writeText(showCode(code)).then(() => showToast("받기 코드를 복사했어요")).catch(() => {}); }}
+            style={{ ...primaryBtn(T), width: 72 }}>복사</button>
+        </div>
+        <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
+          처음 한 번 이 코드를 Claude에게 알려 주세요. 그다음부턴 카드 앱 명세서 캡처만 보여 주면 Claude가 옮겨 적어
+          이 코드로 잠가 올리고, 앱을 열 때 알아서 맞춰요(빠진 결제 넣기·카드값·할부 금액). 코드 없이는 아무도 못 열어요.
+        </div>
+        {drops.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            {[...drops].reverse().slice(0, 5).map((r, i) => (
+              <div key={`${r.id}-${i}`} style={{ color: T.cream, fontSize: 12.5, lineHeight: 1.5, padding: "5px 0", borderTop: `1px dashed ${T.border}` }}>
+                <span style={{ color: T.muted }}>{ago(r.at)} · </span>{r.text}
+              </div>
+            ))}
+          </div>
+        )}
       </Field>
 
       <SectionLabel>카테고리</SectionLabel>
