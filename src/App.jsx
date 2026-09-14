@@ -197,7 +197,7 @@ function AppInner() {
     const fresh = inbox.filter((i) => !i.checked);
     const heldBefore = inbox.filter((i) => i.checked);
     // 보류된 것도 넘긴다 — 자동으로 넣지는 않고, 결제·취소 짝을 맞출 때만 쓴다
-    const { next, registered, leftover, dropped, undone, skipped, synced } = autoRecordPayments(data, fresh, heldBefore);
+    const { next, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored } = autoRecordPayments(data, fresh, heldBefore);
     // 새로 온 것도, 치울 짝도 없으면 아무 상태도 안 바꾼다 — 안 그러면 이 효과가 끝없이 돈다
     if (fresh.length === 0 && dropped.length === 0) return;
     const keep = new Set(leftover);
@@ -205,11 +205,17 @@ function AppInner() {
     const skip = new Set(skipped);
     const won = (n) => `${n > 0 ? "+" : "-"}${Math.abs(n).toLocaleString("ko-KR")}원`;
     const syncOf = new Map(synced.map((s) => [s.item, s]));
+    const paidOf = new Map(settled.map((s) => [s.item, s]));
+    const transitOf = new Map(transits.map((s) => [s.item, s]));
+    const quiet = new Set(ignored);
     logAlerts(fresh.map((i) => ({
       text: i.text, at: i.at,
       outcome: (keep.has(i) ? "알림함에 남김(어느 카드·통장인지 모름 등)"
         : gone.has(i) ? "결제·취소 짝이라 안 넣음"
         : skip.has(i) ? "이미 적힌 거래라 넘김"
+        : quiet.has(i) ? "명세서·결제금액 안내라 넘김"
+        : paidOf.has(i) ? `카드값 결제 확인 → ${paidOf.get(i).card} 카드값을 이번 달 사용분으로`
+        : transitOf.has(i) ? `${transitOf.get(i).month}월 대중교통 합계 반영${transitOf.get(i).paid ? " · 이미 낸 카드값이라 카드값은 그대로" : ""}`
         : isCancelText(i.text) ? "취소 → 기록 되돌림" : "자동 기록함")
         + (syncOf.has(i) ? ` · 잔액을 은행과 맞춤(${won(syncOf.get(i).diff)})` : ""),
     })));
@@ -224,6 +230,14 @@ function AppInner() {
     if (undone.length) msgs.push(`취소된 결제 ${undone.length}건을 기록에서 뺐어요`);
     if (dropped.length) msgs.push(`결제 후 취소된 ${Math.round(dropped.length / 2)}건은 넣지 않았어요`);
     if (skipped.length) msgs.push(`이미 적힌 거래 ${skipped.length}건은 넘겼어요`);
+    for (const s of settled.filter((x, i, a) => a.findIndex((y) => y.card === x.card) === i)) {
+      msgs.push(`${s.card} 카드값 결제를 확인했어요 · 남은 카드값 ${settled.filter((y) => y.card === s.card).slice(-1)[0].after.toLocaleString("ko-KR")}원`);
+    }
+    for (const t of transits) {
+      msgs.push(t.paid
+        ? `${t.month}월 대중교통 ${t.total.toLocaleString("ko-KR")}원을 기록했어요(이미 낸 카드값이라 카드값은 그대로)`
+        : `${t.month}월 대중교통 ${t.total.toLocaleString("ko-KR")}원을 ${t.card}에 반영했어요`);
+    }
     // 같은 통장을 여러 번 맞췄으면 합쳐서 한 번만 알린다
     const byAcc = new Map();
     for (const s of synced) byAcc.set(s.accountId, { name: s.name, diff: (byAcc.get(s.accountId)?.diff || 0) + s.diff });

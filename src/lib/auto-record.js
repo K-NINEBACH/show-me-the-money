@@ -49,6 +49,15 @@ const POSITIVE = /승인|결제/;
 */
 const CARD_NOT_APPROVAL = /취소|환불|거절|실패|청구|결제\s*(?:예정|금액|일)|출금\s*예정|납부\s*예정|이용\s*대금/;
 
+/* 명세서·결제금액 안내 — 돈이 움직인 게 아니다(아래 autoRecordPayments 1) 참고) */
+const INFO_NOTICE = /결제\s*금액|결제\s*예정|명세서|청구\s*금액|이용\s*대금/;
+
+/* 대중교통 한 달 합계 "08월 버스+지하철 이용금액은 총 48,600원" */
+const TRANSIT_TOTAL = /(\d{1,2})\s*월\s*(?:버스|지하철|대중교통)[^\d]{0,12}?이용\s*금액은?\s*총?\s*([\d,]+)\s*원/;
+
+/* 카드값 결제 확인 "841,510원이 입금되었습니다" — 카드사가 내 결제를 받았다 */
+const CARD_PAID = /입금\s*(?:되었습니다|되었어요|완료|처리)|결제\s*(?:되었습니다|완료)|수납/;
+
 /*
   광고 문자 — 법으로 '(광고)'를 달게 돼 있다. "(광고) 결제 시 3,000원 할인"은 금액과
   '결제'가 다 있어서, 카드가 하나뿐이면 카드 결제로 들어갈 수 있었다(2026-09-13).
@@ -668,6 +677,9 @@ export function autoRecordPayments(data, items, held = []) {
   }
   const dropped = [...paired];
   const undone = [];
+  const settled = [];
+  const transits = [];
+  const ignored = [];
   const skipped = [];
 
   for (const it of all.slice(0, items.length)) {
@@ -676,6 +688,101 @@ export function autoRecordPayments(data, items, held = []) {
     if (!amount || amount <= 0) {
       leftover.push(item);
       continue;
+    }
+
+    /*
+      **카드사가 보내는 결제 말고 다른 문자**(2026-09-14, 사용자가 현대카드 문자함을 보여 주며
+      "이런 문자도 알아서 처리되는 거야?").
+
+      1) 명세서·결제금액 안내("09/12 결제금액 1,452,107원(09/01기준) 국민은행") — 돈이 움직인 게
+         아니다. 예전엔 알림함에 쌓였다. 조용히 넘기고 기록만 남긴다.
+    */
+    if (INFO_NOTICE.test(text) && !/승인|입금|출금|이체|취소/.test(text)) {
+      ignored.push(item);
+      continue;
+    }
+
+    /*
+      2) 대중교통 한 달 합계("08월 버스+지하철 이용금액은 총 48,600원") — 후불교통은 건마다 알림이
+         없고 이 합계만 온다. '대중교통비 빠른입력'(linkedTransitMonth)을 그 달 값으로 대신 채운다:
+         그 달 기록이 있으면 금액을 바꾸고(카드값은 차액만), 없으면 그 달 말일로 새로 넣는다.
+    */
+    const tr = text.match(TRANSIT_TOTAL);
+    if (tr) {
+      const card = findCard(cards, text, pkg);
+      if (!card) { leftover.push(item); continue; }
+      const mo = Number(tr[1]);
+      const today = todayISO();
+      const y = mo > Number(today.slice(5, 7)) ? Number(today.slice(0, 4)) - 1 : Number(today.slice(0, 4));
+      const tKey = `${y}-${String(mo).padStart(2, "0")}`;
+      const total = Number(tr[2].replace(/,/g, ""));
+      const was = expenses.find((e) => e.linkedTransitMonth === tKey);
+      const delta = total - Number(was?.amount || 0);
+      /*
+        **이미 낸 카드값에 들어 있던 금액이면 카드값은 안 건드린다**(사용자 설명 — "1일에 결제하고
+        1~2일 지난 다음에, 결제한 전달 안에 포함돼 있던 대중교통 금액을 알려준다"). 이번 달에 그
+        카드의 결제 확인(paidAtMs)이 이미 있고 합계가 지난달 것이면, 그 돈은 방금 낸 청구에 들어
+        있었다 → 기록(카테고리·내역용)만 남긴다. 아직 안 냈으면 예전처럼 카드값에 더한다.
+      */
+      const paidAt = cards.find((c) => c.id === card.id)?.paidAtMs;
+      const paidThisMonth = !!paidAt && keyOf(new Date(paidAt - new Date(paidAt).getTimezoneOffset() * 6e4).toISOString()) === keyOf(today);
+      const alreadyBilled = paidThisMonth && tKey < keyOf(today);
+      if (alreadyBilled) {
+        if (was) expenses = expenses.map((e) => (e.id === was.id ? { ...e, amount: total, cardId: card.id, auto: true } : e));
+        else {
+          const last = new Date(y, mo, 0).getDate();
+          const cat = (data.categories || []).find((c) => /교통/.test(c.name))?.id || null;
+          expenses = [...expenses, { id: "e" + (Date.now() + registered.length), amount: total, categoryId: cat, date: `${tKey}-${String(last).padStart(2, "0")}`,
+            memo: "대중교통", paymentMethod: "card", cardId: card.id, linkedBalanceId: null, linkedTransitMonth: tKey, auto: true }];
+        }
+        transits.push({ item, card: card.name, month: mo, total, delta: 0, paid: true });
+        continue;
+      }
+      if (was) {
+        expenses = expenses.map((e) => (e.id === was.id ? { ...e, amount: total, cardId: card.id, auto: true } : e));
+        // 원래 다른 카드에 달려 있었으면 그 카드에서 빼고 이 카드에 전액
+        if (was.cardId && was.cardId !== card.id) {
+          cards = cards.map((c) => (c.id === was.cardId ? { ...c, bill: Math.max(0, Number(c.bill || 0) - Number(was.amount)) }
+            : c.id === card.id ? { ...c, bill: Number(c.bill || 0) + total } : c));
+        } else {
+          cards = cards.map((c) => (c.id === card.id ? { ...c, bill: Math.max(0, Number(c.bill || 0) + delta) } : c));
+        }
+      } else {
+        const last = new Date(y, mo, 0).getDate();
+        const cat = (data.categories || []).find((c) => /교통/.test(c.name))?.id || null;
+        expenses = [...expenses, { id: "e" + (Date.now() + registered.length), amount: total, categoryId: cat, date: `${tKey}-${String(last).padStart(2, "0")}`,
+          memo: "대중교통", paymentMethod: "card", cardId: card.id, linkedBalanceId: null, linkedTransitMonth: tKey, auto: true }];
+        cards = cards.map((c) => (c.id === card.id ? { ...c, bill: Number(c.bill || 0) + total } : c));
+      }
+      transits.push({ item, card: card.name, month: mo, total, delta: was ? delta : total });
+      continue;
+    }
+
+    /*
+      3) 카드값 결제 확인("[현대 코스트코] 김*혁님 09/02 841,510원이 입금되었습니다") — 카드사가
+         내 결제를 받았다는 뜻이다. 통장 입금이 아니다(예전엔 입금으로 보고 통장을 못 골라 알림함에
+         남았다). 카드는 1일~말일 사용분이 다음 달에 청구되므로, 결제가 확인되면 남는 건 **이번 달
+         사용분**이다 → 그 카드의 카드값을 이번 달 기록 합으로 맞춘다. 나눠 내서 두 번 와도 결과가
+         같다. 통장에서 나간 쪽은 은행 출금 알림이 따로 적는다.
+         은행 입금과 헷갈리지 않게 — 보낸 곳이 카드사로 가려지고(앞 이름·보낸 앱), 그 이름의 통장이
+         없고, '잔액'이 없을 때만.
+    */
+    if (CARD_PAID.test(text) && !/잔액/.test(text) && (issuerOf(pkg) || issuerOfHead(text))) {
+      const card = findCard(cards, text, pkg);
+      const acc = findAccount(data.accounts, text, pkg);
+      if (card && !acc) {
+        const mKey = keyOf(r.date || todayISO());
+        // 지난달 날짜의 결제 확인이 늦게 들어오면(알림창을 다시 훑을 때) 카드값을 그 달 사용분으로
+        // 되돌려 버린다 — 이번 달 결제 확인만 반영하고 지난 것은 넘긴다
+        if (mKey !== keyOf(todayISO())) { ignored.push(item); continue; }
+        const monthUse = expenses
+          .filter((e) => (e.paymentMethod || "cash") === "card" && e.cardId === card.id && !e.isReceivable && keyOf(e.date) === mKey)
+          .reduce((s, e) => s + Number(e.amount), 0);
+        const before = Number(cards.find((c) => c.id === card.id)?.bill || 0);
+        cards = cards.map((c) => (c.id === card.id ? { ...c, bill: monthUse, paidAtMs: Date.now() } : c));
+        settled.push({ item, card: card.name, paid: amount, before, after: monthUse });
+        continue;
+      }
     }
 
     /*
@@ -907,7 +1014,7 @@ export function autoRecordPayments(data, items, held = []) {
     || balanceEntries !== (data.balanceEntries || balanceEntries0) || fixedExpenses !== (data.fixedExpenses || fixedExpenses0)
     || accounts !== (data.accounts || accounts0);
   if (!changed) {
-    return { next: data, registered, leftover, dropped, undone, skipped, synced };
+    return { next: data, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored };
   }
   return {
     next: { ...data, expenses, cards, balanceEntries, fixedExpenses, ...(accounts !== accounts0 ? { accounts } : {}) },
@@ -917,5 +1024,8 @@ export function autoRecordPayments(data, items, held = []) {
     undone,
     skipped,
     synced,
+    settled,
+    transits,
+    ignored,
   };
 }
