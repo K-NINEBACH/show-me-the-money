@@ -36,6 +36,26 @@ export function HomeView({ ctx }) {
   const short = left < 0;
   const bankKnown = accountBalance !== 0 || (ctx.accountTotals || []).some((a) => a.bankSync);
   const daysLeft = Math.max(1, cycleLen - dayIntoCycle + 1);
+
+  /*
+    **다음 달 월급이 들어온 뒤 여유**(2026-09-14, 사용자 요청 — "다음달 급여 들어오면 얼마
+    여유분 있는지도 알고싶어"). 통장 기준 결과에 이어서:
+      월급 들어온 뒤 여유 = 통장 기준 잔여금액 + 다음 달 월급 − 다음 달 통장 고정지출
+    · 이번 달 카드 사용분(다음 달 청구)은 이미 '안 낸 카드값'에 들어 있어서 또 안 뺀다.
+    · 다음 달에 새로 쓸 카드값은 그다음 월급으로 나가니 안 넣는다 — 그래서 '카드 쓰기 전 기준'.
+    · 월급이 이미 들어왔으면(payIn) 통장 잔액에 들어 있으니 더하지 않는다.
+    월급을 안 적었고 입금도 못 찾았으면 이 부분을 안 보인다.
+  */
+  const nextM = `${Number(ctx.nextKey.slice(5, 7))}월`;
+  const after = (ctx.monthlyPay || ctx.payIn) && bankKnown
+    ? {
+        month: nextM,
+        pay: ctx.payIn ? 0 : ctx.nextPay,
+        tag: ctx.payIn ? `${Number(ctx.payIn.date.slice(5, 7))}/${Number(ctx.payIn.date.slice(8, 10))} 들어옴 · 통장 잔액에 포함` : "예상",
+        fixed: ctx.nextFixedCash,
+        value: left + (ctx.payIn ? 0 : ctx.nextPay) - ctx.nextFixedCash,
+      }
+    : null;
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
   const [budgetOpen, setBudgetOpen] = useState(false);
   const budgetRef = useRef(null);
@@ -64,7 +84,7 @@ export function HomeView({ ctx }) {
       <PayCard T={T} ctx={ctx} daysLeft={daysLeft} />
       <div style={{ height: 10 }} />
       <LeftoverCard T={T} balance={accountBalance} cardBill={cardBillTotal} fixed={unpaidFixedSum} pending={ctx.payPending}
-        left={left} short={short} bankKnown={bankKnown} />
+        left={left} short={short} bankKnown={bankKnown} after={after} />
 
       {unpaidFixed.length > 0 && (
         <button onClick={goToUnpaid}
@@ -124,7 +144,7 @@ function EqRow({ T, label, amount, sign, note, tag }) {
   );
 }
 
-function EqResult({ T, label, shortLabel, value }) {
+function EqResult({ T, label, shortLabel, value, size = 28 }) {
   const short = value < 0;
   return (
     <>
@@ -133,7 +153,7 @@ function EqResult({ T, label, shortLabel, value }) {
         <span style={{ color: short ? T.danger : T.good, fontSize: 15.5, fontWeight: 700 }}>
           <span aria-hidden="true" style={{ display: "inline-block", width: "1.1em" }}>=</span>{short ? shortLabel : label}
         </span>
-        <span style={{ color: short ? T.danger : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: 28, fontWeight: 700, lineHeight: 1.15 }}>
+        <span style={{ color: short ? T.danger : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: size, fontWeight: 700, lineHeight: 1.15 }}>
           {short ? "-" : ""}{fmtWon(Math.abs(value))}
         </span>
       </div>
@@ -178,7 +198,7 @@ function PayCard({ T, ctx, daysLeft }) {
 }
 
 /* 통장 − (안 낸 카드값 + 안 나간 고정지출) = 잔여금액. 식을 줄마다 그대로 적는다 */
-function LeftoverCard({ T, balance, cardBill, fixed, pending, left, short, bankKnown }) {
+function LeftoverCard({ T, balance, cardBill, fixed, pending, left, short, bankKnown, after }) {
   const row = (label, amount, sign) => <EqRow T={T} label={label} amount={amount} sign={sign} />;
   return (
     <section aria-label="지금 통장 기준" style={cardBox(T, short)}>
@@ -197,6 +217,17 @@ function LeftoverCard({ T, balance, cardBill, fixed, pending, left, short, bankK
             ? "카드값·고정지출을 내면 통장이 모자라요"
             : "카드값·고정지출을 다 내도 통장이 남아요"}
       </div>
+      {after && (
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${T.border}` }}>
+          <div style={cardTitle(T)}>{after.month} 월급 들어온 뒤<span style={{ color: T.muted, fontWeight: 400 }}> · 위 결과에 이어서</span></div>
+          <EqRow T={T} label={`${after.month} 월급`} amount={after.pay} sign="+" tag={after.tag} />
+          <EqRow T={T} label={`${after.month} 통장 고정지출`} amount={after.fixed} sign="−" />
+          <EqResult T={T} label="월급 들어온 뒤 여유" shortLabel="월급 들어와도 모자라는 돈" value={after.value} size={24} />
+          <div style={{ color: after.value < 0 ? T.danger : T.muted, fontSize: 12.5, marginTop: 6, textAlign: "end" }}>
+            {after.month}에 카드 쓰기 전 기준 · {after.month} 카드값은 그다음 월급으로
+          </div>
+        </div>
+      )}
     </section>
   );
 }
