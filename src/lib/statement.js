@@ -1,4 +1,4 @@
-import { fixedInfo, monthKeyOffset } from "./data";
+import { fixedInfo, monthKeyOffset, daysInMonthKey } from "./data";
 
 /*
   **카드 명세서로 맞추기**(2026-09-14).
@@ -118,10 +118,11 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now(), opt
     그래서 명세서의 "할부(4/12) 96,418" 줄로 같은 카드·같은 개월 수·같은 회차의 할부를 찾아 그 달
     금액을 고친다(overrides — 지난 달 기록은 안 건드린다). 줄에 '이용금액 972,000'과 '수수료
     15,418'이 있으면 남은 회차도 계산해 넣는다:
-      원금 = 이용금액 ÷ 개월(끝수는 마지막 회차), 수수료율 = 이번 수수료 ÷ 이번 회차 전 남은 원금,
-      다음 회차 = 원금 + 남은 원금 × 수수료율.
+      원금 = 이용금액 ÷ 개월(끝수는 마지막 회차 — 카드사가 청구원금·잔액을 주면 그걸로),
+      다음 회차 = 원금 + 남은 원금 × 하루 율 × 그 회차 기간 날수(아래 '날수만큼' 참고).
     수수료가 없으면(무이자) 남은 회차도 이번 금액으로 둔다.
   */
+  const card0 = (data.cards || []).find((c) => c.id === cardId);
   let fixedExpenses = data.fixedExpenses || [];
   let prepaidInstall = 0;
   let prepaidKey = key(to);
@@ -154,12 +155,25 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now(), opt
     const overrides = { ...(hit.overrides || {}), [hitKey]: r.amount };
     const P = givenP || (total ? Math.floor(total / n) : 0);
     const remainingBefore = givenP && after ? after + givenP : total - P * (k - 1);
-    const rate = fee && remainingBefore > 0 && P ? fee / remainingBefore : 0;
+    /*
+      **수수료는 날수만큼 붙는다**(2026-09-15, 사용자: "매달 일수가 28~31일인 거에 따라서 금액이 조금씩
+      올라갔다가 떨어졌다가 하는 거 같던데"). 수수료 = 남은 원금 × 하루 율 × 그 회차 기간의 날수.
+      이번 줄로 하루 율을 구하고(수수료 ÷ (이번 회차 전 남은 원금 × 이번 기간 날수)), 남은 회차는 각자 날수로 낸다.
+      기간 날수 — 결제일에서 다음 결제일까지:
+        · 한 달 일찍 내는 카드(롯데): 앱 달 M의 할부를 M월 결제일에 낸다 → 앞 달(M−1)의 날수
+          (9/15에 낸 9월 몫 = 8/15~9/15 = 31일)
+        · 제때 내는 카드(현대): 앱 달 M의 할부를 M+1월 결제일에 낸다 → 그 달(M)의 날수
+    */
+    const early = !!opts.prepaid || !!card0?.earlyPay;
+    const daysFor = (mk) => daysInMonthKey(early ? monthKeyOffset(mk, -1) : mk);
+    const perDay = fee && remainingBefore > 0 && P ? fee / (remainingBefore * daysFor(hitKey)) : 0;
     for (let j = 1; k + j <= n; j++) {
+      const mk = monthKeyOffset(hitKey, j);
       const remBefore = remainingBefore - P * j;
       const principal = k + j === n ? remBefore : Math.min(P, remBefore);
-      overrides[monthKeyOffset(hitKey, j)] = rate ? principal + Math.round(remBefore * rate) : r.amount;
+      overrides[mk] = perDay ? principal + Math.round(remBefore * perDay * daysFor(mk)) : r.amount;
     }
+    const rate = perDay;
     if (opts.prepaid) prepaidInstall += r.amount;
     prepaidKey = hitKey;
     const before = fixedInfo(hit, hitKey).amount;
