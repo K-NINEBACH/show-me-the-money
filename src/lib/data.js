@@ -35,7 +35,8 @@ export function migrate(raw) {
   if (!THEMES[d.theme]) d.theme = "dark";
   if (Array.isArray(raw.cards) && raw.cards.length) {
     // installPaid({"2026-09": 낸 할부 몫} — 결제하기로 낸 이번 달 할부)와 paidAtMs(마지막으로 카드값을
-    // 낸 시각 — 그 전 지출을 지우거나 고쳐도 지금 카드값을 안 흔든다), 둘 다 2026-09-13, 선택 칸이라 그대로 넘긴다
+    // 낸 시각 — 그 전 지출을 지우거나 고쳐도 지금 카드값을 안 흔든다), 둘 다 2026-09-13, 선택 칸이라 그대로 넘긴다.
+    // earlyPay(할부를 한 달 일찍 내는 카드 — 롯데, 2026-09-15)도 선택 칸
     d.cards = raw.cards.map((c) => ({ bill: 0, ...c }));
   } else {
     let legacyBill = 0;

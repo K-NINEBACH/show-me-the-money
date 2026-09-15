@@ -779,7 +779,19 @@ export function autoRecordPayments(data, items, held = []) {
           .filter((e) => (e.paymentMethod || "cash") === "card" && e.cardId === card.id && !e.isReceivable && keyOf(e.date) === mKey)
           .reduce((s, e) => s + Number(e.amount), 0);
         const before = Number(cards.find((c) => c.id === card.id)?.bill || 0);
-        cards = cards.map((c) => (c.id === card.id ? { ...c, bill: monthUse, paidAtMs: Date.now() } : c));
+        /*
+          할부를 한 달 일찍 내는 카드(earlyPay, 롯데카드)면 이번 결제에 **이번 달 할부 몫**이 들어 있다 —
+          원래 다음 달 결제일에 낼 것을 지금 냈다. 그 몫을 낸 것으로 적어(installPaid) 안 낸 카드값에서 뺀다.
+          제때 내는 카드는 이번 결제가 지난달 것이라 이번 달 할부는 아직이다.
+        */
+        const early = cards.find((c) => c.id === card.id)?.earlyPay;
+        const monthInstall = early
+          ? fixedExpenses.filter((f) => (f.paymentMethod || "cash") === "card" && f.totalMonths > 0 && f.cardId === card.id)
+              .map((f) => fixedInfo(f, mKey)).filter((i) => i.active).reduce((s, i) => s + Number(i.amount), 0)
+          : 0;
+        cards = cards.map((c) => (c.id === card.id
+          ? { ...c, bill: monthUse, paidAtMs: Date.now(), ...(early && monthInstall ? { installPaid: { [mKey]: monthInstall } } : {}) }
+          : c));
         settled.push({ item, card: card.name, paid: amount, before, after: monthUse });
         continue;
       }

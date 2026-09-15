@@ -219,7 +219,8 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
       <div style={line} />
       <Row bold sign="−" label="안 낸 카드값" amount={cardBill} />
       {cardTotals.map((c) => (
-        <Row key={c.id} label={c.name} amount={c.total} tag={c.fixedPortion > 0 ? `할부 ${fmtWon(c.fixedPortion)} 포함` : null} />
+        <Row key={c.id} label={c.name} amount={c.total}
+          tag={c.earlyPay && c.installPaid?.[ctx.curKey] ? "이번 달 할부 미리 냄" : c.fixedPortion > 0 ? `할부 ${fmtWon(c.fixedPortion)} 포함` : null} />
       ))}
       <Row bold sign="−" label={`${top.curMonth} 남은 고정지출`} amount={unpaidFixedSum} strong={unpaidFixed.length ? T.warn : null} />
       {unpaidFixed.length > 0 && <div style={{ color: T.muted, fontSize: 12, paddingInlineStart: "1.2em", lineHeight: 1.5 }}>{fixedNames}</div>}

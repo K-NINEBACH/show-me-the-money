@@ -1,9 +1,11 @@
 // Claude → 휴대폰 앱: 옮겨 적은 명세서를 받기 코드로 잠가 public/drops/<해시>.json 에 넣는다(src/lib/drop.js와 짝).
-// 사용: node tools/drop-send.mjs <받기코드> <카드이름조각> <명세서.txt> [메모]
+// 사용: node tools/drop-send.mjs <받기코드> <카드이름조각> <명세서.txt> [메모] [--prepaid]
+//   --prepaid : 결제일 전에 미리 다 낸 명세서(롯데카드처럼 할부를 한 달 일찍 내는 경우)
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-const [, , rawCode, card, file, note = ""] = process.argv;
+const prepaid = process.argv.includes("--prepaid");
+const [, , rawCode, card, file, note = ""] = process.argv.filter((a) => a !== "--prepaid");
 if (!rawCode || !card || !file) { console.error("사용: node drop-send.mjs <받기코드> <카드이름조각> <명세서.txt>"); process.exit(1); }
 // 이 파일(tools/) 한 칸 위가 앱 폴더
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -18,7 +20,7 @@ const iv = crypto.getRandomValues(new Uint8Array(12));
 const base = await subtle.importKey("raw", enc.encode(code), "PBKDF2", false, ["deriveKey"]);
 const key = await subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
 const text = fs.readFileSync(file, "utf8");
-const msg = { id: "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), at: new Date().toISOString(), kind: "statement", card, text, note };
+const msg = { id: "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), at: new Date().toISOString(), kind: "statement", card, text, note, prepaid };
 const data = await subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(JSON.stringify(msg)));
 const b64 = (u) => Buffer.from(u).toString("base64");
 const out = path.join(APP, "public", "drops", `${hash}.json`);

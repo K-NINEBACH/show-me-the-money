@@ -52,7 +52,14 @@ function guessCategory(categories, merchant) {
   return null;
 }
 
-export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now()) {
+/*
+  opts.prepaid — **이 명세서를 결제일 전에 미리 다 냈다**(2026-09-15, 롯데카드). 사용자는 롯데카드 할부를 한 달
+  일찍 낸다: "원래대로 결제하면 원금은 같은데 이자가 한 달치 더 붙어서, 한 달 일찍 내면 원금 + 이자 절반 정도만
+  나온다." 그러면 그 달 할부 몫은 이미 낸 것(installPaid)이고, 명세서의 일시불도 같이 냈으니 카드값엔 그 뒤 기록만
+  남는다. 카드에 earlyPay를 표시해 두면, 다음 달부터 결제 확인 문자가 올 때 그 달 할부를 낸 것으로 처리한다
+  (auto-record.js CARD_PAID).
+*/
+export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now(), opts = {}) {
   // 명세서 안의 결제·취소 짝은 서로 지운다
   const rows = [...rowsIn];
   for (const neg of rowsIn.filter((r) => r.amount < 0)) {
@@ -63,9 +70,11 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now()) {
   const buys = rows.filter((r) => r.amount > 0 && !r.installment).sort((a, b) => a.date.localeCompare(b.date));
   const refunds = rows.filter((r) => r.amount < 0);
   const installs = rows.filter((r) => r.installment && r.amount > 0);
-  if (!buys.length) return null;
-  const from = buys[0].date;
-  const to = buys[buys.length - 1].date;
+  if (!buys.length && !installs.length) return null;
+  // 할부만 있는 명세서(롯데카드 — 일시불 없이 할부 한 줄)면 기간을 오늘로 둔다
+  const localDay = (ms) => { const t = new Date(ms); t.setMinutes(t.getMinutes() - t.getTimezoneOffset()); return t.toISOString().slice(0, 10); };
+  const from = buys.length ? buys[0].date : localDay(nowMs);
+  const to = buys.length ? buys[buys.length - 1].date : localDay(nowMs);
   const key = (iso) => iso.slice(0, 7);
 
   const onCard = (e) => (e.paymentMethod || "cash") === "card" && e.cardId === cardId && !e.isReceivable;
@@ -92,7 +101,8 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now()) {
   }
 
   // 명세서 기간 안인데 명세서에 없는 앱 기록. 정기결제 카드반영은 아직 청구 전일 수 있어 뺀다
-  const extra = (data.expenses || []).filter((e) => onCard(e) && !used.has(e.id) && !e.isCardAdjustment && e.date >= from && e.date <= to);
+  // 일시불 줄이 없는 명세서면 기간을 몰라 '명세서에 없는 기록'을 가리지 않는다
+  const extra = buys.length ? (data.expenses || []).filter((e) => onCard(e) && !used.has(e.id) && !e.isCardAdjustment && e.date >= from && e.date <= to) : [];
   const pendingAdj = (data.expenses || []).filter((e) => onCard(e) && !used.has(e.id) && e.isCardAdjustment && e.date >= from && e.date <= to);
   const afterEnd = (data.expenses || []).filter((e) => onCard(e) && !used.has(e.id) && e.date > to);
 
@@ -113,6 +123,8 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now()) {
     수수료가 없으면(무이자) 남은 회차도 이번 금액으로 둔다.
   */
   let fixedExpenses = data.fixedExpenses || [];
+  let prepaidInstall = 0;
+  let prepaidKey = key(to);
   const installFixes = [];
   const installMissing = [];
   for (const r of installs) {
@@ -135,14 +147,21 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now()) {
     const num = (re) => { const x = r.merchant.match(re); return x ? Number(x[1].replace(/,/g, "")) : 0; };
     const total = num(/이용\s*금액\s*([\d,]+)/);
     const fee = num(/수수료\s*([\d,]+)/);
+    // 카드사가 '청구원금'과 '결제 후 잔액'을 알려 주면 그걸 쓴다 — 원금이 이용금액÷개월과 백 원 단위로 다를 수 있다
+    // (롯데: 44,600,000÷60 = 743,333인데 청구원금 743,300)
+    const givenP = num(/원금\s*([\d,]+)/);
+    const after = num(/잔액\s*([\d,]+)/);
     const overrides = { ...(hit.overrides || {}), [hitKey]: r.amount };
-    const P = total ? Math.floor(total / n) : 0;
-    const remainingBefore = total - P * (k - 1);
-    const rate = total && fee && remainingBefore > 0 ? fee / remainingBefore : 0;
+    const P = givenP || (total ? Math.floor(total / n) : 0);
+    const remainingBefore = givenP && after ? after + givenP : total - P * (k - 1);
+    const rate = fee && remainingBefore > 0 && P ? fee / remainingBefore : 0;
     for (let j = 1; k + j <= n; j++) {
-      const principal = k + j === n ? total - P * (n - 1) : P;
-      overrides[monthKeyOffset(hitKey, j)] = rate ? principal + Math.round((total - P * (k - 1 + j)) * rate) : r.amount;
+      const remBefore = remainingBefore - P * j;
+      const principal = k + j === n ? remBefore : Math.min(P, remBefore);
+      overrides[monthKeyOffset(hitKey, j)] = rate ? principal + Math.round(remBefore * rate) : r.amount;
     }
+    if (opts.prepaid) prepaidInstall += r.amount;
+    prepaidKey = hitKey;
     const before = fixedInfo(hit, hitKey).amount;
     fixedExpenses = fixedExpenses.map((f) => (f.id === hit.id ? { ...f, overrides } : f));
     const nextAmt = k < n ? overrides[monthKeyOffset(hitKey, 1)] : null;
@@ -176,22 +195,31 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now()) {
 
   const sum = (list, get = (x) => Number(x.amount)) => list.reduce((s, x) => s + get(x), 0);
   const statementBill = sum(buys) + sum(refunds);
-  const bill = Math.max(0, statementBill + sum(afterEnd) + sum(pendingAdj));
+  // 미리 다 냈으면 명세서 일시불도 낸 것 — 카드값엔 그 뒤 기록만
+  const bill = Math.max(0, (opts.prepaid ? 0 : statementBill) + sum(afterEnd) + (opts.prepaid ? 0 : sum(pendingAdj)));
   const card = (data.cards || []).find((c) => c.id === cardId);
+  const cardPatch = (c) => {
+    const next = { ...c, bill, paidAtMs: nowMs };
+    if (opts.prepaid) {
+      next.earlyPay = true;
+      if (prepaidInstall) next.installPaid = { [prepaidKey]: prepaidInstall };
+    }
+    return next;
+  };
 
   return {
     summary: {
       rows: rows.length, from, to, statementTotal: sum(rows), statementBill, installTotal: sum(installs),
       matched: matched.length, added: added.length, addedSum: sum(added),
       extra, afterEndSum: sum(afterEnd), pendingAdjSum: sum(pendingAdj), billBefore: Number(card?.bill || 0), billAfter: bill,
-      installFixes, installMissing,
+      installFixes, installMissing, prepaid: !!opts.prepaid, prepaidInstall,
     },
     next: {
       ...data,
       expenses: [...(data.expenses || []), ...added],
       fixedExpenses,
       // 카드값을 확정한 시각 — 이보다 먼저 만든 기록을 지우거나 고쳐도 카드값을 안 흔든다(Ledger paidBefore)
-      cards: (data.cards || []).map((c) => (c.id === cardId ? { ...c, bill, paidAtMs: nowMs } : c)),
+      cards: (data.cards || []).map((c) => (c.id === cardId ? cardPatch(c) : c)),
     },
   };
 }

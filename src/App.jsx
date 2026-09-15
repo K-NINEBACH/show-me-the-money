@@ -328,12 +328,12 @@ function AppInner() {
             continue;
           }
           const card = hits[0];
-          const plan = reconcileStatement(d, card.id, parseStatement(m.text));
+          const plan = reconcileStatement(d, card.id, parseStatement(m.text), Date.now(), { prepaid: !!m.prepaid });
           if (!plan) { done.push(m.id); continue; }
           d = plan.next;
           const s = plan.summary;
           const inst = s.installFixes.map((f) => `${f.name} ${Number(f.after).toLocaleString("ko-KR")}원`).join(", ");
-          logs.push({ at: Date.now(), id: m.id, text: `${card.name} 명세서 ${s.rows}건(${s.statementTotal.toLocaleString("ko-KR")}원) — ${s.added}건 넣고 카드값 ${s.billAfter.toLocaleString("ko-KR")}원으로${inst ? ` · 할부 ${inst}` : ""}${s.extra.length ? ` · 명세서에 없는 앱 기록 ${s.extra.length}건(${s.extra.map((e) => `${e.date.slice(5)} ${e.memo || ""} ${Number(e.amount).toLocaleString("ko-KR")}원`).join(", ")})` : ""}` });
+          logs.push({ at: Date.now(), id: m.id, text: `${card.name} ${s.prepaid ? "미리 낸 " : ""}명세서 ${s.rows}건(${s.statementTotal.toLocaleString("ko-KR")}원) — ${s.added}건 넣고 카드값 ${s.billAfter.toLocaleString("ko-KR")}원으로${inst ? ` · 할부 ${inst}` : ""}${s.prepaid ? " · 이번 달 할부는 낸 것으로" : ""}${s.extra.length ? ` · 명세서에 없는 앱 기록 ${s.extra.length}건(${s.extra.map((e) => `${e.date.slice(5)} ${e.memo || ""} ${Number(e.amount).toLocaleString("ko-KR")}원`).join(", ")})` : ""}` });
           notes.push(`${card.name} 명세서를 맞췄어요(${s.added}건 넣음)`);
           done.push(m.id);
         }
@@ -540,10 +540,18 @@ function AppInner() {
     .map((f) => fixedInfo(f, nextKey))
     .filter((i) => i.active)
     .reduce((s, i) => s + Number(i.amount), 0);
-  const cardInstallThisMonth = fixedCardInstallment.reduce((s, f) => s + Number(f.info.amount), 0);
+  /*
+    할부를 한 달 일찍 내는 카드(earlyPay — 롯데카드)는 이번 달 할부를 이번 달에 이미 통장에서 낸다. 그래서
+    '통장 없이 월급만으로'에선 이번 달 몫 대신 **다음 달 몫**을 다음 달 월급이 낸다.
+  */
+  const earlyCardIds = new Set(cards.filter((c) => c.earlyPay).map((c) => c.id));
+  const cardInstallThisMonth = fixedCardInstallment.filter((f) => !earlyCardIds.has(f.cardId)).reduce((s, f) => s + Number(f.info.amount), 0);
+  const earlyNextInstall = data.fixedExpenses
+    .filter((f) => (f.paymentMethod || "cash") === "card" && f.totalMonths > 0 && earlyCardIds.has(f.cardId))
+    .map((f) => fixedInfo(f, nextKey)).filter((i) => i.active).reduce((s, i) => s + Number(i.amount), 0);
   const cardRecurThisMonth = fixedCardRecurring.reduce((s, f) => s + Number(f.info.amount), 0);
   const cardThisMonth = cardSpentThisCycle + cardInstallThisMonth + cardRecurThisMonth;
-  const payLeft = nextPay - nextFixedCash - cardThisMonth;
+  const payLeft = nextPay - nextFixedCash - cardThisMonth - earlyNextInstall;
   // 이번 달 몫 월급(지난달 말~이번 달 초)이 아직 안 들어왔으면, 통장 식은 곧 들어올 그 돈을 더해서 본다
   const prevPayIn = findPayDeposit(data.balanceEntries, monthlyPay, prevKey);
   const payPending = monthlyPay > 0 && !prevPayIn && dayIntoCycle <= 5 ? monthlyPay : 0;
