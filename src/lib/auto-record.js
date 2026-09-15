@@ -1,4 +1,5 @@
 import { parsePaymentText, todayISO, fixedInfo } from "./data";
+import { reprojectInstallment } from "./statement";
 
 /*
   결제 알림을 사람 확인 없이 바로 기록으로 넣는 자리.
@@ -55,8 +56,12 @@ const INFO_NOTICE = /결제\s*금액|결제\s*예정|명세서|청구\s*금액|�
 /* 대중교통 한 달 합계 "08월 버스+지하철 이용금액은 총 48,600원" */
 const TRANSIT_TOTAL = /(\d{1,2})\s*월\s*(?:버스|지하철|대중교통)[^\d]{0,12}?이용\s*금액은?\s*총?\s*([\d,]+)\s*원/;
 
-/* 카드값 결제 확인 "841,510원이 입금되었습니다" — 카드사가 내 결제를 받았다 */
-const CARD_PAID = /입금\s*(?:되었습니다|되었어요|완료|처리)|결제\s*(?:되었습니다|완료)|수납/;
+/*
+  카드값 결제 확인 "841,510원이 입금되었습니다" — 카드사가 내 결제를 받았다.
+  **그냥 '결제 완료'는 안 된다**(2026-09-16) — 카드 앱 승인 알림도 "결제 완료"라고 올 수 있어서, 그걸 결제
+  확인으로 보면 카드값이 엉뚱하게 비워진다. 입금·즉시결제·선결제·카드대금 말이 있어야 하고 '승인'이 없어야 한다.
+*/
+const CARD_PAID = /입금\s*(?:되었습니다|되었어요|완료|처리)|(?:즉시|선)\s*결제\s*(?:가|이)?\s*(?:되었습니다|완료|처리)|(?:카드\s*)?대금\s*(?:이|가)?\s*(?:결제|출금|납부)|수납/;
 
 /*
   광고 문자 — 법으로 '(광고)'를 달게 돼 있다. "(광고) 결제 시 3,000원 할인"은 금액과
@@ -140,7 +145,7 @@ const ISSUERS = [
   { re: /viva|toss/, keys: ["토스"] },
   { re: /ibk|ionebank|i-one/, keys: ["기업", "IBK", "ibk"] },
   { re: /hyundaicard/, keys: ["현대"] },
-  { re: /lottecard/, keys: ["롯데"] },
+  { re: /lottecard|lcac/, keys: ["롯데"] }, // 롯데카드 앱 패키지는 com.lcacApp
   { re: /samsungcard/, keys: ["삼성"] },
   { re: /bccard/, keys: ["비씨", "BC"] },
   { re: /citibank/, keys: ["씨티"] },
@@ -640,6 +645,56 @@ export function autoRecordPayments(data, items, held = []) {
   const keyOf = (iso) => String(iso).slice(0, 7);
 
   /* 고정지출을 처리 완료로 표시한다 — 버튼을 누른 것과 같은 효과 */
+  /*
+    **카드값을 낸 것으로 맞춘다** — 카드사 결제 확인 문자(아래 3)나 통장 출금 알림의 '○○카드'(은행 쪽)에서 부른다.
+    카드는 1일~말일 사용분이 다음 달 청구라, 결제가 확인되면 남는 건 이번 달 사용분이다 → 카드값 = 이번 달 기록 합.
+    지난달 날짜면(늦게 읽힌 것) 안 한다 — 카드값을 그 달 사용분으로 되돌려 버린다.
+
+    할부를 한 달 일찍 내는 카드(earlyPay, 롯데)면 이번 결제에 **이번 달 할부 몫**이 들어 있다(원래 다음 달에 낼 것).
+    그 몫을 낸 것으로 적고(installPaid), 할부가 하나면 **낸 금액 − 이번 달 일시불 = 그 달 할부 실제 금액**으로 보고
+    그 달 금액을 바꾸고 남은 회차를 다시 계산한다(reprojectInstallment). 예상과 15% 넘게 다르면(일부만 냈거나 다른
+    결제가 섞였으면) 금액은 안 바꾸고 낸 것으로만 둔다. 제때 내는 카드는 이번 결제가 지난달 몫이라 할부는 아직이다.
+  */
+  const settleCard = (card, dateISO, paid, item) => {
+    const mKey = keyOf(dateISO);
+    if (mKey !== keyOf(todayISO())) return false;
+    const monthUse = expenses
+      .filter((e) => (e.paymentMethod || "cash") === "card" && e.cardId === card.id && !e.isReceivable && keyOf(e.date) === mKey)
+      .reduce((s2, e) => s2 + Number(e.amount), 0);
+    const cur = cards.find((c) => c.id === card.id);
+    const before = Number(cur?.bill || 0);
+    let installPaid = null;
+    let fixedNote = null;
+    if (cur?.earlyPay) {
+      const insts = fixedExpenses.filter((f) => (f.paymentMethod || "cash") === "card" && f.totalMonths > 0 && f.cardId === card.id && fixedInfo(f, mKey).active);
+      const planned = insts.reduce((s2, f) => s2 + Number(fixedInfo(f, mKey).amount), 0);
+      installPaid = planned;
+      if (insts.length === 1) {
+        const actual = paid - monthUse;
+        if (actual > 0 && Math.abs(actual - planned) <= planned * 0.15) {
+          const f = insts[0];
+          fixedExpenses = fixedExpenses.map((x) => (x.id === f.id ? reprojectInstallment(x, mKey, actual) : x));
+          installPaid = actual;
+          fixedNote = { name: f.name, before: planned, after: actual };
+        }
+      }
+    }
+    cards = cards.map((c) => (c.id === card.id
+      ? { ...c, bill: monthUse, paidAtMs: Date.now(), ...(installPaid ? { installPaid: { [mKey]: installPaid } } : {}) }
+      : c));
+    settled.push({ item, card: card.name, paid, before, after: monthUse, fixedNote });
+    return true;
+  };
+
+  /* 통장 출금 알림에 '롯데카드'·'현대카드'처럼 등록한 카드가 찍혀 있으면 그 카드 결제다 — 딱 한 장일 때만 */
+  const cardNamedIn = (text) => {
+    const hits = cards.filter((c) => {
+      const iss = issuerOfName(c.name);
+      return iss && iss.keys.some((k) => new RegExp(`${k}\\s*카드`).test(text));
+    });
+    return hits.length === 1 ? hits[0] : null;
+  };
+
   const markPaid = (fixedId, markerId, key) => {
     fixedExpenses = fixedExpenses.map((x) =>
       x.id === fixedId
@@ -767,32 +822,12 @@ export function autoRecordPayments(data, items, held = []) {
          은행 입금과 헷갈리지 않게 — 보낸 곳이 카드사로 가려지고(앞 이름·보낸 앱), 그 이름의 통장이
          없고, '잔액'이 없을 때만.
     */
-    if (CARD_PAID.test(text) && !/잔액/.test(text) && (issuerOf(pkg) || issuerOfHead(text))) {
+    if (CARD_PAID.test(text) && !/잔액|승인/.test(text) && (issuerOf(pkg) || issuerOfHead(text))) {
       const card = findCard(cards, text, pkg);
       const acc = findAccount(data.accounts, text, pkg);
       if (card && !acc) {
-        const mKey = keyOf(r.date || todayISO());
-        // 지난달 날짜의 결제 확인이 늦게 들어오면(알림창을 다시 훑을 때) 카드값을 그 달 사용분으로
-        // 되돌려 버린다 — 이번 달 결제 확인만 반영하고 지난 것은 넘긴다
-        if (mKey !== keyOf(todayISO())) { ignored.push(item); continue; }
-        const monthUse = expenses
-          .filter((e) => (e.paymentMethod || "cash") === "card" && e.cardId === card.id && !e.isReceivable && keyOf(e.date) === mKey)
-          .reduce((s, e) => s + Number(e.amount), 0);
-        const before = Number(cards.find((c) => c.id === card.id)?.bill || 0);
-        /*
-          할부를 한 달 일찍 내는 카드(earlyPay, 롯데카드)면 이번 결제에 **이번 달 할부 몫**이 들어 있다 —
-          원래 다음 달 결제일에 낼 것을 지금 냈다. 그 몫을 낸 것으로 적어(installPaid) 안 낸 카드값에서 뺀다.
-          제때 내는 카드는 이번 결제가 지난달 것이라 이번 달 할부는 아직이다.
-        */
-        const early = cards.find((c) => c.id === card.id)?.earlyPay;
-        const monthInstall = early
-          ? fixedExpenses.filter((f) => (f.paymentMethod || "cash") === "card" && f.totalMonths > 0 && f.cardId === card.id)
-              .map((f) => fixedInfo(f, mKey)).filter((i) => i.active).reduce((s, i) => s + Number(i.amount), 0)
-          : 0;
-        cards = cards.map((c) => (c.id === card.id
-          ? { ...c, bill: monthUse, paidAtMs: Date.now(), ...(early && monthInstall ? { installPaid: { [mKey]: monthInstall } } : {}) }
-          : c));
-        settled.push({ item, card: card.name, paid: amount, before, after: monthUse });
+        if (settleCard(card, r.date || todayISO(), amount, item)) continue;
+        ignored.push(item);
         continue;
       }
     }
@@ -870,10 +905,17 @@ export function autoRecordPayments(data, items, held = []) {
         syncBank(item, acc.id, text, bDate, time, null);
         continue;
       }
+      /*
+        **통장에서 '○○카드'로 나간 돈은 그 카드의 카드값 결제다**(2026-09-16). 카드사 결제 확인 문자가 없어도
+        (롯데는 한 달 일찍 즉시결제를 한다) 기업은행 출금 알림 "[출금] 850,367원 롯데카드"로 알 수 있다.
+        통장 기록은 그대로 두고, 그 카드도 낸 것으로 맞춘다.
+      */
+      const paidCard = dir === "out" && amount >= 1000 ? cardNamedIn(text) : null;
       if (alreadyInLedger(balanceEntries, { amount, date: bDate, type: dir, accountId: acc.id, time })
         || (dir === "out" && paidFixedHit(fixedExpenses, { amount, isCard: false, accountId: acc.id, text }, bKey))) {
         skipped.push(item);
         syncBank(item, acc.id, text, bDate, time, null);
+        if (paidCard) settleCard(paidCard, bDate, amount, item);
         continue;
       }
 
@@ -905,6 +947,7 @@ export function autoRecordPayments(data, items, held = []) {
       if (hitOut) markPaid(hitOut.fixed.id, entryId, bKey);
       registered.push(entry);
       syncBank(item, acc.id, text, bDate, time, entry);
+      if (paidCard) settleCard(paidCard, bDate, amount, item);
       continue;
     }
 

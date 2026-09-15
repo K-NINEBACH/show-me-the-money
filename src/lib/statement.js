@@ -1,4 +1,4 @@
-import { fixedInfo, monthKeyOffset, daysInMonthKey } from "./data";
+import { fixedInfo, monthKeyOffset, daysInMonthKey, monthsBetweenKeys } from "./data";
 
 /*
   **카드 명세서로 맞추기**(2026-09-14).
@@ -177,7 +177,9 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now(), opt
     if (opts.prepaid) prepaidInstall += r.amount;
     prepaidKey = hitKey;
     const before = fixedInfo(hit, hitKey).amount;
-    fixedExpenses = fixedExpenses.map((f) => (f.id === hit.id ? { ...f, overrides } : f));
+    // 다음 달부터 낸 금액으로 다시 맞출 수 있게 계산 바탕을 남긴다(reprojectInstallment)
+    const instPlan = P && remainingBefore > 0 ? { P, base: remainingBefore, baseKey: hitKey, perDay, early } : hit.instPlan;
+    fixedExpenses = fixedExpenses.map((f) => (f.id === hit.id ? { ...f, overrides, ...(instPlan ? { instPlan } : {}) } : f));
     const nextAmt = k < n ? overrides[monthKeyOffset(hitKey, 1)] : null;
     installFixes.push({ name: hit.name, month: hitKey, label: `${k}/${n}`, before, after: r.amount, nextAmt, projected: !!rate });
   }
@@ -236,4 +238,38 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now(), opt
       cards: (data.cards || []).map((c) => (c.id === cardId ? cardPatch(c) : c)),
     },
   };
+}
+
+/*
+  **낸 금액으로 할부를 다시 맞춘다**(2026-09-16, 롯데카드 — "좀 더 자동으로").
+
+  명세서를 한 번 맞추면 할부에 계산 바탕(instPlan: 원금 P, 기준 달의 남은 원금, 하루 율, 한 달 일찍 내는지)이
+  남는다. 그 뒤로는 결제 확인(통장 출금 알림의 '롯데카드'나 카드사 문자)으로 **실제 낸 금액**만 알면
+    · 그 달 금액 = 낸 금액
+    · 하루 율 = (낸 금액 − 원금) ÷ (그 회차 전 남은 원금 × 그 기간 날수) 로 다시 구하고
+    · 남은 회차를 새 율과 각자 날수로 다시 계산한다.
+  캡처 없이 매달 스스로 맞아 간다. 계산 바탕이 없으면 그 달 금액만 바꾼다.
+*/
+export function reprojectInstallment(f, mk, actual) {
+  const plan = f.instPlan;
+  const info = fixedInfo(f, mk);
+  if (!info.active) return f;
+  const overrides = { ...(f.overrides || {}), [mk]: actual };
+  if (!plan?.P) return { ...f, overrides };
+  const daysFor = (x) => daysInMonthKey(plan.early ? monthKeyOffset(x, -1) : x);
+  const j = monthsBetweenKeys(plan.baseKey, mk);
+  const remBefore = plan.base - plan.P * j;
+  if (remBefore <= 0) return { ...f, overrides };
+  const principal = info.installment === Number(f.totalMonths) ? remBefore : Math.min(plan.P, remBefore);
+  const fee = actual - principal;
+  const perDay = fee > 0 ? fee / (remBefore * daysFor(mk)) : plan.perDay;
+  for (let t = 1; t < 400; t++) {
+    const m2 = monthKeyOffset(mk, t);
+    const i2 = fixedInfo(f, m2);
+    if (!i2.active) break;
+    const rb = remBefore - plan.P * t;
+    const pr = i2.installment === Number(f.totalMonths) ? rb : Math.min(plan.P, rb);
+    overrides[m2] = perDay ? pr + Math.round(rb * perDay * daysFor(m2)) : actual;
+  }
+  return { ...f, overrides, instPlan: { ...plan, perDay } };
 }

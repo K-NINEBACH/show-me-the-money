@@ -216,7 +216,7 @@ function AppInner() {
         : gone.has(i) ? "결제·취소 짝이라 안 넣음"
         : skip.has(i) ? "이미 적힌 거래라 넘김"
         : quiet.has(i) ? "명세서·결제금액 안내라 넘김"
-        : paidOf.has(i) ? `카드값 결제 확인 → ${paidOf.get(i).card} 카드값을 이번 달 사용분으로`
+        : paidOf.has(i) ? `카드값 결제 확인 → ${paidOf.get(i).card} 카드값을 이번 달 사용분으로${paidOf.get(i).fixedNote ? ` · ${paidOf.get(i).fixedNote.name} ${paidOf.get(i).fixedNote.after.toLocaleString("ko-KR")}원으로(남은 회차 다시 계산)` : ""}`
         : transitOf.has(i) ? `${transitOf.get(i).month}월 대중교통 합계 반영${transitOf.get(i).paid ? " · 이미 낸 카드값이라 카드값은 그대로" : ""}`
         : isCancelText(i.text) ? "취소 → 기록 되돌림" : "자동 기록함")
         + (syncOf.has(i) ? ` · 잔액을 은행과 맞춤(${won(syncOf.get(i).diff)})` : ""),
@@ -233,7 +233,8 @@ function AppInner() {
     if (dropped.length) msgs.push(`결제 후 취소된 ${Math.round(dropped.length / 2)}건은 넣지 않았어요`);
     if (skipped.length) msgs.push(`이미 적힌 거래 ${skipped.length}건은 넘겼어요`);
     for (const s of settled.filter((x, i, a) => a.findIndex((y) => y.card === x.card) === i)) {
-      msgs.push(`${s.card} 카드값 결제를 확인했어요 · 남은 카드값 ${settled.filter((y) => y.card === s.card).slice(-1)[0].after.toLocaleString("ko-KR")}원`);
+      const last = settled.filter((y) => y.card === s.card).slice(-1)[0];
+      msgs.push(`${s.card} 카드값 결제를 확인했어요 · 남은 카드값 ${last.after.toLocaleString("ko-KR")}원${last.fixedNote ? ` · ${last.fixedNote.name} ${last.fixedNote.after.toLocaleString("ko-KR")}원` : ""}`);
     }
     for (const t of transits) {
       msgs.push(t.paid
