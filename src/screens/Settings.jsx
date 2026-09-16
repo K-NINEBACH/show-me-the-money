@@ -5,7 +5,7 @@ import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn } from "../lib/t
 import { fmtWon, migrate, todayISO } from "../lib/data";
 import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings, diagnostics, openBatterySettings, requestSmsAccess } from "../lib/native";
 import { ALERT_LOG_KEY } from "../lib/constants";
-import { dropCode, showCode, dropLog } from "../lib/drop";
+import { dropCode, showCode, dropLog, dropState } from "../lib/drop";
 import { parsePaymentText } from "../lib/data";
 import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../components/common";
 
@@ -82,8 +82,10 @@ export function SettingsView({ ctx }) {
   const [newAccountBalance, setNewAccountBalance] = useState("");
   const [payInput, setPayInput] = useState(String(data.monthlyPay || ""));
   const [code] = useState(() => dropCode());
-  // 설정을 열 때마다 새로 읽는다 — 앱이 방금 적용한 것이 바로 보이게
+  // 설정을 열 때마다(그리고 '지금 받기' 뒤에) 새로 읽는다 — 앱이 방금 적용한 것이 바로 보이게
+  const [, setTick] = useState(0);
   const drops = dropLog();
+  const state = dropState();
   const [showExport, setShowExport] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
@@ -328,6 +330,17 @@ export function SettingsView({ ctx }) {
         <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
           처음 한 번 이 코드를 Claude에게 알려 주세요. 그다음부턴 카드 앱 명세서 캡처만 보여 주면 Claude가 옮겨 적어
           이 코드로 잠가 올리고, 앱을 열 때 알아서 맞춰요(빠진 결제 넣기·카드값·할부 금액). 코드 없이는 아무도 못 열어요.
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+          <span style={{ flex: 1, minWidth: 0, color: T.muted, fontSize: 12.5, lineHeight: 1.5 }}>
+            {state
+              ? `받은편지함 · ${state.step}${state.total != null ? ` (올라온 것 ${state.total}건, 새로 ${state.fresh}건, 이미 넣음 ${state.already}건${state.locked ? `, 다른 코드 ${state.locked}건` : ""})` : ""} · ${ago(state.at)}`
+              : "받은편지함 · 아직 확인한 적 없음"}
+          </span>
+          <button onClick={() => { window.dispatchEvent(new Event("passbook-native-resume")); setTimeout(() => setTick((n) => n + 1), 1500); showToast("지금 받아 봤어요"); }}
+            style={{ minHeight: 40, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13.5, cursor: "pointer" }}>
+            지금 받기
+          </button>
         </div>
         {drops.length > 0 && (
           <div style={{ marginTop: 8 }}>

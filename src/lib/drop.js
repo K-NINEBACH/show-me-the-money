@@ -54,20 +54,37 @@ export async function fetchDrops() {
   if (!globalThis.crypto?.subtle) return [];
   const code = dropCode();
   let res;
-  try { res = await fetch(await dropPath(code), { cache: "no-store" }); } catch { return []; }
-  if (!res.ok) return [];
+  try { res = await fetch(await dropPath(code), { cache: "no-store" }); } catch (e) { note({ step: "못 받음(인터넷·주소)", err: String(e?.message || e) }); return []; }
+  if (!res.ok) { note({ step: res.status === 404 ? "받을 게 없음(아직 안 올렸거나 코드가 다름)" : `받기 실패(${res.status})` }); return []; }
   let box;
-  try { box = await res.json(); } catch { return []; }
+  try { box = await res.json(); } catch { note({ step: "파일을 못 읽음(주소가 앱 화면을 돌려줌)" }); return []; }
   let applied = [];
   try { applied = JSON.parse(localStorage.getItem(DROP_APPLIED_KEY) || "[]"); } catch { applied = []; }
   const out = [];
+  let locked = 0;
+  let already = 0;
   for (const msg of box?.messages || []) {
     try {
       const m = await open(code, msg);
-      if (m?.id && !applied.includes(m.id)) out.push(m);
-    } catch { /* 다른 코드로 잠긴 것·깨진 것은 건너뛴다 */ }
+      if (!m?.id) continue;
+      if (applied.includes(m.id)) already++;
+      else out.push(m);
+    } catch { locked++; }
   }
+  note({ step: "받음", total: (box?.messages || []).length, fresh: out.length, already, locked });
   return out.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+}
+
+/*
+  **무엇이 어디서 막혔는지 남긴다**(2026-09-16). 보낸 건 있는데 앱에 안 들어왔을 때, 못 받은 건지·코드가 다른 건지·
+  이미 적용한 건지 볼 수 있어야 한다(설정 → Claude가 대신 넣기).
+*/
+export const DROP_STATE_KEY = "passbook-drop-state-v1";
+function note(state) {
+  try { localStorage.setItem(DROP_STATE_KEY, JSON.stringify({ ...state, at: Date.now() })); } catch { /* 못 적어도 앱은 돈다 */ }
+}
+export function dropState() {
+  try { return JSON.parse(localStorage.getItem(DROP_STATE_KEY) || "null"); } catch { return null; }
 }
 
 export function markApplied(ids, logRows) {
