@@ -113,6 +113,38 @@ export function openNotificationSettings() {
   }
 }
 
+/* ── 위젯·알림에 쓸 요약 (1.3부터) ──────────────────────────────────────── */
+
+/**
+ * 홈 맨 위 숫자를 껍데기에 넘긴다. 껍데기는 이걸로 **홈 화면 위젯**을 그리고,
+ * **아침 알림**("오늘은 N원까지")을 띄우고, 월급을 넘어선 순간 **경고**를 띄운다.
+ *
+ * 숫자는 웹이 낸다(App.jsx ctx). 네이티브가 가계부 형식을 알면 웹이 바뀔 때마다
+ * 같이 고쳐야 하고, 그러면 위젯 숫자와 화면 숫자가 갈라진다.
+ * 모양: { canSpend, perDay, daysLeft, payLeft, bankLeft, hasPay, bankKnown, month }
+ */
+export function pushSummary(s) {
+  const b = bridge();
+  if (!b?.summary) return false;
+  try {
+    b.summary(JSON.stringify(s));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 위젯·알림 상태(1.3부터): { notify, widgets, lastDaily } · 옛 껍데기면 null */
+export function widgetState() {
+  const b = bridge();
+  if (!b?.widgetState) return null;
+  try {
+    return JSON.parse(b.widgetState() || "null");
+  } catch {
+    return null;
+  }
+}
+
 /* ── 자동 백업 ────────────────────────────────────────────────────────── */
 
 /**

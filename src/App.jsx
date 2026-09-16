@@ -4,7 +4,7 @@ import { STORAGE_KEY, INBOX_KEY, SEEN_KEY, SEEN_DEAL_KEY, ALERT_LOG_KEY } from "
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
 import { defaultData, migrate, autoProcessFixed, repairMisdatedAuto, findPayDeposit, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
 import { NavBtn } from "./components/common";
-import { pullPendingPayments, saveBackup, inNativeApp } from "./lib/native";
+import { pullPendingPayments, saveBackup, inNativeApp, pushSummary } from "./lib/native";
 import { autoRecordPayments, isCancelText, dealKey } from "./lib/auto-record";
 import { fetchDrops, markApplied } from "./lib/drop";
 import { parseStatement, reconcileStatement } from "./lib/statement";
@@ -33,6 +33,23 @@ const Onboarding = lazy(() => import("./screens/Gates").then((m) => ({ default: 
 const MonthWrapUp = lazy(() => import("./screens/Gates").then((m) => ({ default: m.MonthWrapUp })));
 const CalendarView = lazy(() => import("./screens/Calendar").then((m) => ({ default: m.CalendarView })));
 const SettingsView = lazy(() => import("./screens/Settings").then((m) => ({ default: m.SettingsView })));
+
+/*
+  **위젯·아침 알림에 쓸 요약을 껍데기에 넘긴다**(2026-09-17, 껍데기 1.3부터).
+
+  사용자의 핵심은 "굳이 추가적인 제스처나 행동 없이 한눈에". 마지막까지 남아 있던 행동이
+  '앱을 여는 것'이었다. 숫자가 바뀔 때마다 넘겨 두면 껍데기가 홈 화면 위젯을 그리고,
+  아침에 "오늘은 N원까지"를 알리고, 월급을 넘어선 순간 경고를 띄운다.
+  **숫자는 웹이 낸다** — 네이티브가 가계부 형식을 알면 계산이 두 벌이 되고 반드시 갈라진다.
+
+  화면이 없는 컴포넌트인 이유: 이 값들은 로딩·온보딩 게이트 **뒤**에서 만들어지는데,
+  그 자리에 useEffect를 쓰면 렌더마다 훅 수가 달라져 앱이 통째로 죽는다(React #310).
+*/
+function NativeSummary({ s }) {
+  const key = JSON.stringify(s);
+  useEffect(() => { pushSummary(JSON.parse(key)); }, [key]);
+  return null;
+}
 
 export default function App() {
   return (
@@ -565,6 +582,19 @@ function AppInner() {
   const prevPayIn = findPayDeposit(data.balanceEntries, monthlyPay, prevKey);
   const payPending = monthlyPay > 0 && !prevPayIn && dayIntoCycle <= 5 ? monthlyPay : 0;
 
+  /*
+    **홈의 큰 숫자를 여기서 낸다**(2026-09-17). 위젯과 아침 알림도 같은 값을 써야 해서다 —
+    화면 안에서 계산하면 네이티브로 넘길 때 한 벌 더 만들게 되고, 두 벌은 언젠가 반드시 갈라진다.
+      지금 통장으로 다 내면(bankLeft) = 통장 + 아직 안 들어온 이번 달 월급 − 안 낸 카드값 − 안 나간 고정지출
+      카드로 더 써도 되는 돈(canSpend) = bankLeft + 다음 달 월급 − 다음 달 고정지출(통장 + 카드)
+  */
+  const bankLeft = accountBalance + payPending - cardBillTotal - unpaidFixedSum;
+  const canSpend = bankLeft + (payIn ? 0 : nextPay) - nextFixedCash - nextFixedCard;
+  const daysLeft = Math.max(1, cycleLen - dayIntoCycle + 1);
+  const perDay = Math.floor(Math.max(0, canSpend) / daysLeft);
+  const bankKnown = accountBalance !== 0 || accountTotals.some((a) => a.bankSync);
+  const hasPay = !!(monthlyPay || payIn);
+
   const processedSpent = spent - unpaidFixedSum;
   const realRemaining = spendingGoal - processedSpent;
   const realBudgetRatio = hasGoal ? Math.min(processedSpent / spendingGoal, 1.2) : (processedSpent > 0 ? 1.2 : 0);
@@ -573,6 +603,7 @@ function AppInner() {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
     nextKey, monthlyPay, payIn, nextPay, nextFixedCash, nextFixedCard, cardSpentThisCycle, cardInstallThisMonth, cardRecurThisMonth, cardThisMonth, payLeft, payPending,
+    bankLeft, canSpend, daysLeft, perDay, bankKnown, hasPay,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,
     pendingText, clearPendingText: () => setPendingText(null),
     // 번호가 아니라 알림 자체(문구+받은 시각)로 지운다 — 목록은 15초마다 늘고 자동 처리로
@@ -590,6 +621,7 @@ function AppInner() {
   return (
     <ThemeContext.Provider value={T}>
       <div style={S.appShell}>
+        <NativeSummary s={{ canSpend, perDay, daysLeft, payLeft, bankLeft, hasPay, bankKnown, month: Number(nextKey.slice(5, 7)) }} />
         <main style={S.screen}>
           {tab === "home" && <HomeView ctx={ctx} />}
           {tab === "add" && <AddView ctx={ctx} />}

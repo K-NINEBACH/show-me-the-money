@@ -3,7 +3,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, migrate, todayISO } from "../lib/data";
-import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings, diagnostics, openBatterySettings, requestSmsAccess } from "../lib/native";
+import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings, diagnostics, openBatterySettings, requestSmsAccess, widgetState } from "../lib/native";
 import { ALERT_LOG_KEY } from "../lib/constants";
 import { dropCode, showCode, dropLog, dropState, resetApplied } from "../lib/drop";
 import { parsePaymentText } from "../lib/data";
@@ -98,8 +98,8 @@ export function SettingsView({ ctx }) {
     건지, 껍데기가 못 잡은 건지, 잡았는데 앱이 안 가져간 건지 구분이 안 돼서
     어디를 고쳐야 할지도 모른다.
   */
-  const [noti, setNoti] = useState(() => ({ access: hasNotificationAccess(), pending: pendingCount(), diag: diagnostics() }));
-  const refreshNoti = () => setNoti({ access: hasNotificationAccess(), pending: pendingCount(), diag: diagnostics() });
+  const [noti, setNoti] = useState(() => ({ access: hasNotificationAccess(), pending: pendingCount(), diag: diagnostics(), widget: widgetState() }));
+  const refreshNoti = () => setNoti({ access: hasNotificationAccess(), pending: pendingCount(), diag: diagnostics(), widget: widgetState() });
   const exportJson = JSON.stringify(data, null, 2);
   const doExport = () => {
     setShowExport(true); setShowImport(false);
@@ -449,6 +449,25 @@ export function SettingsView({ ctx }) {
                 아직 안 가져온 알림 ·{" "}
                 <span style={{ fontWeight: 700 }}>{noti.pending === null ? "알 수 없음" : `${noti.pending}건`}</span>
               </div>
+              {/*
+                위젯·알림(1.3). 숫자는 앱을 열 때 넘어가므로, 위젯이 몇 개 붙어 있고
+                아침 알림이 실제로 떴는지를 그대로 적는다 — '될 것이다'가 아니라 '됐다'를 보여 준다.
+              */}
+              {noti.widget && (
+                <>
+                  <div>
+                    알림 띄우기 ·{" "}
+                    <span style={{ color: noti.widget.notify ? T.good : T.warn, fontWeight: 700 }}>{noti.widget.notify ? "허용됨" : "꺼짐(아침 알림·경고가 안 떠요)"}</span>
+                  </div>
+                  <div>
+                    홈 화면 위젯 ·{" "}
+                    <span style={{ color: noti.widget.widgets > 0 ? T.good : T.muted, fontWeight: 700 }}>{noti.widget.widgets > 0 ? `${noti.widget.widgets}개 붙어 있어요` : "아직 없음"}</span>
+                  </div>
+                  <div>
+                    아침 알림 · <span style={{ fontWeight: 700 }}>{noti.widget.lastDaily ? ago(noti.widget.lastDaily) : "아직 없음(매일 아침 8시)"}</span>
+                  </div>
+                </>
+              )}
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
               <button
@@ -486,6 +505,12 @@ export function SettingsView({ ctx }) {
                 </button>
               )}
             </div>
+            {/* 위젯은 앱이 못 붙인다 — 홈 화면에서 사람이 한 번 꺼내야 한다. 그 방법만 적어 둔다 */}
+            {noti.widget && noti.widget.widgets === 0 && (
+              <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, marginTop: 8 }}>
+                홈 화면을 길게 눌러 위젯 → '내돈챙겨줘'를 꺼내면, 앱을 안 열어도 오늘 쓸 수 있는 돈이 보여요.
+              </div>
+            )}
             <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, marginTop: 8 }}>
               {noti.diag && !noti.diag.connected
                 ? "알림 받기가 끊겨 있어요. 앱을 다시 열면 다시 이어요. 계속 끊기면 배터리 최적화를 끄거나, 알림 읽기 권한을 껐다 켜 주세요."

@@ -33,10 +33,11 @@ export function HomeView({ ctx }) {
       안 그러면 월급 들어오기 전 며칠 동안 통장이 모자라다고 겁을 준다.
     · 통장 잔액은 은행 알림의 잔액으로 저절로 맞춰진다(auto-record.js syncBank).
   */
-  const left = accountBalance + ctx.payPending - cardBillTotal - unpaidFixedSum;
+  // 식은 App.jsx의 ctx에 있다 — 위젯·아침 알림이 같은 숫자를 쓰기 위해서다(2026-09-17)
+  const left = ctx.bankLeft;
   const short = left < 0;
-  const bankKnown = accountBalance !== 0 || (ctx.accountTotals || []).some((a) => a.bankSync);
-  const daysLeft = Math.max(1, cycleLen - dayIntoCycle + 1);
+  const bankKnown = ctx.bankKnown;
+  const daysLeft = ctx.daysLeft;
 
   /*
     **맨 위 한 장 — 다음 달 월급 기준, 통장까지 합쳐서**(2026-09-14, 사용자 선택).
@@ -54,7 +55,7 @@ export function HomeView({ ctx }) {
       작은 줄로 남긴다.
   */
   const nextM = `${Number(ctx.nextKey.slice(5, 7))}월`;
-  const hasPay = !!(ctx.monthlyPay || ctx.payIn);
+  const hasPay = ctx.hasPay;
   const top = {
     month: nextM,
     curMonth: `${Number(curKey.slice(5, 7))}월`,
@@ -62,7 +63,7 @@ export function HomeView({ ctx }) {
     tag: ctx.payIn ? `${Number(ctx.payIn.date.slice(5, 7))}/${Number(ctx.payIn.date.slice(8, 10))} 들어옴 · 통장 잔액에 포함` : "예상",
     fixedCash: ctx.nextFixedCash,
     fixedCard: ctx.nextFixedCard,
-    value: left + (ctx.payIn ? 0 : ctx.nextPay) - ctx.nextFixedCash - ctx.nextFixedCard,
+    value: ctx.canSpend,
   };
   /*
     **한눈에 — 누르지 않고 다 보이게**(2026-09-14, 사용자: "굳이 추가적인 제스처나 행동, 입력 없이
@@ -158,7 +159,7 @@ const cardTitle = (T) => ({ color: T.goldSoft, fontSize: 13.5, fontWeight: 700, 
 function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
   const v = top.value;
   const short = hasPay && v < 0;
-  const perDay = Math.floor(Math.max(0, v) / daysLeft);
+  const perDay = ctx.perDay;
   const signed = (n) => `${n < 0 ? "-" : ""}${fmtWon(Math.abs(n))}`;
   return (
     <section aria-label="카드로 더 써도 되는 돈" style={{ ...cardBox(T, short), padding: "12px 16px" }}>
