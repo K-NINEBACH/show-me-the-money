@@ -5,7 +5,7 @@ import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn } from "../lib/t
 import { fmtWon, migrate, todayISO } from "../lib/data";
 import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings, diagnostics, openBatterySettings, requestSmsAccess } from "../lib/native";
 import { ALERT_LOG_KEY } from "../lib/constants";
-import { dropCode, showCode, dropLog, dropState } from "../lib/drop";
+import { dropCode, showCode, dropLog, dropState, resetApplied } from "../lib/drop";
 import { parsePaymentText } from "../lib/data";
 import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../components/common";
 
@@ -340,6 +340,11 @@ export function SettingsView({ ctx }) {
           <button onClick={() => { window.dispatchEvent(new Event("passbook-native-resume")); setTimeout(() => setTick((n) => n + 1), 1500); showToast("지금 받아 봤어요"); }}
             style={{ minHeight: 40, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13.5, cursor: "pointer" }}>
             지금 받기
+          </button>
+          {/* 옛 화면이 못 읽고 '적용함'으로 적어 버린 것을 되살리는 자리 — 맞추기는 두 번 해도 같다 */}
+          <button onClick={() => { resetApplied(); window.dispatchEvent(new Event("passbook-native-resume")); setTimeout(() => setTick((n) => n + 1), 1500); showToast("올라온 것을 처음부터 다시 넣어 봐요"); }}
+            style={{ minHeight: 40, padding: "0 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, fontSize: 12.5, cursor: "pointer" }}>
+            다시
           </button>
         </div>
         {drops.length > 0 && (

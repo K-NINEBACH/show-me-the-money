@@ -92,8 +92,15 @@ export function markApplied(ids, logRows) {
     const applied = JSON.parse(localStorage.getItem(DROP_APPLIED_KEY) || "[]");
     localStorage.setItem(DROP_APPLIED_KEY, JSON.stringify([...applied, ...ids].slice(-200)));
     const log = JSON.parse(localStorage.getItem(DROP_LOG_KEY) || "[]");
-    localStorage.setItem(DROP_LOG_KEY, JSON.stringify([...log, ...logRows].slice(-30)));
+    // 적용 못 한 것은 다시 받을 때마다 같은 줄을 또 적으므로(앱을 볼 때마다 몇 번씩) 같은 줄은 한 번만 남긴다
+    const fresh = logRows.filter((r) => !log.some((o) => o.id === r.id && o.text === r.text));
+    localStorage.setItem(DROP_LOG_KEY, JSON.stringify([...log, ...fresh].slice(-30)));
   } catch { /* 못 적어도 앱은 돈다 — 다음에 또 적용하려 들면 명세서 맞추기는 두 번 해도 같다 */ }
+}
+
+/* 올라온 것을 처음부터 다시 적용하게 — '적용함' 표시만 지운다(명세서 맞추기는 두 번 해도 같다) */
+export function resetApplied() {
+  try { localStorage.removeItem(DROP_APPLIED_KEY); } catch { /* 못 지워도 앱은 돈다 */ }
 }
 
 export function dropLog() {

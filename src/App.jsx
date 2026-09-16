@@ -329,8 +329,16 @@ function AppInner() {
             continue;
           }
           const card = hits[0];
+          /*
+            **못 읽었으면 '적용함'으로 적지 않는다**(2026-09-16). 옛 화면(할부만 있는 명세서를 못 읽던 판)이
+            그 파일을 먼저 받아 넘기면서 적용함으로 적어 버렸고, 새 화면이 된 뒤엔 '이미 넣음'으로 건너뛰어
+            롯데 할부가 영영 안 들어갔다. 못 읽은 건 남겨 두고 다음에 다시 해 본다.
+          */
           const plan = reconcileStatement(d, card.id, parseStatement(m.text), Date.now(), { prepaid: !!m.prepaid });
-          if (!plan) { done.push(m.id); continue; }
+          if (!plan) {
+            logs.push({ at: Date.now(), id: m.id, text: `${card.name} 명세서를 못 읽었어요 — 다음에 다시 해 봐요` });
+            continue;
+          }
           d = plan.next;
           const s = plan.summary;
           const inst = s.installFixes.map((f) => `${f.name} ${Number(f.after).toLocaleString("ko-KR")}원`).join(", ");
