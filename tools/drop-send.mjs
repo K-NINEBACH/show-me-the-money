@@ -1,12 +1,37 @@
 // Claude → 휴대폰 앱: 옮겨 적은 명세서를 받기 코드로 잠가 public/drops/<해시>.json 에 넣는다(src/lib/drop.js와 짝).
 // 사용: node tools/drop-send.mjs <받기코드> <카드이름조각> <명세서.txt> [메모] [--prepaid]
 //   --prepaid : 결제일 전에 미리 다 낸 명세서(롯데카드처럼 할부를 한 달 일찍 내는 경우)
+//
+// 카드값만 카드 앱 숫자로 맞추기(명세서 줄 없이):
+//   node tools/drop-send.mjs <받기코드> <카드이름조각> --bill <금액> [메모] [--install <할부이름>:<YYYY-MM>:<금액>]
+//   카드 앱의 '결제 예정 금액'을 그대로 넣는 자리다. 일부 결제·리볼빙처럼 앱 계산이 못 따라갈 때 쓴다.
+//   --bill 금액에는 **할부 몫을 빼고** 넣는다 — 할부는 고정지출로 따로 세므로 넣으면 두 번 잡힌다.
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-const prepaid = process.argv.includes("--prepaid");
-const [, , rawCode, card, file, note = ""] = process.argv.filter((a) => a !== "--prepaid");
-if (!rawCode || !card || !file) { console.error("사용: node drop-send.mjs <받기코드> <카드이름조각> <명세서.txt>"); process.exit(1); }
+
+const argv = process.argv.slice(2);
+const flag = (name) => {
+  const i = argv.indexOf(name);
+  return i >= 0 ? argv[i + 1] : null;
+};
+const prepaid = argv.includes("--prepaid");
+const billArg = flag("--bill");
+const installArg = flag("--install");
+// 값을 가진 옵션과 그 값은 자리 인자에서 뺀다
+const skip = new Set();
+for (const n of ["--bill", "--install"]) {
+  const i = argv.indexOf(n);
+  if (i >= 0) { skip.add(i); skip.add(i + 1); }
+}
+const pos = argv.filter((a, i) => !skip.has(i) && a !== "--prepaid");
+const [rawCode, card, third, fourth] = pos;
+
+if (!rawCode || !card || (!billArg && !third)) {
+  console.error("사용: node drop-send.mjs <받기코드> <카드이름조각> <명세서.txt> [메모] [--prepaid]");
+  console.error("      node drop-send.mjs <받기코드> <카드이름조각> --bill <금액> [메모] [--install 이름:YYYY-MM:금액]");
+  process.exit(1);
+}
 // 이 파일(tools/) 한 칸 위가 앱 폴더
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const code = rawCode.toUpperCase().replace(/[^A-Z2-9]/g, "");
@@ -19,8 +44,26 @@ const salt = crypto.getRandomValues(new Uint8Array(16));
 const iv = crypto.getRandomValues(new Uint8Array(12));
 const base = await subtle.importKey("raw", enc.encode(code), "PBKDF2", false, ["deriveKey"]);
 const key = await subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
-const text = fs.readFileSync(file, "utf8");
-const msg = { id: "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), at: new Date().toISOString(), kind: "statement", card, text, note, prepaid };
+
+const id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+let msg;
+if (billArg) {
+  const bill = Number(String(billArg).replace(/[^\d]/g, ""));
+  if (!Number.isFinite(bill)) { console.error("--bill 금액을 못 읽었어요:", billArg); process.exit(1); }
+  let install = null;
+  if (installArg) {
+    const [name, month, amount] = String(installArg).split(":");
+    if (!name || !/^\d{4}-\d{2}$/.test(month || "") || !Number(amount)) {
+      console.error("--install 은 이름:YYYY-MM:금액 모양이어야 해요:", installArg); process.exit(1);
+    }
+    install = { name, month, amount: Number(String(amount).replace(/[^\d]/g, "")) };
+  }
+  msg = { id, at: new Date().toISOString(), kind: "cardbill", card, bill, install, memo: third || "" };
+  console.log(`카드값 맞추기: ${card} → ${bill.toLocaleString("ko-KR")}원${install ? ` · ${install.name} ${install.month} ${install.amount.toLocaleString("ko-KR")}원` : ""}`);
+} else {
+  const text = fs.readFileSync(third, "utf8");
+  msg = { id, at: new Date().toISOString(), kind: "statement", card, text, note: fourth || "", prepaid };
+}
 const data = await subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(JSON.stringify(msg)));
 const b64 = (u) => Buffer.from(u).toString("base64");
 const out = path.join(APP, "public", "drops", `${hash}.json`);

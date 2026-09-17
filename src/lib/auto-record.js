@@ -658,6 +658,16 @@ export function autoRecordPayments(data, items, held = []) {
   const settleCard = (card, dateISO, paid, item) => {
     const mKey = keyOf(dateISO);
     if (mKey !== keyOf(todayISO())) return false;
+    /*
+      **같은 결제를 두 길로 받아도 한 번만 반영한다**(2026-09-17). 카드사 결제 확인 문자와
+      통장 출금 알림('○○카드')이 둘 다 온다. 예전엔 결과가 '이번 달 사용분으로 다시 잡기'라
+      두 번 해도 같았지만, 이제 일부 결제는 낸 만큼 빼므로 두 번 빼면 카드값이 반으로 준다.
+    */
+    const prev = cards.find((c) => c.id === card.id);
+    if ((prev?.paidLog || []).some((p) => Number(p.amount) === Number(paid) && Date.now() - Number(p.at) < 36 * 3600 * 1000)) {
+      dupPaid.push(item);
+      return true;
+    }
     const monthUse = expenses
       .filter((e) => (e.paymentMethod || "cash") === "card" && e.cardId === card.id && !e.isReceivable && keyOf(e.date) === mKey)
       .reduce((s2, e) => s2 + Number(e.amount), 0);
@@ -679,18 +689,43 @@ export function autoRecordPayments(data, items, held = []) {
         }
       }
     }
+    /*
+      **전액을 냈는지 일부만 냈는지 가른다**(2026-09-17, 사용자: "현대카드 일부를 먼저 결제했는데
+      앱에서 인식을 제대로 못했어").
+
+      예전엔 결제 확인이 오면 무조건 카드값을 '이번 달 사용분'으로 다시 잡았다. 청구된 걸 전액
+      냈다면 맞지만, 일부만 내거나 미리 조금 낸 경우엔 아직 낼 돈이 남았는데 없어져 버린다.
+      이번 달 사용분을 뺀 나머지(청구돼 있던 몫)와 낸 금액이 비슷하면 전액 결제로 보고 예전처럼
+      다시 잡고, 아니면 **낸 만큼만 뺀다**.
+
+      한 달 일찍 내는 카드(롯데)는 청구액을 통째로 미리 내는 방식이라 늘 전액이다(위 installPaid).
+    */
+    const oldBill = before - monthUse;
+    const full = !!cur?.earlyPay || (oldBill > 0 && Math.abs(paid - oldBill) <= Math.max(10000, oldBill * 0.05));
+    const after = full ? monthUse : Math.max(0, before - paid);
+    const paidLog = [...(prev?.paidLog || []), { at: Date.now(), amount: paid }].slice(-10);
     cards = cards.map((c) => (c.id === card.id
-      ? { ...c, bill: monthUse, paidAtMs: Date.now(), ...(installPaid ? { installPaid: { [mKey]: installPaid } } : {}) }
+      ? { ...c, bill: after, paidAtMs: Date.now(), paidLog, ...(installPaid ? { installPaid: { [mKey]: installPaid } } : {}) }
       : c));
-    settled.push({ item, card: card.name, paid, before, after: monthUse, fixedNote });
+    settled.push({ item, card: card.name, paid, before, after, partial: !full, fixedNote });
     return true;
   };
 
-  /* 통장 출금 알림에 '롯데카드'·'현대카드'처럼 등록한 카드가 찍혀 있으면 그 카드 결제다 — 딱 한 장일 때만 */
+  /*
+    통장 출금 알림에 '롯데카드'·'현대카드'처럼 등록한 카드가 찍혀 있으면 그 카드 결제다 — 딱 한 장일 때만.
+
+    **카드 이름의 낱말이 둘 이상 그대로 찍혀 있어도 본다**(2026-09-17). 국민은행 출금 알림이
+    "코스트코현대 오픈뱅킹출금 566,020"으로 와서 '현대카드'로는 못 찾았다. 낱말 하나('현대')만으로는
+    가맹점 이름에 붙을 수 있어 둘 이상일 때만 본다.
+  */
   const cardNamedIn = (text) => {
     const hits = cards.filter((c) => {
       const iss = issuerOfName(c.name);
-      return iss && iss.keys.some((k) => new RegExp(`${k}\\s*카드`).test(text));
+      if (iss && iss.keys.some((k) => new RegExp(`${k}\\s*카드`).test(text))) return true;
+      const words = String(c.name).split(/[^가-힣A-Za-z0-9]+/)
+        .map((w) => w.replace(/카드$/, ""))          // '현대카드(코스트코)' → 현대 · 코스트코
+        .filter((w) => w.length >= 2);
+      return words.length >= 2 && words.filter((w) => text.includes(w)).length >= 2;
     });
     return hits.length === 1 ? hits[0] : null;
   };
@@ -736,6 +771,7 @@ export function autoRecordPayments(data, items, held = []) {
   const transits = [];
   const ignored = [];
   const skipped = [];
+  const dupPaid = [];   // 같은 카드값 결제를 두 길로 받아 두 번째는 넘긴 것
 
   for (const it of all.slice(0, items.length)) {
     const { item, text, r, amount, pkg } = it;
@@ -1069,7 +1105,7 @@ export function autoRecordPayments(data, items, held = []) {
     || balanceEntries !== (data.balanceEntries || balanceEntries0) || fixedExpenses !== (data.fixedExpenses || fixedExpenses0)
     || accounts !== (data.accounts || accounts0);
   if (!changed) {
-    return { next: data, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored };
+    return { next: data, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored, dupPaid };
   }
   return {
     next: { ...data, expenses, cards, balanceEntries, fixedExpenses, ...(accounts !== accounts0 ? { accounts } : {}) },
@@ -1080,6 +1116,7 @@ export function autoRecordPayments(data, items, held = []) {
     skipped,
     synced,
     settled,
+    dupPaid,
     transits,
     ignored,
   };

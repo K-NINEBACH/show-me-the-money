@@ -7,7 +7,7 @@ import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup, inNativeApp, pushSummary } from "./lib/native";
 import { autoRecordPayments, isCancelText, dealKey } from "./lib/auto-record";
 import { fetchDrops, markApplied } from "./lib/drop";
-import { parseStatement, reconcileStatement } from "./lib/statement";
+import { parseStatement, reconcileStatement, reprojectInstallment } from "./lib/statement";
 
 /*
   받은 알림을 어떻게 처리했는지 남긴다(진단용, 최근 40건). 결제가 안 들어왔을 때
@@ -216,7 +216,7 @@ function AppInner() {
     const fresh = inbox.filter((i) => !i.checked);
     const heldBefore = inbox.filter((i) => i.checked);
     // 보류된 것도 넘긴다 — 자동으로 넣지는 않고, 결제·취소 짝을 맞출 때만 쓴다
-    const { next, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored } = autoRecordPayments(data, fresh, heldBefore);
+    const { next, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored, dupPaid } = autoRecordPayments(data, fresh, heldBefore);
     // 새로 온 것도, 치울 짝도 없으면 아무 상태도 안 바꾼다 — 안 그러면 이 효과가 끝없이 돈다
     if (fresh.length === 0 && dropped.length === 0) return;
     const keep = new Set(leftover);
@@ -227,13 +227,15 @@ function AppInner() {
     const paidOf = new Map(settled.map((s) => [s.item, s]));
     const transitOf = new Map(transits.map((s) => [s.item, s]));
     const quiet = new Set(ignored);
+    const dupSet = new Set(dupPaid || []);
     logAlerts(fresh.map((i) => ({
       text: i.text, at: i.at,
       outcome: (keep.has(i) ? "알림함에 남김(어느 카드·통장인지 모름 등)"
         : gone.has(i) ? "결제·취소 짝이라 안 넣음"
         : skip.has(i) ? "이미 적힌 거래라 넘김"
+        : dupSet.has(i) ? "이미 반영한 카드값 결제라 넘김"
         : quiet.has(i) ? "명세서·결제금액 안내라 넘김"
-        : paidOf.has(i) ? `카드값 결제 확인 → ${paidOf.get(i).card} 카드값을 이번 달 사용분으로${paidOf.get(i).fixedNote ? ` · ${paidOf.get(i).fixedNote.name} ${paidOf.get(i).fixedNote.after.toLocaleString("ko-KR")}원으로(남은 회차 다시 계산)` : ""}`
+        : paidOf.has(i) ? `카드값 ${paidOf.get(i).partial ? "일부" : "전액"} 결제 확인 → ${paidOf.get(i).card} ${Number(paidOf.get(i).before).toLocaleString("ko-KR")}원 → ${Number(paidOf.get(i).after).toLocaleString("ko-KR")}원${paidOf.get(i).fixedNote ? ` · ${paidOf.get(i).fixedNote.name} ${paidOf.get(i).fixedNote.after.toLocaleString("ko-KR")}원으로(남은 회차 다시 계산)` : ""}`
         : transitOf.has(i) ? `${transitOf.get(i).month}월 대중교통 합계 반영${transitOf.get(i).paid ? " · 이미 낸 카드값이라 카드값은 그대로" : ""}`
         : isCancelText(i.text) ? "취소 → 기록 되돌림" : "자동 기록함")
         + (syncOf.has(i) ? ` · 잔액을 은행과 맞춤(${won(syncOf.get(i).diff)})` : ""),
@@ -251,7 +253,7 @@ function AppInner() {
     if (skipped.length) msgs.push(`이미 적힌 거래 ${skipped.length}건은 넘겼어요`);
     for (const s of settled.filter((x, i, a) => a.findIndex((y) => y.card === x.card) === i)) {
       const last = settled.filter((y) => y.card === s.card).slice(-1)[0];
-      msgs.push(`${s.card} 카드값 결제를 확인했어요 · 남은 카드값 ${last.after.toLocaleString("ko-KR")}원${last.fixedNote ? ` · ${last.fixedNote.name} ${last.fixedNote.after.toLocaleString("ko-KR")}원` : ""}`);
+      msgs.push(`${s.card} 카드값 ${last.partial ? "일부 " : ""}결제를 확인했어요 · 남은 카드값 ${last.after.toLocaleString("ko-KR")}원${last.fixedNote ? ` · ${last.fixedNote.name} ${last.fixedNote.after.toLocaleString("ko-KR")}원` : ""}`);
     }
     for (const t of transits) {
       msgs.push(t.paid
@@ -339,13 +341,36 @@ function AppInner() {
         const logs = [];
         const notes = [];
         for (const m of msgs) {
-          if (m.kind !== "statement") { done.push(m.id); continue; }
+          if (m.kind !== "statement" && m.kind !== "cardbill") { done.push(m.id); continue; }
           const hits = (d.cards || []).filter((c) => String(c.name).includes(m.card));
           if (hits.length !== 1) {
-            logs.push({ at: Date.now(), id: m.id, text: `${m.card} 명세서 — 앱에서 그 카드를 못 찾아 아직 안 넣었어요` });
+            logs.push({ at: Date.now(), id: m.id, text: `${m.card} — 앱에서 그 카드를 못 찾아 아직 안 넣었어요` });
             continue;
           }
           const card = hits[0];
+          /*
+            **카드값을 카드 앱 숫자로 그대로 맞추기**(2026-09-17). 명세서 줄을 다 옮기지 않아도 되는 자리다 —
+            사용자가 카드 앱의 '결제 예정 금액'을 보여 주면 그 금액으로 맞춘다(일부 결제·리볼빙처럼 우리 계산이
+            못 따라가는 경우). 할부 몫은 카드값(bill)에 또 들어가면 두 번 세므로, 할부는 그 달 금액만 고친다.
+          */
+          if (m.kind === "cardbill") {
+            const bill = Math.max(0, Number(m.bill) || 0);
+            let fixedNote = "";
+            let fixes = d.fixedExpenses || [];
+            if (m.install && m.install.name && m.install.month && Number(m.install.amount) > 0) {
+              const f = fixes.find((x) => String(x.name).includes(m.install.name) && (x.paymentMethod || "cash") === "card" && x.cardId === card.id);
+              if (f) {
+                fixes = fixes.map((x) => (x.id === f.id ? reprojectInstallment(x, m.install.month, Number(m.install.amount)) : x));
+                fixedNote = ` · ${f.name} ${m.install.month.slice(5)}월 ${Number(m.install.amount).toLocaleString("ko-KR")}원(남은 회차 다시 계산)`;
+              }
+            }
+            const was = Number(card.bill || 0);
+            d = { ...d, fixedExpenses: fixes, cards: d.cards.map((c) => (c.id === card.id ? { ...c, bill, paidAtMs: Date.now() } : c)) };
+            logs.push({ at: Date.now(), id: m.id, text: `${card.name} 카드값을 ${was.toLocaleString("ko-KR")}원 → ${bill.toLocaleString("ko-KR")}원으로 맞췄어요${m.memo ? ` (${m.memo})` : ""}${fixedNote}` });
+            notes.push(`${card.name} 카드값을 ${bill.toLocaleString("ko-KR")}원으로 맞췄어요`);
+            done.push(m.id);
+            continue;
+          }
           /*
             **못 읽었으면 '적용함'으로 적지 않는다**(2026-09-16). 옛 화면(할부만 있는 명세서를 못 읽던 판)이
             그 파일을 먼저 받아 넘기면서 적용함으로 적어 버렸고, 새 화면이 된 뒤엔 '이미 넣음'으로 건너뛰어
