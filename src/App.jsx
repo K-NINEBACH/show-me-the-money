@@ -364,9 +364,34 @@ function AppInner() {
                 fixedNote = ` · ${f.name} ${m.install.month.slice(5)}월 ${Number(m.install.amount).toLocaleString("ko-KR")}원(남은 회차 다시 계산)`;
               }
             }
+            /*
+              **알림이 안 오는 것은 '그 달 한 줄'로 적는다**(2026-09-17, 사용자와 합의 — 대중교통·하이패스).
+              건수는 수십 건인데 알림이 없고 금액이 달마다 다르다. 같은 달 줄이 이미 있으면 새로 만들지 않고
+              금액만 갱신한다(달이 끝날 때까지 오른다). 대중교통이 이미 이 방식이다(linkedTransitMonth).
+              **카드값은 안 건드린다** — 카드값은 카드 앱 숫자로 맞춘 것이라 여기서 또 더하면 두 번 잡힌다.
+            */
+            let exps = d.expenses || [];
+            const rowNames = [];
+            let seq = 0;
+            for (const row of m.rows || []) {
+              const amount = Number(row.amount);
+              if (!row.name || !/^\d{4}-\d{2}$/.test(String(row.month || "")) || !(amount > 0)) continue;
+              const key = `${row.name}:${row.month}`;
+              const memo = `${Number(row.month.slice(5, 7))}월 ${row.name}`;
+              const prevRow = exps.find((e) => e.linkedMonthly === key);
+              if (prevRow) {
+                exps = exps.map((e) => (e.id === prevRow.id ? { ...e, amount, memo, cardId: card.id, auto: true } : e));
+              } else {
+                const last = new Date(Number(row.month.slice(0, 4)), Number(row.month.slice(5, 7)), 0).getDate();
+                const cat = (d.categories || []).find((c) => c.name === (row.category || "교통"))?.id || null;
+                exps = [...exps, { id: "e" + (Date.now() + seq++), amount, categoryId: cat, date: `${row.month}-${String(last).padStart(2, "0")}`,
+                  memo, paymentMethod: "card", cardId: card.id, linkedBalanceId: null, linkedMonthly: key, auto: true }];
+              }
+              rowNames.push(`${memo} ${amount.toLocaleString("ko-KR")}원`);
+            }
             const was = Number(card.bill || 0);
-            d = { ...d, fixedExpenses: fixes, cards: d.cards.map((c) => (c.id === card.id ? { ...c, bill, paidAtMs: Date.now() } : c)) };
-            logs.push({ at: Date.now(), id: m.id, text: `${card.name} 카드값을 ${was.toLocaleString("ko-KR")}원 → ${bill.toLocaleString("ko-KR")}원으로 맞췄어요${m.memo ? ` (${m.memo})` : ""}${fixedNote}` });
+            d = { ...d, expenses: exps, fixedExpenses: fixes, cards: d.cards.map((c) => (c.id === card.id ? { ...c, bill, paidAtMs: Date.now() } : c)) };
+            logs.push({ at: Date.now(), id: m.id, text: `${card.name} 카드값을 ${was.toLocaleString("ko-KR")}원 → ${bill.toLocaleString("ko-KR")}원으로 맞췄어요${m.memo ? ` (${m.memo})` : ""}${fixedNote}${rowNames.length ? ` · ${rowNames.join(", ")} 기록(카드값은 그대로)` : ""}` });
             notes.push(`${card.name} 카드값을 ${bill.toLocaleString("ko-KR")}원으로 맞췄어요`);
             done.push(m.id);
             continue;

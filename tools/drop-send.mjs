@@ -4,6 +4,9 @@
 //
 // 카드값만 카드 앱 숫자로 맞추기(명세서 줄 없이):
 //   node tools/drop-send.mjs <받기코드> <카드이름조각> --bill <금액> [메모] [--install <할부이름>:<YYYY-MM>:<금액>]
+//                                                      [--row <이름>:<YYYY-MM>:<금액>[:<카테고리>]] (여러 번 가능)
+//   --row : 알림이 안 오는 것을 '그 달 한 줄'로 적는다(하이패스·대중교통). 같은 달 줄이 있으면 금액만 갱신.
+//           **카드값은 안 건드린다** — 카드값은 --bill로 이미 맞춘 값이라 여기서 더하면 두 번 잡힌다.
 //   카드 앱의 '결제 예정 금액'을 그대로 넣는 자리다. 일부 결제·리볼빙처럼 앱 계산이 못 따라갈 때 쓴다.
 //   --bill 금액에는 **할부 몫을 빼고** 넣는다 — 할부는 고정지출로 따로 세므로 넣으면 두 번 잡힌다.
 import fs from "fs";
@@ -18,11 +21,11 @@ const flag = (name) => {
 const prepaid = argv.includes("--prepaid");
 const billArg = flag("--bill");
 const installArg = flag("--install");
+const rowArgs = argv.map((a, i) => (a === "--row" ? argv[i + 1] : null)).filter(Boolean);
 // 값을 가진 옵션과 그 값은 자리 인자에서 뺀다
 const skip = new Set();
-for (const n of ["--bill", "--install"]) {
-  const i = argv.indexOf(n);
-  if (i >= 0) { skip.add(i); skip.add(i + 1); }
+for (let i = 0; i < argv.length; i++) {
+  if (["--bill", "--install", "--row"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
 }
 const pos = argv.filter((a, i) => !skip.has(i) && a !== "--prepaid");
 const [rawCode, card, third, fourth] = pos;
@@ -58,8 +61,15 @@ if (billArg) {
     }
     install = { name, month, amount: Number(String(amount).replace(/[^\d]/g, "")) };
   }
-  msg = { id, at: new Date().toISOString(), kind: "cardbill", card, bill, install, memo: third || "" };
-  console.log(`카드값 맞추기: ${card} → ${bill.toLocaleString("ko-KR")}원${install ? ` · ${install.name} ${install.month} ${install.amount.toLocaleString("ko-KR")}원` : ""}`);
+  const rows = rowArgs.map((a) => {
+    const [name, month, amount, category] = String(a).split(":");
+    if (!name || !/^\d{4}-\d{2}$/.test(month || "") || !Number(String(amount).replace(/[^\d]/g, ""))) {
+      console.error("--row 는 이름:YYYY-MM:금액[:카테고리] 모양이어야 해요:", a); process.exit(1);
+    }
+    return { name, month, amount: Number(String(amount).replace(/[^\d]/g, "")), category: category || "교통" };
+  });
+  msg = { id, at: new Date().toISOString(), kind: "cardbill", card, bill, install, rows, memo: third || "" };
+  console.log(`카드값 맞추기: ${card} → ${bill.toLocaleString("ko-KR")}원${install ? ` · ${install.name} ${install.month} ${install.amount.toLocaleString("ko-KR")}원` : ""}${rows.length ? ` · 한 줄 기록 ${rows.map((r) => `${r.name} ${r.month} ${r.amount.toLocaleString("ko-KR")}원`).join(", ")}` : ""}`);
 } else {
   const text = fs.readFileSync(third, "utf8");
   msg = { id, at: new Date().toISOString(), kind: "statement", card, text, note: fourth || "", prepaid };
