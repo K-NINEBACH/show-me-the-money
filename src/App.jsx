@@ -623,15 +623,22 @@ function AppInner() {
   const monthlyPay = Number(data.monthlyPay || 0);
   const payIn = findPayDeposit(data.balanceEntries, monthlyPay, curKey);
   const nextPay = payIn ? Number(payIn.amount) : monthlyPay;
+  /*
+    **다음 달 몫을 이미 미리 낸 것은 빼야 한다**(2026-09-20, 사용자: "모임 회비 같은 건 저번 달
+    월말에 미리 내는 경우도 있는데 그럴 땐 어떻게?"). 미리 내면 통장에서는 그달에 이미 나갔는데
+    다음 달 고정지출에 그대로 남아 있어서 **두 번 빠졌다.** 다음 달로 처리 표시(paidMonths[nextKey])나
+    건너뛰기(skipMonths[nextKey])가 된 것은 다음 달 예상에서 뺀다.
+  */
+  const nextDone = (f) => !!(f.paidMonths && f.paidMonths[nextKey]) || !!(f.skipMonths && f.skipMonths[nextKey]);
   const nextFixedCash = data.fixedExpenses
-    .filter((f) => (f.paymentMethod || "cash") !== "card")
+    .filter((f) => (f.paymentMethod || "cash") !== "card" && !nextDone(f))
     .map((f) => fixedInfo(f, nextKey))
     .filter((i) => i.active)
     .reduce((s, i) => s + Number(i.amount), 0);
   // 다음 달 카드 고정지출(할부 몫 + 정기결제). 청구는 그다음 달이지만 다음 달에 어차피 긁히는 돈이라
   // '월급 들어온 뒤 여유'에서는 미리 뺀다(2026-09-14 사용자 지적 — 빠져 있었다)
   const nextFixedCard = data.fixedExpenses
-    .filter((f) => (f.paymentMethod || "cash") === "card")
+    .filter((f) => (f.paymentMethod || "cash") === "card" && !nextDone(f))
     .map((f) => fixedInfo(f, nextKey))
     .filter((i) => i.active)
     .reduce((s, i) => s + Number(i.amount), 0);

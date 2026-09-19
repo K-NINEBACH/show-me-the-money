@@ -425,6 +425,14 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
         const isRealInstallment = isCard && f.totalMonths > 0;
         const needsAction = !isRealInstallment;
         const paidId = f.paidMonths?.[curKey];
+        /*
+          **다음 달 몫을 미리 낸 상태**(2026-09-20, 사용자: "모임 회비 같은 건 저번 달 월말에
+          미리 내는 경우도 있는데 그럴 땐 어떻게?"). 이번 달 것을 이미 처리했는데 또 냈다면
+          그건 다음 달 몫이다 — 적어 두면 다음 달 고정지출·여유에서 빠져 두 번 안 빠진다.
+          은행 알림으로 들어오면 앱이 알아서 그렇게 적는다(auto-record). 이 버튼은 현금으로 냈을 때용.
+        */
+        const nextPaid = !!f.paidMonths?.[ctx.nextKey];
+        const nextInfo = fixedInfo(f, ctx.nextKey);
         const sourceName = isCard ? (data.cards.find((c) => c.id === (f.cardId || data.cards[0]?.id))?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장");
         return (
           <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14.5, color: T.cream, padding: "3px 0" }}>
@@ -434,6 +442,20 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 6 }}>
               <span style={{ fontFamily: F.mono, color: T.muted, fontSize: 13.5 }}>{fmtWon(f.info.amount)}</span>
+              {needsAction && nextPaid && (
+                <button onClick={() => { if (window.confirm(`${f.name} ${Number(ctx.nextKey.slice(5, 7))}월 몫을 미리 낸 걸 취소할까요?`)) unmarkFixedPaid(ctx, f, ctx.nextKey); }}
+                  aria-label={`${f.name} 다음 달 몫 미리 냄 · 누르면 취소`}
+                  style={{ background: "none", border: `1px solid ${T.good}`, borderRadius: 8, padding: "0 8px", minHeight: 32, cursor: "pointer", color: T.good, fontSize: 12.5, whiteSpace: "nowrap" }}>
+                  다음 달 미리 냄
+                </button>
+              )}
+              {needsAction && paidId && !nextPaid && nextInfo.active && (
+                <button onClick={() => markFixedPaid(ctx, f, nextInfo, ctx.nextKey)}
+                  aria-label={`${f.name} 다음 달 몫 미리 내기`}
+                  style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 8, padding: "0 8px", minHeight: 32, cursor: "pointer", color: T.muted, fontSize: 12.5, whiteSpace: "nowrap" }}>
+                  다음 달 미리
+                </button>
+              )}
               {needsAction && (
                 /*
                   '완료'는 상태처럼 보이지만 누르면 처리를 되돌린다 — 딸린 출금 기록
@@ -558,14 +580,20 @@ function findAutoMatch(list, f, amount, curKey, same) {
   return cands.find((x) => name.length >= 2 && String(x.memo || "").includes(name)) || cands[0] || null;
 }
 
-function markFixedPaid(ctx, f, info) {
-  const { data, persist, showToast, curKey } = ctx;
+/*
+  `mKey`는 **어느 달 몫을 낸 것인지**다(2026-09-20). 보통 이번 달이지만, 월말에 다음 달 회비를
+  미리 내는 경우가 있어서 다음 달로도 적을 수 있다. 짝을 찾을 때(이미 들어온 출금 기록)는
+  **돈이 나간 이번 달**에서 찾고, 표시만 그 달(mKey)로 한다.
+*/
+function markFixedPaid(ctx, f, info, mKey) {
+  const { data, persist, showToast } = ctx;
+  const curKey = mKey || ctx.curKey;
   const isCard = (f.paymentMethod || "cash") === "card";
   let next = { ...data };
   let marker;
   if (isCard) {
     const cidOk = f.cardId && data.cards.some((c) => c.id === f.cardId) ? f.cardId : data.cards[0]?.id;
-    const hit = findAutoMatch(data.expenses, f, info.amount, curKey,
+    const hit = findAutoMatch(data.expenses, f, info.amount, ctx.curKey,
       (e) => (e.paymentMethod || "cash") === "card" && e.cardId === cidOk && !e.isCardAdjustment && e.reimbursedAmount == null);
     if (hit) {
       // 카드값에는 이미 들어가 있다. 정기결제로 표시만 바꿔 예산에서 두 번 안 세게 한다.
@@ -577,7 +605,7 @@ function markFixedPaid(ctx, f, info) {
     }
   } else {
     const aidOk = f.accountId && data.accounts.some((a) => a.id === f.accountId) ? f.accountId : data.accounts[0]?.id;
-    const hit = findAutoMatch(data.balanceEntries, f, info.amount, curKey,
+    const hit = findAutoMatch(data.balanceEntries, f, info.amount, ctx.curKey,
       (b) => b.type === "out" && !b.linkedFixedId && !b.transferId && (b.accountId || data.accounts[0]?.id) === aidOk);
     if (hit) {
       next.balanceEntries = data.balanceEntries.map((b) => (b.id === hit.id ? { ...b, linkedFixedId: f.id, linkedFixedMonth: curKey, memoBefore: b.memo, memo: `${f.name} 자동이체` } : b));
@@ -612,8 +640,9 @@ function markFixedPaid(ctx, f, info) {
   persist(next);
   showToast(isCard ? `${fmtWon(info.amount)} 카드값에 반영했어요 · 내역에서 확인할 수 있어요` : `${fmtWon(info.amount)} 출금 처리했어요`);
 }
-function unmarkFixedPaid(ctx, f) {
-  const { data, persist, showToast, curKey } = ctx;
+function unmarkFixedPaid(ctx, f, mKey) {
+  const { data, persist, showToast } = ctx;
+  const curKey = mKey || ctx.curKey;
   const isCard = (f.paymentMethod || "cash") === "card";
   const marker = f.paidMonths?.[curKey];
   let next = { ...data };

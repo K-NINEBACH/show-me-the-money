@@ -1,4 +1,4 @@
-import { parsePaymentText, todayISO, fixedInfo } from "./data";
+import { parsePaymentText, todayISO, fixedInfo, monthKeyOffset } from "./data";
 import { reprojectInstallment } from "./statement";
 
 /*
@@ -934,7 +934,21 @@ export function autoRecordPayments(data, items, held = []) {
         눌러야 했는데, 앱이 스스로 만든 출금(카드값 결제·출금처리)이나 같은 알림이
         두 번 온 것이라 넣을 이유가 없다. 넘겼다는 건 알림 문구로 알린다.
       */
-      const fixedUp = reconcileBalance(balanceEntries, { amount, dir, bDate, bKey, accountId: acc.id, firstAccountId: data.accounts?.[0]?.id });
+      /*
+        **월말에 다음 달 몫을 미리 낸 출금**(2026-09-20, 사용자: "모임 회비 같은 건 저번 달 월말에
+        미리 내는 경우도 있는데 그럴 땐 어떻게?"). 20일 이후에 나갔고, 그 고정지출의 이번 달 몫은
+        이미 처리했고, 다음 달 같은 금액 항목이 아직이면 **다음 달 몫**이다.
+        이걸 먼저 가려야 한다 — 아래 '먼저 적힌 기록 바로잡기'가 이번 달 출금 기록과 같은 건으로
+        보고 삼켜 버려서(날짜만 고치고 넘김) 다음 달에 또 빠졌다.
+      */
+      const prepay = dir === "out" && Number(String(bDate).slice(8, 10)) >= 20
+        ? (() => {
+            const nk = monthKeyOffset(bKey, 1);
+            const cand = matchFixed({ ...data, fixedExpenses }, { amount, isCard: false, accountId: acc.id, text }, nk);
+            return cand && cand.fixed.paidMonths && cand.fixed.paidMonths[bKey] ? { cand, nk } : null;
+          })()
+        : null;
+      const fixedUp = prepay ? null : reconcileBalance(balanceEntries, { amount, dir, bDate, bKey, accountId: acc.id, firstAccountId: data.accounts?.[0]?.id });
       if (fixedUp) {
         balanceEntries = fixedUp;
         skipped.push(item);
@@ -948,7 +962,8 @@ export function autoRecordPayments(data, items, held = []) {
       */
       const paidCard = dir === "out" && amount >= 1000 ? cardNamedIn(text) : null;
       if (alreadyInLedger(balanceEntries, { amount, date: bDate, type: dir, accountId: acc.id, time })
-        || (dir === "out" && paidFixedHit(fixedExpenses, { amount, isCard: false, accountId: acc.id, text }, bKey))) {
+        // 이미 처리한 고정지출과 같은 금액이면 보통 같은 건이라 넘기는데, '다음 달 몫 미리'는 진짜 또 나간 돈이다
+        || (dir === "out" && !prepay && paidFixedHit(fixedExpenses, { amount, isCard: false, accountId: acc.id, text }, bKey))) {
         skipped.push(item);
         syncBank(item, acc.id, text, bDate, time, null);
         if (paidCard) settleCard(paidCard, bDate, amount, item);
@@ -956,7 +971,7 @@ export function autoRecordPayments(data, items, held = []) {
       }
 
       /* 자동이체로 나간 고정지출이면 그 항목을 처리 완료로 표시한다 */
-      const hitOut =
+      let hitOut =
         dir === "out"
           ? matchFixed(
               { ...data, fixedExpenses },
@@ -964,6 +979,8 @@ export function autoRecordPayments(data, items, held = []) {
               bKey,
             )
           : null;
+      let hitKey = bKey;
+      if (!hitOut && prepay) { hitOut = prepay.cand; hitKey = prepay.nk; }   // 위에서 가려 둔 '다음 달 몫 미리'
 
       const entryId = "b" + (Date.now() + registered.length);
       const entry = {
@@ -972,15 +989,15 @@ export function autoRecordPayments(data, items, held = []) {
         amount,
         date: bDate,
         memo: hitOut
-          ? `${hitOut.fixed.name} 자동이체`
+          ? `${hitOut.fixed.name} 자동이체${hitKey !== bKey ? `(${Number(hitKey.slice(5, 7))}월 몫 미리)` : ""}`
           : r.merchant || (dir === "in" ? "입금" : "출금"),
         accountId: acc.id,
         auto: true,
         ...(time ? { autoTime: time } : {}),
-        ...(hitOut ? { linkedFixedId: hitOut.fixed.id, linkedFixedMonth: bKey } : {}),
+        ...(hitOut ? { linkedFixedId: hitOut.fixed.id, linkedFixedMonth: hitKey } : {}),
       };
       balanceEntries = [...balanceEntries, entry];
-      if (hitOut) markPaid(hitOut.fixed.id, entryId, bKey);
+      if (hitOut) markPaid(hitOut.fixed.id, entryId, hitKey);
       registered.push(entry);
       syncBank(item, acc.id, text, bDate, time, entry);
       if (paidCard) settleCard(paidCard, bDate, amount, item);
