@@ -228,7 +228,21 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
     통장 자동이체만 날짜(autoPayDay)를 안다 — 카드 정기결제는 승인 알림으로 저절로 처리된다.
   */
   const todayDay = new Date().getDate();
-  const overdue = unpaidFixed.filter((f) => f.autoPayDay && f.autoPayDay < todayDay);
+  /*
+    자동이체일(autoPayDay)이 적힌 것은 그날 앱이 알아서 처리하므로 여기 안 남는다. 그래서 남아 있는 건
+    대개 날짜를 모르는 것들이다 → **지난달에 며칠에 나갔는지**로 짐작해 보여 준다(paidMonths에 적힌
+    기록의 날짜). 적을 게 없으면 이름만. 날짜가 지났는데 아직 남아 있으면 빨갛게.
+  */
+  const dayOf = (f) => {
+    if (f.autoPayDay) return { day: f.autoPayDay, guess: false };
+    const id = f.paidMonths?.[ctx.prevKey];
+    if (!id) return null;
+    const e = (ctx.data.balanceEntries || []).find((b) => b.id === id) || (ctx.data.expenses || []).find((x) => x.id === id);
+    const d = e?.date ? Number(String(e.date).slice(8, 10)) : 0;
+    return d ? { day: d, guess: true } : null;
+  };
+  const days = new Map(unpaidFixed.map((f) => [f.id, dayOf(f)]));
+  const overdue = unpaidFixed.filter((f) => (days.get(f.id)?.day || 99) < todayDay);
   return (
     <section aria-label="한눈에" style={{ background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 12, padding: "8px 14px 10px", marginTop: 10 }}>
       <Row bold label="통장" amount={balance} />
@@ -272,14 +286,17 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
       <Row bold sign="−" label={`${top.curMonth} 남은 고정지출`} amount={unpaidFixedSum} strong={unpaidFixed.length ? T.warn : null} />
       {unpaidFixed.length > 0 && (
         <div style={{ ...sub, fontSize: 12 }}>
-          {unpaidFixed.map((f, i) => (
-            <span key={f.id}>
-              {i > 0 && " · "}
-              <span style={{ color: f.autoPayDay && f.autoPayDay < todayDay ? T.warn : T.muted }}>
-                {f.name}{f.autoPayDay ? ` ${f.autoPayDay}일` : ""}
+          {unpaidFixed.map((f, i) => {
+            const d = days.get(f.id);
+            return (
+              <span key={f.id}>
+                {i > 0 && " · "}
+                <span style={{ color: d && d.day < todayDay ? T.warn : T.muted }}>
+                  {f.name}{d ? ` ${d.guess ? "지난달 " : ""}${d.day}일` : ""}
+                </span>
               </span>
-            </span>
-          ))}
+            );
+          })}
           {overdue.length > 0 && <span style={{ color: T.warn }}> · 날짜 지난 것 {overdue.length}건</span>}
         </div>
       )}
@@ -428,7 +445,8 @@ export function settleReceivable(ctx, exp, repaidAmount) {
 
 /** "2026-09-13 10:02" → "3분 전" */
 function agoAt(at) {
-  const t = new Date(String(at).replace(" ", "T")).getTime();
+  // 숫자(ms)로 오는 것도 있다 — 카드의 syncedAtMs. 문자열만 받으면 Invalid Date라 빈 글자가 됐다(2026-09-19)
+  const t = typeof at === "number" ? at : new Date(String(at).replace(" ", "T")).getTime();
   if (Number.isNaN(t)) return "";
   const m = Math.round((Date.now() - t) / 60000);
   if (m < 1) return "방금";
