@@ -4,6 +4,7 @@
 //
 // 카드값만 카드 앱 숫자로 맞추기(명세서 줄 없이):
 //   node tools/drop-send.mjs <받기코드> <카드이름조각> --bill <금액> [메모] [--install <할부이름>:<YYYY-MM>:<금액>]
+//   결제일만 넣기(금액은 그대로): node tools/drop-send.mjs <받기코드> <카드이름조각> --payday 12
 //                                                      [--row <이름>:<YYYY-MM>:<금액>[:<카테고리>]] (여러 번 가능)
 //   --row : 알림이 안 오는 것을 '그 달 한 줄'로 적는다(하이패스·대중교통). 같은 달 줄이 있으면 금액만 갱신.
 //           **카드값은 안 건드린다** — 카드값은 --bill로 이미 맞춘 값이라 여기서 더하면 두 번 잡힌다.
@@ -31,7 +32,7 @@ for (let i = 0; i < argv.length; i++) {
 const pos = argv.filter((a, i) => !skip.has(i) && a !== "--prepaid");
 const [rawCode, card, third, fourth] = pos;
 
-if (!rawCode || !card || (!billArg && !third)) {
+if (!rawCode || !card || (!billArg && !payDayArg && !third)) {
   console.error("사용: node drop-send.mjs <받기코드> <카드이름조각> <명세서.txt> [메모] [--prepaid]");
   console.error("      node drop-send.mjs <받기코드> <카드이름조각> --bill <금액> [메모] [--install 이름:YYYY-MM:금액]");
   process.exit(1);
@@ -51,9 +52,9 @@ const key = await subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, h
 
 const id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 let msg;
-if (billArg) {
-  const bill = Number(String(billArg).replace(/[^\d]/g, ""));
-  if (!Number.isFinite(bill)) { console.error("--bill 금액을 못 읽었어요:", billArg); process.exit(1); }
+if (billArg || payDayArg) {
+  const bill = billArg ? Number(String(billArg).replace(/[^\d]/g, "")) : null;
+  if (billArg && !Number.isFinite(bill)) { console.error("--bill 금액을 못 읽었어요:", billArg); process.exit(1); }
   let install = null;
   if (installArg) {
     const [name, month, amount] = String(installArg).split(":");
@@ -70,7 +71,7 @@ if (billArg) {
     return { name, month, amount: Number(String(amount).replace(/[^\d]/g, "")), category: category || "교통" };
   });
   msg = { id, at: new Date().toISOString(), kind: "cardbill", card, bill, install, rows, payDay: payDayArg ? Number(payDayArg) : null, memo: third || "" };
-  console.log(`카드값 맞추기: ${card} → ${bill.toLocaleString("ko-KR")}원${install ? ` · ${install.name} ${install.month} ${install.amount.toLocaleString("ko-KR")}원` : ""}${rows.length ? ` · 한 줄 기록 ${rows.map((r) => `${r.name} ${r.month} ${r.amount.toLocaleString("ko-KR")}원`).join(", ")}` : ""}`);
+  console.log(`카드값 맞추기: ${card} → ${bill == null ? "(금액 그대로)" : `${bill.toLocaleString("ko-KR")}원`}${install ? ` · ${install.name} ${install.month} ${install.amount.toLocaleString("ko-KR")}원` : ""}${rows.length ? ` · 한 줄 기록 ${rows.map((r) => `${r.name} ${r.month} ${r.amount.toLocaleString("ko-KR")}원`).join(", ")}` : ""}`);
 } else {
   const text = fs.readFileSync(third, "utf8");
   msg = { id, at: new Date().toISOString(), kind: "statement", card, text, note: fourth || "", prepaid };

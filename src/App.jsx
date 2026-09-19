@@ -354,6 +354,8 @@ function AppInner() {
             못 따라가는 경우). 할부 몫은 카드값(bill)에 또 들어가면 두 번 세므로, 할부는 그 달 금액만 고친다.
           */
           if (m.kind === "cardbill") {
+            // 결제일만 보낼 수도 있다(금액 없이) — 그땐 카드값을 건드리지 않는다
+            const hasBill = m.bill != null && Number.isFinite(Number(m.bill));
             const bill = Math.max(0, Number(m.bill) || 0);
             let fixedNote = "";
             let fixes = d.fixedExpenses || [];
@@ -393,9 +395,14 @@ function AppInner() {
             // syncedAtMs — '카드 앱 숫자와 맞춘 때'. 홈이 "카드 앱과 2시간 전 맞춤"으로 보여 준다(오래되면 경고)
             const payDay = Number(m.payDay) >= 1 && Number(m.payDay) <= 31 ? Number(m.payDay) : undefined;
             d = { ...d, expenses: exps, fixedExpenses: fixes,
-              cards: d.cards.map((c) => (c.id === card.id ? { ...c, bill, paidAtMs: Date.now(), syncedAtMs: Date.now(), ...(payDay ? { payDay } : {}) } : c)) };
-            logs.push({ at: Date.now(), id: m.id, text: `${card.name} 카드값을 ${was.toLocaleString("ko-KR")}원 → ${bill.toLocaleString("ko-KR")}원으로 맞췄어요${m.memo ? ` (${m.memo})` : ""}${fixedNote}${rowNames.length ? ` · ${rowNames.join(", ")} 기록(카드값은 그대로)` : ""}` });
-            notes.push(`${card.name} 카드값을 ${bill.toLocaleString("ko-KR")}원으로 맞췄어요`);
+              cards: d.cards.map((c) => (c.id === card.id
+                ? { ...c, ...(hasBill ? { bill, paidAtMs: Date.now(), syncedAtMs: Date.now() } : {}), ...(payDay ? { payDay } : {}) }
+                : c)) };
+            const what = hasBill
+              ? `카드값을 ${was.toLocaleString("ko-KR")}원 → ${bill.toLocaleString("ko-KR")}원으로 맞췄어요`
+              : `결제일을 매달 ${payDay}일로 적었어요`;
+            logs.push({ at: Date.now(), id: m.id, text: `${card.name} ${what}${m.memo ? ` (${m.memo})` : ""}${fixedNote}${rowNames.length ? ` · ${rowNames.join(", ")} 기록(카드값은 그대로)` : ""}` });
+            notes.push(`${card.name} ${hasBill ? `카드값을 ${bill.toLocaleString("ko-KR")}원으로 맞췄어요` : `결제일 ${payDay}일`}`);
             done.push(m.id);
             continue;
           }
