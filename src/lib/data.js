@@ -332,6 +332,21 @@ export function monthKeyOffset(key, offset) { const [y, m] = key.split("-").map(
 export function firstWeekday(key) { const [y, m] = key.split("-").map(Number); return new Date(y, m - 1, 1).getDay(); }
 export function monthsBetweenKeys(aKey, bKey) { const [ay, am] = aKey.split("-").map(Number); const [by, bm] = bKey.split("-").map(Number); return (by - ay) * 12 + (bm - am); }
 
+/*
+  **매달 N일짜리 날의 다음 차례와 며칠 남았는지**(2026-09-17). 카드 결제일·고정지출 자동이체일을
+  "10/12 · 23일 뒤"로 보여 주는 데 쓴다. 그 달에 N일이 없으면(2월 31일) 말일로 당긴다 —
+  은행·카드사가 그렇게 처리한다. 오늘이 그날이면 0일(오늘).
+*/
+export function nextDayOfMonth(day, today = new Date()) {
+  const d = Number(day);
+  if (!(d >= 1 && d <= 31)) return null;
+  const at = (y, m) => new Date(y, m, Math.min(d, new Date(y, m + 1, 0).getDate()));
+  const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  let when = at(t0.getFullYear(), t0.getMonth());
+  if (when < t0) when = at(t0.getFullYear(), t0.getMonth() + 1);
+  return { when, label: `${when.getMonth() + 1}/${when.getDate()}`, days: Math.round((when - t0) / 86400000) };
+}
+
 export function fixedInfo(f, curKey) {
   const amt = f.overrides && f.overrides[curKey] != null ? f.overrides[curKey] : f.baseAmount;
   if (!f.totalMonths || f.totalMonths <= 0) return { active: true, label: null, amount: amt, installment: null, isLast: false };

@@ -300,9 +300,22 @@ export function SettingsView({ ctx }) {
             홈은 할부 포함 합계를 보여 줘서 같은 카드가 두 화면에서 다른 금액이었다(현대 1,314,856 vs
             1,411,274). 카드값은 홈에서 보고, 맞추는 건 홈의 맞추기·명세서·결제 확인 알림이 한다.
           */}
+          {/*
+            **결제일만 예외로 여기 둔다**(2026-09-17). 금액이 아니라 설정값이고, 홈이 "10/12 결제 · 23일 뒤"를
+            보여 주려면 어딘가에서 한 번은 적어야 한다. 알림 문구로는 알 수 없는 값이다.
+          */}
           {(data.cards || []).map((c) => (
             <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
               <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, color: T.muted, fontSize: 13 }}>
+                <span>결제일</span>
+                <input type="number" min="1" max="31" inputMode="numeric" value={c.payDay || ""} aria-label={`${c.name} 결제일`}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    persist({ ...data, cards: data.cards.map((x) => (x.id === c.id ? { ...x, payDay: v >= 1 && v <= 31 ? v : null } : x)) });
+                  }}
+                  style={{ ...inputSty(T), width: 56, padding: "6px 8px", fontSize: 15, textAlign: "center" }} />
+              </label>
               <button onClick={() => removeCard(c.id)} aria-label={`${c.name} 카드 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
             </div>
           ))}
@@ -313,6 +326,7 @@ export function SettingsView({ ctx }) {
         </div>
         <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
           이름에 카드사 이름이 들어가야 결제 알림을 알아서 이 카드에 붙여요. 카드값은 홈에서 봐요.
+          결제일을 적어 두면 홈에 "10/12 결제 · 23일 뒤"로 보여요.
         </div>
       </Field>
 

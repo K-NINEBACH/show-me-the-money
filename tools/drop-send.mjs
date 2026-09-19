@@ -22,10 +22,11 @@ const prepaid = argv.includes("--prepaid");
 const billArg = flag("--bill");
 const installArg = flag("--install");
 const rowArgs = argv.map((a, i) => (a === "--row" ? argv[i + 1] : null)).filter(Boolean);
+const payDayArg = flag("--payday");   // 카드 결제일(매달 N일) — 홈이 "10/12 결제 · 23일 뒤"로 보여 준다
 // 값을 가진 옵션과 그 값은 자리 인자에서 뺀다
 const skip = new Set();
 for (let i = 0; i < argv.length; i++) {
-  if (["--bill", "--install", "--row"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
+  if (["--bill", "--install", "--row", "--payday"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
 }
 const pos = argv.filter((a, i) => !skip.has(i) && a !== "--prepaid");
 const [rawCode, card, third, fourth] = pos;
@@ -68,7 +69,7 @@ if (billArg) {
     }
     return { name, month, amount: Number(String(amount).replace(/[^\d]/g, "")), category: category || "교통" };
   });
-  msg = { id, at: new Date().toISOString(), kind: "cardbill", card, bill, install, rows, memo: third || "" };
+  msg = { id, at: new Date().toISOString(), kind: "cardbill", card, bill, install, rows, payDay: payDayArg ? Number(payDayArg) : null, memo: third || "" };
   console.log(`카드값 맞추기: ${card} → ${bill.toLocaleString("ko-KR")}원${install ? ` · ${install.name} ${install.month} ${install.amount.toLocaleString("ko-KR")}원` : ""}${rows.length ? ` · 한 줄 기록 ${rows.map((r) => `${r.name} ${r.month} ${r.amount.toLocaleString("ko-KR")}원`).join(", ")}` : ""}`);
 } else {
   const text = fs.readFileSync(third, "utf8");

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Repeat, ClipboardPaste, ChevronRight, Check } from "lucide-react";
 import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
-import { fmtWon, monthLabel, todayISO, parsePaymentText, sortFixedList, fixedInfo } from "../lib/data";
+import { fmtWon, monthLabel, todayISO, parsePaymentText, sortFixedList, fixedInfo, nextDayOfMonth } from "../lib/data";
 import { MoneyInput, QuickAmountButtons } from "../components/common";
 import { syncMoment } from "../lib/auto-record";
 import { parseStatement, reconcileStatement } from "../lib/statement";
@@ -161,6 +161,14 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
   const short = hasPay && v < 0;
   const perDay = ctx.perDay;
   const signed = (n) => `${n < 0 ? "-" : ""}${fmtWon(Math.abs(n))}`;
+  /*
+    **하루 몫이 빠듯한지 색으로**(2026-09-17). 숫자만 있으면 9,788원이 큰지 작은지 알 수 없다.
+    기준은 남의 평균이 아니라 **내가 이번 달 실제로 쓴 하루 평균**이다 — 그보다 한참 적으면
+    지금 속도로는 못 버틴다는 뜻이다. 아직 며칠 안 지났으면(3일 미만) 평균이 안 믿을 만해서 안 띄운다.
+  */
+  const usedSoFar = ctx.normalSpent + ctx.cardSpentThisCycle;
+  const avgDay = ctx.dayIntoCycle >= 3 ? Math.round(usedSoFar / ctx.dayIntoCycle) : 0;
+  const tight = !short && avgDay > 0 && perDay < avgDay * 0.6;
   return (
     <section aria-label="카드로 더 써도 되는 돈" style={{ ...cardBox(T, short), padding: "12px 16px" }}>
       {!hasPay ? (
@@ -170,12 +178,17 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
             <span style={{ color: short ? T.danger : T.good, fontSize: 14, fontWeight: 700 }}>{short ? "월급 들어와도 모자라는 돈" : "카드로 더 써도 되는 돈"}</span>
             {!short && bankKnown && (
-              <span style={{ color: T.muted, fontSize: 13 }}>하루 <b style={{ color: T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums" }}>{fmtWon(perDay)}</b> · 말일까지 {daysLeft}일</span>
+              <span style={{ color: T.muted, fontSize: 13 }}>하루 <b style={{ color: tight ? T.warn : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums" }}>{fmtWon(perDay)}</b> · 말일까지 {daysLeft}일</span>
             )}
           </div>
           <div style={{ color: short ? T.danger : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, lineHeight: 1.2 }}>
             {signed(v)}
           </div>
+          {tight && bankKnown && (
+            <div style={{ color: T.warn, fontSize: 13 }}>
+              이번 달은 빠듯해요 — 지금까지 하루 평균 {fmtWon(avgDay)} 썼어요
+            </div>
+          )}
           {(short || !bankKnown) && (
             <div style={{ color: short ? T.danger : T.warn, fontSize: 13.5 }}>
               {!bankKnown ? "통장 잔액을 먼저 맞춰 주세요 — 아래 '입출금·맞추기'" : `${top.month} 월급이 들어와도 카드값·고정지출을 다 못 내요`}
@@ -208,7 +221,14 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
     </div>
   );
   const line = { borderTop: `1px dashed ${T.border}`, margin: "4px 0" };
-  const fixedNames = unpaidFixed.map((f) => f.name).join(" · ");
+  const sub = { color: T.muted, fontSize: 11.5, paddingInlineStart: "1.2em", lineHeight: 1.5 };
+  /*
+    **고정지출은 이름만이 아니라 며칠에 나가는지도**(2026-09-17). 안 줄고 남아 있는 게 '아직 날짜가
+    안 됐다'인지 '날짜가 지났는데 처리가 안 됐다'인지 구분이 안 됐다. 지난 건 빨갛게.
+    통장 자동이체만 날짜(autoPayDay)를 안다 — 카드 정기결제는 승인 알림으로 저절로 처리된다.
+  */
+  const todayDay = new Date().getDate();
+  const overdue = unpaidFixed.filter((f) => f.autoPayDay && f.autoPayDay < todayDay);
   return (
     <section aria-label="한눈에" style={{ background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 12, padding: "8px 14px 10px", marginTop: 10 }}>
       <Row bold label="통장" amount={balance} />
@@ -219,12 +239,50 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
       {hasPay && <Row bold sign="+" label={`${top.month} 월급`} amount={top.pay} tag={top.tag} />}
       <div style={line} />
       <Row bold sign="−" label="안 낸 카드값" amount={cardBill} />
-      {cardTotals.map((c) => (
-        <Row key={c.id} label={c.name} amount={c.total}
-          tag={c.earlyPay && c.installPaid?.[ctx.curKey] ? "이번 달 할부 미리 냄" : c.fixedPortion > 0 ? `할부 ${fmtWon(c.fixedPortion)} 포함` : null} />
-      ))}
+      {cardTotals.map((c) => {
+        /*
+          **언제 나가는지, 언제 맞춘 숫자인지**(2026-09-17). 카드값은 결제 확인·명세서·맞추기가
+          같은 한 칸을 덮어써서 어긋나도 조용하다(2026-09-17에 552,948원이 어긋나 있었다).
+          통장에 '2시간 전 맞춤'이 있는 것처럼 카드에도 기준 시각을 적고, 오래되면 색을 바꾼다.
+        */
+        const due = nextDayOfMonth(c.payDay);
+        const old7 = c.syncedAtMs && Date.now() - c.syncedAtMs > 7 * 86400000;
+        return (
+          <div key={c.id}>
+            <Row label={c.name} amount={c.total}
+              tag={c.earlyPay && c.installPaid?.[ctx.curKey] ? "이번 달 할부 미리 냄" : c.fixedPortion > 0 ? `할부 ${fmtWon(c.fixedPortion)} 포함` : null} />
+            {(due || c.syncedAtMs) && (
+              <div style={sub}>
+                {due && <span style={{ color: due.days <= 3 ? T.warn : T.muted }}>{due.label} 결제 · {due.days === 0 ? "오늘" : `${due.days}일 뒤`}</span>}
+                {due && c.syncedAtMs && " · "}
+                {c.syncedAtMs && <span style={{ color: old7 ? T.warn : T.muted }}>카드 앱과 {agoAt(c.syncedAtMs)} 맞춤</span>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {/*
+        **카드값에 들어 있지만 내 돈이 아닌 것**(2026-09-17). 대리결제는 카드로는 내가 전액 내고
+        나중에 돌려받는다. 카드값에는 그대로 들어 있어서 '안 낸 카드값'이 실제보다 커 보인다.
+        식을 흔들지 않게 줄(부호)이 아니라 설명 한 줄로 둔다 — 돈이 들어오면 통장 쪽에서 잡힌다.
+      */}
+      {(ctx.receivables || []).length > 0 && (
+        <div style={sub}>이 중 정산받을 돈 {fmtWon((ctx.receivables || []).reduce((a, r) => a + Number(r.amount || 0), 0))} — 돌려받으면 통장으로 들어와요</div>
+      )}
       <Row bold sign="−" label={`${top.curMonth} 남은 고정지출`} amount={unpaidFixedSum} strong={unpaidFixed.length ? T.warn : null} />
-      {unpaidFixed.length > 0 && <div style={{ color: T.muted, fontSize: 12, paddingInlineStart: "1.2em", lineHeight: 1.5 }}>{fixedNames}</div>}
+      {unpaidFixed.length > 0 && (
+        <div style={{ ...sub, fontSize: 12 }}>
+          {unpaidFixed.map((f, i) => (
+            <span key={f.id}>
+              {i > 0 && " · "}
+              <span style={{ color: f.autoPayDay && f.autoPayDay < todayDay ? T.warn : T.muted }}>
+                {f.name}{f.autoPayDay ? ` ${f.autoPayDay}일` : ""}
+              </span>
+            </span>
+          ))}
+          {overdue.length > 0 && <span style={{ color: T.warn }}> · 날짜 지난 것 {overdue.length}건</span>}
+        </div>
+      )}
       {hasPay && (
         <>
           <Row bold sign="−" label={`${top.month} 고정지출`} amount={top.fixedCash + top.fixedCard} />

@@ -215,7 +215,8 @@ export function reconcileStatement(data, cardId, rowsIn, nowMs = Date.now(), opt
   const bill = Math.max(0, (opts.prepaid ? 0 : statementBill) + sum(afterEnd) + (opts.prepaid ? 0 : sum(pendingAdj)));
   const card = (data.cards || []).find((c) => c.id === cardId);
   const cardPatch = (c) => {
-    const next = { ...c, bill, paidAtMs: nowMs };
+    // syncedAtMs — 카드 앱 숫자와 맞춘 때(홈이 "카드 앱과 N일 전 맞춤"으로 보여 주고, 오래되면 경고한다)
+    const next = { ...c, bill, paidAtMs: nowMs, syncedAtMs: nowMs };
     if (opts.prepaid) {
       next.earlyPay = true;
       if (prepaidInstall) next.installPaid = { [prepaidKey]: prepaidInstall };

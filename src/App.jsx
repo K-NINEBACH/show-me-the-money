@@ -390,7 +390,10 @@ function AppInner() {
               rowNames.push(`${memo} ${amount.toLocaleString("ko-KR")}원`);
             }
             const was = Number(card.bill || 0);
-            d = { ...d, expenses: exps, fixedExpenses: fixes, cards: d.cards.map((c) => (c.id === card.id ? { ...c, bill, paidAtMs: Date.now() } : c)) };
+            // syncedAtMs — '카드 앱 숫자와 맞춘 때'. 홈이 "카드 앱과 2시간 전 맞춤"으로 보여 준다(오래되면 경고)
+            const payDay = Number(m.payDay) >= 1 && Number(m.payDay) <= 31 ? Number(m.payDay) : undefined;
+            d = { ...d, expenses: exps, fixedExpenses: fixes,
+              cards: d.cards.map((c) => (c.id === card.id ? { ...c, bill, paidAtMs: Date.now(), syncedAtMs: Date.now(), ...(payDay ? { payDay } : {}) } : c)) };
             logs.push({ at: Date.now(), id: m.id, text: `${card.name} 카드값을 ${was.toLocaleString("ko-KR")}원 → ${bill.toLocaleString("ko-KR")}원으로 맞췄어요${m.memo ? ` (${m.memo})` : ""}${fixedNote}${rowNames.length ? ` · ${rowNames.join(", ")} 기록(카드값은 그대로)` : ""}` });
             notes.push(`${card.name} 카드값을 ${bill.toLocaleString("ko-KR")}원으로 맞췄어요`);
             done.push(m.id);
