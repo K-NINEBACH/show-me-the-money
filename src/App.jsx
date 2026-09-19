@@ -530,7 +530,16 @@ function AppInner() {
   const reimbursedThisCycle = cycleExpenses.reduce((s, e) => s + Number(e.reimbursedAmount || 0), 0);
 
   const cards = data.cards && data.cards.length ? data.cards : [{ id: "card1", name: "카드", bill: 0 }];
-  const fixedActiveAll = data.fixedExpenses.map((f) => ({ ...f, info: fixedInfo(f, curKey) })).filter((f) => f.info.active);
+  /*
+    **이번 달은 그냥 안 내고 넘어가는 것**(2026-09-19, 사용자: "모임회비 같은 건 가끔 여유가 없어서
+    모른척 넘어갈 때도 있어. 안 내고 다음 달 되면 그대로 패스").
+
+    '건너뛰기'를 누른 달은 **계산에서 통째로 뺀다** — 남은 고정지출에도, 여유에도 안 들어간다.
+    달이 바뀌면 저절로 다시 나타난다(달별로 적어 두므로). 못 낸 돈이 다음 달로 쌓이지 않는다.
+  */
+  const skippedThis = (f) => !!(f.skipMonths && f.skipMonths[curKey]);
+  const fixedSkipped = data.fixedExpenses.map((f) => ({ ...f, info: fixedInfo(f, curKey) })).filter((f) => f.info.active && skippedThis(f));
+  const fixedActiveAll = data.fixedExpenses.map((f) => ({ ...f, info: fixedInfo(f, curKey) })).filter((f) => f.info.active && !skippedThis(f));
   const fixedActive = fixedActiveAll.filter((f) => (f.paymentMethod || "cash") !== "card");
   const fixedCardActive = fixedActiveAll.filter((f) => (f.paymentMethod || "cash") === "card");
   const fixedCardInstallment = fixedCardActive.filter((f) => f.totalMonths > 0);
@@ -661,7 +670,7 @@ function AppInner() {
 
   const ctx = {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
-    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
+    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSkipped, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
     nextKey, monthlyPay, payIn, nextPay, nextFixedCash, nextFixedCard, cardSpentThisCycle, cardInstallThisMonth, cardRecurThisMonth, cardThisMonth, payLeft, payPending,
     bankLeft, canSpend, daysLeft, perDay, bankKnown, hasPay,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,

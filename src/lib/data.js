@@ -59,6 +59,7 @@ export function migrate(raw) {
       const base = f.totalMonths !== undefined
         ? { overrides: {}, ...f }
         : { id: f.id, name: f.name, baseAmount: f.amount, totalMonths: 0, startInstallment: 1, setupMonthKey: monthKey(new Date()), overrides: {} };
+      // skipMonths({"2026-09": true} — 그달은 그냥 안 내고 넘어감, 2026-09-19)는 없어도 되는 칸이라 그대로 넘어간다
       return { paymentMethod: "cash", cardId: null, paidMonths: {}, ...base };
     });
   }

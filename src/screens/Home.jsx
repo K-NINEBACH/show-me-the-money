@@ -86,7 +86,7 @@ export function HomeView({ ctx }) {
     if (next) requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
   };
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
-  const hasFixed = fixedActive.length > 0 || fixedCardActive.length > 0 || receivables.length > 0;
+  const hasFixed = fixedActive.length > 0 || fixedCardActive.length > 0 || receivables.length > 0 || (ctx.fixedSkipped || []).length > 0;
   const actBtn = (on) => ({
     flex: 1, minWidth: 0, minHeight: 40, padding: "6px 4px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
     border: `1px solid ${on ? T.gold : T.border}`, background: on ? T.gold + "1f" : "transparent", color: T.cream, fontSize: 13, fontWeight: 600,
@@ -134,7 +134,7 @@ export function HomeView({ ctx }) {
           {panel === "fixed" && (
             hasFixed ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {(fixedActive.length > 0 || fixedCardActive.length > 0) && (
+                {(fixedActive.length > 0 || fixedCardActive.length > 0 || (ctx.fixedSkipped || []).length > 0) && (
                   <FixedDetailCard ctx={ctx} fixedActive={fixedActive} fixedCardActive={fixedCardActive} />
                 )}
                 {receivables.length > 0 && <ReceivablesCard ctx={ctx} receivables={receivables} catMap={catMap} />}
@@ -358,12 +358,32 @@ function ReceivablesCard({ ctx, receivables, catMap }) {
 // order is enough and it saves a whole row of sort buttons every time you open it.
 function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
   const T = useTheme();
-  const { data, curKey } = ctx;
+  const { data, curKey, persist, showToast } = ctx;
+  /*
+    **이번 달은 그냥 안 내고 넘어가기**(2026-09-19, 사용자: "모임회비 같은 건 가끔 여유가 없어서
+    모른척 넘어갈 때도 있어"). 누르면 그 달 계산에서 통째로 빠지고(남은 고정지출·여유),
+    다음 달엔 저절로 다시 나온다. 못 낸 돈이 쌓이지 않는다 — 안 낸 건 안 낸 것으로 끝.
+    할부는 안 된다(내 마음대로 거를 수 있는 돈이 아니다).
+  */
+  const setSkip = (f, on) => {
+    persist({ ...data, fixedExpenses: data.fixedExpenses.map((x) => (x.id === f.id
+      ? { ...x, skipMonths: { ...(x.skipMonths || {}), [curKey]: on || undefined } } : x)) });
+    showToast(on ? `${f.name}은 이번 달 건너뛰어요` : `${f.name}을 다시 셀게요`);
+  };
   const combined = [...fixedActive, ...fixedCardActive];
   const sorted = sortFixedList(combined, "amountDesc");
   return (
     <div style={{ background: T.bg2, border: `1px solid ${T.goldSoft}44`, borderRadius: 12, padding: "10px 12px" }}>
       <div style={{ color: T.muted, fontSize: 14, marginBottom: 4 }}>이번달 고정지출 상세내역</div>
+      {(ctx.fixedSkipped || []).map((f) => (
+        <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14, color: T.muted, padding: "3px 0" }}>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "line-through" }}>{f.name} <span style={{ fontSize: 12.5 }}>· 이번 달 건너뜀</span></span>
+          <button onClick={() => setSkip(f, false)}
+            style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 8, padding: "0 8px", minHeight: 32, cursor: "pointer", color: T.muted, fontSize: 12.5, whiteSpace: "nowrap", flexShrink: 0, marginLeft: 6 }}>
+            되돌리기
+          </button>
+        </div>
+      ))}
       {sorted.map((f) => {
         const isCard = (f.paymentMethod || "cash") === "card";
         const isRealInstallment = isCard && f.totalMonths > 0;
@@ -402,10 +422,16 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
                     <Check size={13} strokeWidth={2.5} aria-hidden="true" />완료
                   </button>
                 ) : (
-                  <button onClick={() => markFixedPaid(ctx, f, f.info)}
-                    style={{ background: T.good, border: "none", borderRadius: 8, padding: "0 10px", minHeight: 32, cursor: "pointer", color: T.mode === "dark" ? "#000000" : "#FFFFFF", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
-                    {isCard ? "카드반영" : "출금처리"}
-                  </button>
+                  <>
+                    <button onClick={() => setSkip(f, true)} aria-label={`${f.name} 이번 달 안 냄`}
+                      style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 8, padding: "0 8px", minHeight: 32, cursor: "pointer", color: T.muted, fontSize: 12.5, whiteSpace: "nowrap" }}>
+                      안 냄
+                    </button>
+                    <button onClick={() => markFixedPaid(ctx, f, f.info)}
+                      style={{ background: T.good, border: "none", borderRadius: 8, padding: "0 10px", minHeight: 32, cursor: "pointer", color: T.mode === "dark" ? "#000000" : "#FFFFFF", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
+                      {isCard ? "카드반영" : "출금처리"}
+                    </button>
+                  </>
                 )
               )}
             </span>
