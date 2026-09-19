@@ -103,6 +103,8 @@ export function HomeView({ ctx }) {
 
       <Hero T={T} ctx={ctx} top={top} hasPay={hasPay} bankKnown={bankKnown} left={left} daysLeft={daysLeft} />
 
+      <SyncNudge T={T} ctx={ctx} cardTotals={cardTotals} onOpen={() => openPanel("card")} />
+
       <AssetList T={T} ctx={ctx} top={top} hasPay={hasPay} accounts={ctx.accountTotals || []} cardTotals={cardTotals}
         balance={accountBalance} cardBill={cardBillTotal} unpaidFixed={unpaidFixed} unpaidFixedSum={unpaidFixedSum} pending={ctx.payPending} />
 
@@ -146,6 +148,40 @@ export function HomeView({ ctx }) {
         </div>
       )}
     </div>
+  );
+}
+
+/*
+  **맞출 때가 됐다고 앱이 먼저 말한다**(2026-09-20).
+
+  알림이 안 오는 결제(하이패스·일부 자동결제)가 매달 몇 만 원씩 생겨서, 카드값은 가만히 두면
+  점점 실제보다 적어진다(9/17~9/19 사흘에 57,000원이 그랬다). 사람이 '언제 맞춰야 하지'를
+  기억할 필요가 없게, **결제일이 사흘 안으로 다가왔거나 마지막으로 맞춘 지 일주일이 넘으면**
+  한 줄로 띄운다. 누르면 카드 칸이 열린다(거기서 명세서 붙여넣기·맞추기를 한다).
+*/
+function SyncNudge({ T, ctx, cardTotals, onOpen }) {
+  const week = 7 * 86400000;
+  const need = cardTotals
+    .map((c) => {
+      const due = nextDayOfMonth(c.payDay);
+      const old = !c.syncedAtMs || Date.now() - c.syncedAtMs > week;
+      if (Number(c.total || 0) <= 0) return null;          // 낼 게 없으면 맞출 것도 없다
+      if (due && due.days <= 3) return { c, why: `${due.label} 결제까지 ${due.days === 0 ? "오늘" : `${due.days}일`}` };
+      if (old) return { c, why: c.syncedAtMs ? `카드 앱과 맞춘 지 ${Math.round((Date.now() - c.syncedAtMs) / 86400000)}일` : "카드 앱과 맞춘 적 없음" };
+      return null;
+    })
+    .filter(Boolean);
+  if (!need.length) return null;
+  return (
+    <button onClick={onOpen}
+      style={{ width: "100%", textAlign: "left", marginTop: 8, background: `${T.warn}1a`, border: `1px solid ${T.warn}66`, borderRadius: 12, padding: "9px 12px", cursor: "pointer", fontFamily: "inherit" }}>
+      <div style={{ color: T.warn, fontSize: 13.5, fontWeight: 700 }}>
+        {need.map((n) => `${n.c.name} — ${n.why}`).join(" · ")}
+      </div>
+      <div style={{ color: T.muted, fontSize: 12.5, marginTop: 2 }}>
+        알림이 안 오는 결제가 있어요. 카드 앱 '결제 예정 금액'과 한 번 맞춰 두면 홈 숫자가 정확해져요.
+      </div>
+    </button>
   );
 }
 

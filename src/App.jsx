@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react"
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
 import { STORAGE_KEY, INBOX_KEY, SEEN_KEY, SEEN_DEAL_KEY, ALERT_LOG_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
-import { defaultData, migrate, autoProcessFixed, repairMisdatedAuto, findPayDeposit, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount } from "./lib/data";
+import { defaultData, migrate, autoProcessFixed, repairMisdatedAuto, findPayDeposit, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount, nextDayOfMonth } from "./lib/data";
 import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup, inNativeApp, pushSummary } from "./lib/native";
 import { autoRecordPayments, isCancelText, dealKey } from "./lib/auto-record";
@@ -657,6 +657,16 @@ function AppInner() {
       지금 통장으로 다 내면(bankLeft) = 통장 + 아직 안 들어온 이번 달 월급 − 안 낸 카드값 − 안 나간 고정지출
       카드로 더 써도 되는 돈(canSpend) = bankLeft + 다음 달 월급 − 다음 달 고정지출(통장 + 카드)
   */
+  /*
+    **다음 카드 결제일** — 위젯·아침 알림이 "10/12에 1,067,874원 나가요"라고 알려 주는 데 쓴다.
+    낼 게 있는 카드 중 가장 가까운 것 하나. 결제일을 안 적은 카드는 알 수 없어서 뺀다.
+  */
+  const dueList = cardTotals
+    .map((c) => ({ name: c.name, amount: c.total, at: nextDayOfMonth(c.payDay) }))
+    .filter((x) => x.at && x.amount > 0)
+    .sort((a, b) => a.at.days - b.at.days);
+  const due = dueList[0] ? { name: dueList[0].name, amount: dueList[0].amount, label: dueList[0].at.label, days: dueList[0].at.days } : null;
+
   const bankLeft = accountBalance + payPending - cardBillTotal - unpaidFixedSum;
   const canSpend = bankLeft + (payIn ? 0 : nextPay) - nextFixedCash - nextFixedCard;
   const daysLeft = Math.max(1, cycleLen - dayIntoCycle + 1);
@@ -690,7 +700,7 @@ function AppInner() {
   return (
     <ThemeContext.Provider value={T}>
       <div style={S.appShell}>
-        <NativeSummary s={{ canSpend, perDay, daysLeft, payLeft, bankLeft, hasPay, bankKnown, month: Number(nextKey.slice(5, 7)) }} />
+        <NativeSummary s={{ canSpend, perDay, daysLeft, payLeft, bankLeft, hasPay, bankKnown, month: Number(nextKey.slice(5, 7)), due }} />
         <main style={S.screen}>
           {tab === "home" && <HomeView ctx={ctx} />}
           {tab === "add" && <AddView ctx={ctx} />}
