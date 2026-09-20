@@ -510,6 +510,8 @@ function matchFixed(data, { amount, isCard, cardId, accountId, text }, key) {
   const candidates = [];
   for (const f of list) {
     if (f.paidMonths && f.paidMonths[key]) continue;   // 이미 처리됨
+    // 그 달은 '안 냄'으로 건너뛴 것 — 짝을 지으면 사람이 건너뛴 걸 앱이 되돌려 버린다(2026-09-20)
+    if (f.skipMonths && f.skipMonths[key]) continue;
 
     /*
       **카드 쪽은 '매달반복'만 짝으로 본다.**
@@ -936,16 +938,21 @@ export function autoRecordPayments(data, items, held = []) {
       */
       /*
         **월말에 다음 달 몫을 미리 낸 출금**(2026-09-20, 사용자: "모임 회비 같은 건 저번 달 월말에
-        미리 내는 경우도 있는데 그럴 땐 어떻게?"). 20일 이후에 나갔고, 그 고정지출의 이번 달 몫은
-        이미 처리했고, 다음 달 같은 금액 항목이 아직이면 **다음 달 몫**이다.
+        미리 내는 경우도 있는데 그럴 땐 어떻게?"). 그 달 후반(16일 이후)에 나갔고, 그 고정지출의
+        이번 달 몫은 이미 끝났고(냈거나 건너뛰었거나), 다음 달 같은 금액 항목이 아직이면 **다음 달 몫**이다.
+        전반부에 같은 금액이 또 나간 건 그 달 몫이 두 번 잡힌 것일 가능성이 높아 건드리지 않는다.
         이걸 먼저 가려야 한다 — 아래 '먼저 적힌 기록 바로잡기'가 이번 달 출금 기록과 같은 건으로
         보고 삼켜 버려서(날짜만 고치고 넘김) 다음 달에 또 빠졌다.
       */
-      const prepay = dir === "out" && Number(String(bDate).slice(8, 10)) >= 20
+      const prepay = dir === "out" && Number(String(bDate).slice(8, 10)) >= 16
         ? (() => {
             const nk = monthKeyOffset(bKey, 1);
             const cand = matchFixed({ ...data, fixedExpenses }, { amount, isCard: false, accountId: acc.id, text }, nk);
-            return cand && cand.fixed.paidMonths && cand.fixed.paidMonths[bKey] ? { cand, nk } : null;
+            if (!cand) return null;
+            // 이번 달 몫이 '끝난' 상태여야 한다 — 냈거나(paidMonths), 안 내고 건너뛰었거나(skipMonths)
+            const doneThis = !!(cand.fixed.paidMonths && cand.fixed.paidMonths[bKey])
+              || !!(cand.fixed.skipMonths && cand.fixed.skipMonths[bKey]);
+            return doneThis ? { cand, nk } : null;
           })()
         : null;
       const fixedUp = prepay ? null : reconcileBalance(balanceEntries, { amount, dir, bDate, bKey, accountId: acc.id, firstAccountId: data.accounts?.[0]?.id });
