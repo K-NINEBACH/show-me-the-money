@@ -98,7 +98,8 @@ export function HomeView({ ctx }) {
         <h1 style={{ margin: 0, color: T.cream, fontFamily: F.display, fontSize: 19, fontWeight: 700 }}>
           {monthLabel(curKey)} · {dayIntoCycle}일차
         </h1>
-        <span style={{ color: T.goldSoft, fontSize: 13 }}>오늘 {fmtWon(todaySpent)} · 이번 달 {fmtWon(ctx.totalSpentThisMonth)}</span>
+        {/* '오늘'은 아래 막대로 옮겼다(2026-09-21) — 같은 숫자가 두 군데 있으면 눈이 어디를 봐야 할지 모른다 */}
+        <span style={{ color: T.goldSoft, fontSize: 13 }}>이번 달 쓴 돈 {fmtWon(ctx.totalSpentThisMonth)}</span>
       </div>
 
       <Hero T={T} ctx={ctx} top={top} hasPay={hasPay} bankKnown={bankKnown} left={left} daysLeft={daysLeft} />
@@ -205,6 +206,14 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
   const usedSoFar = ctx.normalSpent + ctx.cardSpentThisCycle;
   const avgDay = ctx.dayIntoCycle >= 3 ? Math.round(usedSoFar / ctx.dayIntoCycle) : 0;
   const tight = !short && avgDay > 0 && perDay < avgDay * 0.6;
+  /*
+    **오늘 쓴 돈을 하루 몫과 나란히**(2026-09-21). 하루 몫은 "하루 9,788원"이라고만 떠 있고 오늘 쓴
+    67,000원은 화면 맨 위 구석에 따로 있어서, 둘을 견주려면 사람이 머릿속으로 빼야 했다.
+    이 앱은 하루 단위로 쓰는 도구라 **오늘 몫을 넘겼는지**가 제일 자주 보는 숫자다. 막대 하나로 붙인다.
+  */
+  const today = Number(ctx.todaySpent || 0);
+  const over = perDay > 0 && today > perDay;
+  const ratio = perDay > 0 ? Math.min(1, today / perDay) : 0;
   return (
     <section aria-label="카드로 더 써도 되는 돈" style={{ ...cardBox(T, short), padding: "12px 16px" }}>
       {!hasPay ? (
@@ -220,6 +229,17 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
           <div style={{ color: short ? T.danger : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, lineHeight: 1.2 }}>
             {signed(v)}
           </div>
+          {hasPay && bankKnown && perDay > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ height: 6, borderRadius: 3, background: `${T.border}`, overflow: "hidden" }}>
+                <div style={{ width: `${(over ? 1 : ratio) * 100}%`, height: "100%", background: over ? T.danger : T.good, borderRadius: 3 }} />
+              </div>
+              <div style={{ color: over ? T.danger : T.muted, fontSize: 12.5, marginTop: 3 }}>
+                오늘 <b style={{ fontFamily: F.mono, color: over ? T.danger : T.cream }}>{fmtWon(today)}</b> / 하루 몫 {fmtWon(perDay)}
+                {over ? ` · ${fmtWon(today - perDay)} 더 썼어요` : ` · ${fmtWon(perDay - today)} 남았어요`}
+              </div>
+            </div>
+          )}
           {tight && bankKnown && (
             <div style={{ color: T.warn, fontSize: 13 }}>
               이번 달은 빠듯해요 — 지금까지 하루 평균 {fmtWon(avgDay)} 썼어요
@@ -278,6 +298,14 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
     return d ? { day: d, guess: true } : null;
   };
   const days = new Map(unpaidFixed.map((f) => [f.id, dayOf(f)]));
+  // 다음 달 고정지출 — 미리 냈거나 건너뛴 것은 빼고 큰 것부터(ctx.nextFixedCash/Card와 같은 기준)
+  const nextAll = (ctx.data.fixedExpenses || [])
+    .filter((f) => !(f.paidMonths && f.paidMonths[ctx.nextKey]) && !(f.skipMonths && f.skipMonths[ctx.nextKey]))
+    .map((f) => ({ name: f.name, amount: Number(fixedInfo(f, ctx.nextKey).amount), active: fixedInfo(f, ctx.nextKey).active }))
+    .filter((f) => f.active && f.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+  const nextTop = nextAll.slice(0, 3);
+  const nextRest = nextAll.length - nextTop.length;
   const overdue = unpaidFixed.filter((f) => (days.get(f.id)?.day || 99) < todayDay);
   return (
     <section aria-label="한눈에" style={{ background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 12, padding: "8px 14px 10px", marginTop: 10 }}>
@@ -340,6 +368,17 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
         <>
           <Row bold sign="−" label={`${top.month} 고정지출`} amount={top.fixedCash + top.fixedCard} />
           <div style={{ color: T.muted, fontSize: 12, paddingInlineStart: "1.2em" }}>통장 {fmtWon(top.fixedCash)} · 카드 할부·정기결제 {fmtWon(top.fixedCard)}</div>
+          {/*
+            **다음 달 것도 무엇이 들었는지 보이게**(2026-09-21). 이번 달 남은 고정지출엔 이름이 붙는데
+            다음 달은 300만 원이 덩어리로만 떠서, 왜 그렇게 큰지 알려면 다른 화면을 봐야 했다.
+            큰 것 셋만 적고 나머지는 건수로. 미리 냈거나 건너뛴 것은 이미 금액에서 빠졌으니 여기서도 뺀다.
+          */}
+          {nextTop.length > 0 && (
+            <div style={{ ...sub, fontSize: 12 }}>
+              {nextTop.map((f) => `${f.name} ${fmtWon(f.amount)}`).join(" · ")}
+              {nextRest > 0 ? ` 외 ${nextRest}건` : ""}
+            </div>
+          )}
           <div style={line} />
           <Row bold sign="=" label={top.value < 0 ? "월급 들어와도 모자라는 돈" : "카드로 더 써도 되는 돈"} amount={top.value} strong={top.value < 0 ? T.danger : T.good} />
         </>
