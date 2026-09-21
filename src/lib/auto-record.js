@@ -790,6 +790,7 @@ export function autoRecordPayments(data, items, held = []) {
   const ignored = [];
   const skipped = [];
   const dupPaid = [];   // 같은 카드값 결제를 두 길로 받아 두 번째는 넘긴 것
+  const alreadyBilled = [];   // 이미 맞춘 카드값에 들어 있어 카드값은 안 건드린 결제
 
   for (const it of all.slice(0, items.length)) {
     const { item, text, r, amount, pkg } = it;
@@ -835,8 +836,8 @@ export function autoRecordPayments(data, items, held = []) {
       */
       const paidAt = cards.find((c) => c.id === card.id)?.paidAtMs;
       const paidThisMonth = !!paidAt && keyOf(new Date(paidAt - new Date(paidAt).getTimezoneOffset() * 6e4).toISOString()) === keyOf(today);
-      const alreadyBilled = paidThisMonth && tKey < keyOf(today);
-      if (alreadyBilled) {
+      const inPaidBill = paidThisMonth && tKey < keyOf(today);   // 이미 낸 청구에 들어 있던 대중교통
+      if (inPaidBill) {
         if (was) expenses = expenses.map((e) => (e.id === was.id ? { ...e, amount: total, cardId: card.id, auto: true } : e));
         else {
           const last = new Date(y, mo, 0).getDate();
@@ -1134,10 +1135,35 @@ export function autoRecordPayments(data, items, held = []) {
     };
     if (hitCard) markPaid(hitCard.fixed.id, expenseId, eKey);
 
-    expenses = [...expenses, expense];
-    cards = cards.map((c) =>
-      c.id === card.id ? { ...c, bill: Number(c.bill || 0) + amount } : c,
+    /*
+      **이미 카드 앱 숫자로 맞춘 몫은 카드값에 또 더하지 않는다**(2026-09-21, 사용자: "카드 앱에
+      9/14로 이미 잡혀 있는데 앱에서 2중으로 계산한 거 맞아").
+
+      카드값을 카드 앱의 '결제 예정 금액'으로 맞추면(syncedAtMs) 그 시점까지의 결제가 전부 그 숫자에
+      들어 있다. 그런데 그 결제의 알림이 **뒤늦게** 오는 일이 있다 — 현대카드 통신요금 자동납부는
+      9월 14일에 결제되고 문자는 9월 20일에 왔다. 그걸 또 더하면 카드값이 그만큼 부풀고, 사람이
+      카드 앱과 대조하기 전에는 알 수 없다.
+
+      그래서 두 경우엔 **기록만 남기고 카드값은 그대로** 둔다.
+        · 결제 날짜가 마지막으로 맞춘 날보다 앞이다 — 그 숫자에 이미 들어 있다.
+        · 문구에 결제 날짜가 아예 없다(자동납부) — 언제 결제됐는지 모르는데, 최근에 맞췄다면
+          그 안에 들어 있을 가능성이 크다. 다음에 카드 앱과 맞출 때 어차피 정확해진다.
+      내역·카테고리·고정지출 처리는 그대로 된다. 카드값만 안 건드린다.
+    */
+    const syncedAt = Number(card.syncedAtMs || 0);
+    const syncedDay = syncedAt ? dateOfItem({ at: syncedAt }) : null;
+    const inSynced = !!syncedDay && (
+      date < syncedDay
+      || (!r.date && Date.now() - syncedAt < 7 * 86400000)
     );
+    expenses = [...expenses, expense];
+    if (!inSynced) {
+      cards = cards.map((c) =>
+        c.id === card.id ? { ...c, bill: Number(c.bill || 0) + amount } : c,
+      );
+    } else {
+      alreadyBilled.push(item);
+    }
     registered.push(expense);
   }
 
@@ -1145,7 +1171,7 @@ export function autoRecordPayments(data, items, held = []) {
     || balanceEntries !== (data.balanceEntries || balanceEntries0) || fixedExpenses !== (data.fixedExpenses || fixedExpenses0)
     || accounts !== (data.accounts || accounts0);
   if (!changed) {
-    return { next: data, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored, dupPaid };
+    return { next: data, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored, dupPaid, alreadyBilled };
   }
   return {
     next: { ...data, expenses, cards, balanceEntries, fixedExpenses, ...(accounts !== accounts0 ? { accounts } : {}) },
@@ -1157,6 +1183,7 @@ export function autoRecordPayments(data, items, held = []) {
     synced,
     settled,
     dupPaid,
+    alreadyBilled,
     transits,
     ignored,
   };

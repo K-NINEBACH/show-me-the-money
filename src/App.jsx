@@ -216,7 +216,7 @@ function AppInner() {
     const fresh = inbox.filter((i) => !i.checked);
     const heldBefore = inbox.filter((i) => i.checked);
     // 보류된 것도 넘긴다 — 자동으로 넣지는 않고, 결제·취소 짝을 맞출 때만 쓴다
-    const { next, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored, dupPaid } = autoRecordPayments(data, fresh, heldBefore);
+    const { next, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored, dupPaid, alreadyBilled } = autoRecordPayments(data, fresh, heldBefore);
     // 새로 온 것도, 치울 짝도 없으면 아무 상태도 안 바꾼다 — 안 그러면 이 효과가 끝없이 돈다
     if (fresh.length === 0 && dropped.length === 0) return;
     const keep = new Set(leftover);
@@ -228,6 +228,7 @@ function AppInner() {
     const transitOf = new Map(transits.map((s) => [s.item, s]));
     const quiet = new Set(ignored);
     const dupSet = new Set(dupPaid || []);
+    const inBill = new Set(alreadyBilled || []);
     logAlerts(fresh.map((i) => ({
       text: i.text, at: i.at,
       outcome: (keep.has(i) ? "알림함에 남김(어느 카드·통장인지 모름 등)"
@@ -237,7 +238,9 @@ function AppInner() {
         : quiet.has(i) ? "명세서·결제금액 안내라 넘김"
         : paidOf.has(i) ? `카드값 ${paidOf.get(i).partial ? "일부" : "전액"} 결제 확인 → ${paidOf.get(i).card} ${Number(paidOf.get(i).before).toLocaleString("ko-KR")}원 → ${Number(paidOf.get(i).after).toLocaleString("ko-KR")}원${paidOf.get(i).fixedNote ? ` · ${paidOf.get(i).fixedNote.name} ${paidOf.get(i).fixedNote.after.toLocaleString("ko-KR")}원으로(남은 회차 다시 계산)` : ""}`
         : transitOf.has(i) ? `${transitOf.get(i).month}월 대중교통 합계 반영${transitOf.get(i).paid ? " · 이미 낸 카드값이라 카드값은 그대로" : ""}`
-        : isCancelText(i.text) ? "취소 → 기록 되돌림" : "자동 기록함")
+        : isCancelText(i.text) ? "취소 → 기록 되돌림"
+        : inBill.has(i) ? "자동 기록함 · 이미 맞춘 카드값에 들어 있어 카드값은 그대로"
+        : "자동 기록함")
         + (syncOf.has(i) ? ` · 잔액을 은행과 맞춤(${won(syncOf.get(i).diff)})` : ""),
     })));
     // 판단이 끝난 것만 남기고 표시해 둔다 — 넣은 것과 짝이 맞아 치운 것은 목록에서 빠진다
