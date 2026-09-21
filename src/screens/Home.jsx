@@ -226,7 +226,7 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
               <span style={{ color: T.muted, fontSize: 13 }}>하루 <b style={{ color: tight ? T.warn : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums" }}>{fmtWon(perDay)}</b> · 말일까지 {daysLeft}일</span>
             )}
           </div>
-          <div style={{ color: short ? T.danger : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, lineHeight: 1.2 }}>
+          <div style={{ color: short ? T.danger : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, lineHeight: 1.25, marginTop: 2 }}>
             {signed(v)}
           </div>
           {hasPay && bankKnown && (
@@ -246,19 +246,19 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
             </div>
           )}
           {tight && bankKnown && (
-            <div style={{ color: T.warn, fontSize: 13 }}>
+            <div style={{ color: T.warn, fontSize: 13, marginTop: 6, lineHeight: 1.5 }}>
               이번 달은 빠듯해요 — 지금까지 하루 평균 {fmtWon(avgDay)} 썼어요
             </div>
           )}
           {(short || !bankKnown) && (
-            <div style={{ color: short ? T.danger : T.warn, fontSize: 13.5 }}>
+            <div style={{ color: short ? T.danger : T.warn, fontSize: 13.5, marginTop: 6, lineHeight: 1.5 }}>
               {!bankKnown ? "통장 잔액을 먼저 맞춰 주세요 — 아래 '입출금·맞추기'" : `${top.month} 월급이 들어와도 카드값·고정지출을 다 못 내요`}
             </div>
           )}
         </>
       )}
-      {/* 한 줄씩 — 둘을 한 줄에 이으면 "다 / 내면"처럼 말 중간에서 끊겼다 */}
-      <div style={{ color: T.muted, fontSize: 12.5, marginTop: 6, lineHeight: 1.6 }}>
+      {/* 한 줄씩 — 둘을 한 줄에 이으면 "다 / 내면"처럼 말 중간에서 끊겼다. 위 숫자와 섞이지 않게 선으로 나눈다 */}
+      <div style={{ color: T.muted, fontSize: 12.5, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${T.border}`, lineHeight: 2 }}>
         {hasPay && <div>통장 없이 {top.month} 월급만으로 <b style={{ color: ctx.payLeft < 0 ? T.danger : T.cream, fontFamily: F.mono, whiteSpace: "nowrap" }}>{signed(ctx.payLeft)}</b></div>}
         <div>지금 통장으로 다 내면 <b style={{ color: left < 0 ? T.danger : T.cream, fontFamily: F.mono, whiteSpace: "nowrap" }}>{signed(left)}</b></div>
       </div>
@@ -272,28 +272,34 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
   통장·카드는 하나씩 풀어 적고, 남은 고정지출은 이름까지 적는다 — 무엇이 남았는지가 궁금한 거라서.
 */
 function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBill, unpaidFixed, unpaidFixedSum, pending }) {
-  const Row = ({ sign, label, amount, tag, bold, strong }) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, padding: bold ? "5px 0 1px" : "1px 0" }}>
-      <span style={{ minWidth: 0, color: bold ? T.cream : T.muted, fontSize: bold ? 14.5 : 13, fontWeight: bold ? 700 : 400, paddingInlineStart: bold ? 0 : "1.2em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {sign && <span aria-hidden="true" style={{ display: "inline-block", width: "1.2em", color: T.muted, fontWeight: 400 }}>{sign}</span>}{label}
+  /*
+    **줄이 다닥다닥 붙어 읽기 힘들었다**(2026-09-21, 사용자). 고쳐야 했던 건 셋이다.
+      · 줄 간격 — 큰 줄 padding 5px/1px에 작은 줄 11.5px 글자라 통째로 뭉쳐 보였다.
+      · 이름 나열 — "가족모임 지난달 1일 · KB손해보험 지난달 20일 · …"이 석 줄로 접히며 금액도 없었다.
+        **한 항목 한 줄**로, 이름은 왼쪽 금액은 오른쪽으로 세운다.
+      · 묶음 구분 — 들어올 돈 / 카드값 / 이번 달 / 다음 달 / 결과가 한 덩어리였다. 묶음마다 띄우고 선을 둔다.
+  */
+  const Row = ({ sign, label, amount, tag, bold, strong, dim }) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: bold ? "3px 0" : "4px 0" }}>
+      <span style={{ minWidth: 0, color: bold ? T.cream : dim || T.muted, fontSize: bold ? 15 : 13.5, fontWeight: bold ? 700 : 400, paddingInlineStart: bold ? 0 : "1.4em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {sign && <span aria-hidden="true" style={{ display: "inline-block", width: "1.4em", color: T.muted, fontWeight: 400 }}>{sign}</span>}{label}
         {tag && <span style={{ marginInlineStart: 6, fontSize: 11.5, color: T.goldSoft, fontWeight: 400 }}>{tag}</span>}
       </span>
-      <span style={{ flexShrink: 0, color: strong || (bold ? T.cream : T.muted), fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: bold ? 15 : 13, fontWeight: bold ? 700 : 500 }}>{fmtWon(amount)}</span>
+      <span style={{ flexShrink: 0, color: strong || (bold ? T.cream : dim || T.muted), fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: bold ? 16 : 13.5, fontWeight: bold ? 700 : 500 }}>{fmtWon(amount)}</span>
     </div>
   );
-  const line = { borderTop: `1px dashed ${T.border}`, margin: "4px 0" };
-  const sub = { color: T.muted, fontSize: 11.5, paddingInlineStart: "1.2em", lineHeight: 1.5 };
+  /** 묶음 — 위에 여백과 옅은 선을 둬서 어디서 끊기는지 눈에 보이게 */
+  const Group = ({ children, first }) => (
+    <div style={{ marginTop: first ? 0 : 14, paddingTop: first ? 0 : 12, borderTop: first ? "none" : `1px solid ${T.border}` }}>{children}</div>
+  );
+  const note = { color: T.muted, fontSize: 12, paddingInlineStart: "1.4em", lineHeight: 1.6, marginTop: 1 };
+
   /*
-    **고정지출은 이름만이 아니라 며칠에 나가는지도**(2026-09-17). 안 줄고 남아 있는 게 '아직 날짜가
-    안 됐다'인지 '날짜가 지났는데 처리가 안 됐다'인지 구분이 안 됐다. 지난 건 빨갛게.
-    통장 자동이체만 날짜(autoPayDay)를 안다 — 카드 정기결제는 승인 알림으로 저절로 처리된다.
+    **고정지출은 이름만이 아니라 며칠에 나가는지도**(2026-09-17). 자동이체일(autoPayDay)이 적힌 것은
+    그날 앱이 알아서 처리하므로 여기 안 남는다 → 남은 건 대개 날짜를 모르는 것들이라 **지난달에 며칠에
+    나갔는지**로 짐작해 적는다. 날짜가 지났는데 아직 남아 있으면 빨갛게.
   */
   const todayDay = new Date().getDate();
-  /*
-    자동이체일(autoPayDay)이 적힌 것은 그날 앱이 알아서 처리하므로 여기 안 남는다. 그래서 남아 있는 건
-    대개 날짜를 모르는 것들이다 → **지난달에 며칠에 나갔는지**로 짐작해 보여 준다(paidMonths에 적힌
-    기록의 날짜). 적을 게 없으면 이름만. 날짜가 지났는데 아직 남아 있으면 빨갛게.
-  */
   const dayOf = (f) => {
     if (f.autoPayDay) return { day: f.autoPayDay, guess: false };
     const id = f.paidMonths?.[ctx.prevKey];
@@ -303,89 +309,83 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
     return d ? { day: d, guess: true } : null;
   };
   const days = new Map(unpaidFixed.map((f) => [f.id, dayOf(f)]));
+  const overdue = unpaidFixed.filter((f) => (days.get(f.id)?.day || 99) < todayDay);
   // 다음 달 고정지출 — 미리 냈거나 건너뛴 것은 빼고 큰 것부터(ctx.nextFixedCash/Card와 같은 기준)
   const nextAll = (ctx.data.fixedExpenses || [])
     .filter((f) => !(f.paidMonths && f.paidMonths[ctx.nextKey]) && !(f.skipMonths && f.skipMonths[ctx.nextKey]))
-    .map((f) => ({ name: f.name, amount: Number(fixedInfo(f, ctx.nextKey).amount), active: fixedInfo(f, ctx.nextKey).active }))
+    .map((f) => ({ id: f.id, name: f.name, amount: Number(fixedInfo(f, ctx.nextKey).amount), active: fixedInfo(f, ctx.nextKey).active }))
     .filter((f) => f.active && f.amount > 0)
     .sort((a, b) => b.amount - a.amount);
   const nextTop = nextAll.slice(0, 3);
-  const nextRest = nextAll.length - nextTop.length;
-  const overdue = unpaidFixed.filter((f) => (days.get(f.id)?.day || 99) < todayDay);
+  const nextRest = nextAll.slice(3);
+  const nextRestSum = nextRest.reduce((a, f) => a + f.amount, 0);
+  const receivable = (ctx.receivables || []).reduce((a, r) => a + Number(r.amount || 0), 0);
+
   return (
-    <section aria-label="한눈에" style={{ background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 12, padding: "8px 14px 10px", marginTop: 10 }}>
-      <Row bold label="통장" amount={balance} />
-      {accounts.length > 1 && accounts.map((a) => (
-        <Row key={a.id} label={a.name} amount={a.balance} tag={a.bankSync ? `${agoAt(a.bankSync.at)} 맞춤` : null} />
-      ))}
-      {pending > 0 && <Row sign="+" label={`아직 안 들어온 ${top.curMonth} 월급`} amount={pending} />}
-      {hasPay && <Row bold sign="+" label={`${top.month} 월급`} amount={top.pay} tag={top.tag} />}
-      <div style={line} />
-      <Row bold sign="−" label="안 낸 카드값" amount={cardBill} />
-      {cardTotals.map((c) => {
-        /*
-          **언제 나가는지, 언제 맞춘 숫자인지**(2026-09-17). 카드값은 결제 확인·명세서·맞추기가
-          같은 한 칸을 덮어써서 어긋나도 조용하다(2026-09-17에 552,948원이 어긋나 있었다).
-          통장에 '2시간 전 맞춤'이 있는 것처럼 카드에도 기준 시각을 적고, 오래되면 색을 바꾼다.
-        */
-        const due = nextDayOfMonth(c.payDay);
-        const old7 = c.syncedAtMs && Date.now() - c.syncedAtMs > 7 * 86400000;
-        return (
-          <div key={c.id}>
-            <Row label={c.name} amount={c.total}
-              tag={c.earlyPay && c.installPaid?.[ctx.curKey] ? "이번 달 할부 미리 냄" : c.fixedPortion > 0 ? `할부 ${fmtWon(c.fixedPortion)} 포함` : null} />
-            {(due || c.syncedAtMs) && (
-              <div style={sub}>
-                {due && <span style={{ color: due.days <= 3 ? T.warn : T.muted }}>{due.label} 결제 · {due.days === 0 ? "오늘" : `${due.days}일 뒤`}</span>}
-                {due && c.syncedAtMs && " · "}
-                {c.syncedAtMs && <span style={{ color: old7 ? T.warn : T.muted }}>카드 앱과 {agoAt(c.syncedAtMs)} 맞춤</span>}
-              </div>
-            )}
-          </div>
-        );
-      })}
-      {/*
-        **카드값에 들어 있지만 내 돈이 아닌 것**(2026-09-17). 대리결제는 카드로는 내가 전액 내고
-        나중에 돌려받는다. 카드값에는 그대로 들어 있어서 '안 낸 카드값'이 실제보다 커 보인다.
-        식을 흔들지 않게 줄(부호)이 아니라 설명 한 줄로 둔다 — 돈이 들어오면 통장 쪽에서 잡힌다.
-      */}
-      {(ctx.receivables || []).length > 0 && (
-        <div style={sub}>이 중 정산받을 돈 {fmtWon((ctx.receivables || []).reduce((a, r) => a + Number(r.amount || 0), 0))} — 돌려받으면 통장으로 들어와요</div>
-      )}
-      <Row bold sign="−" label={`${top.curMonth} 남은 고정지출`} amount={unpaidFixedSum} strong={unpaidFixed.length ? T.warn : null} />
-      {unpaidFixed.length > 0 && (
-        <div style={{ ...sub, fontSize: 12 }}>
-          {unpaidFixed.map((f, i) => {
-            const d = days.get(f.id);
-            return (
-              <span key={f.id}>
-                {i > 0 && " · "}
-                <span style={{ color: d && d.day < todayDay ? T.warn : T.muted }}>
-                  {f.name}{d ? ` ${d.guess ? "지난달 " : ""}${d.day}일` : ""}
-                </span>
-              </span>
-            );
-          })}
-          {overdue.length > 0 && <span style={{ color: T.warn }}> · 날짜 지난 것 {overdue.length}건</span>}
-        </div>
-      )}
+    <section aria-label="한눈에" style={{ background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 15px 14px", marginTop: 10 }}>
+      <Group first>
+        <Row bold label="통장" amount={balance} />
+        {accounts.length > 1 && accounts.map((a) => (
+          <Row key={a.id} label={a.name} amount={a.balance} tag={a.bankSync ? `${agoAt(a.bankSync.at)} 맞춤` : null} />
+        ))}
+        {pending > 0 && <Row sign="+" label={`아직 안 들어온 ${top.curMonth} 월급`} amount={pending} />}
+        {hasPay && <Row bold sign="+" label={`${top.month} 월급`} amount={top.pay} tag={top.tag} />}
+      </Group>
+
+      <Group>
+        <Row bold sign="−" label="안 낸 카드값" amount={cardBill} />
+        {cardTotals.map((c) => {
+          /*
+            **언제 나가는지, 언제 맞춘 숫자인지**(2026-09-17). 카드값은 결제 확인·명세서·맞추기가
+            같은 한 칸을 덮어써서 어긋나도 조용하다(9/17에 552,948원이 어긋나 있었다).
+          */
+          const due = nextDayOfMonth(c.payDay);
+          const old7 = c.syncedAtMs && Date.now() - c.syncedAtMs > 7 * 86400000;
+          return (
+            <div key={c.id} style={{ marginBottom: 2 }}>
+              <Row label={c.name} amount={c.total}
+                tag={c.earlyPay && c.installPaid?.[ctx.curKey] ? "이번 달 할부 미리 냄" : c.fixedPortion > 0 ? `할부 ${fmtWon(c.fixedPortion)} 포함` : null} />
+              {(due || c.syncedAtMs) && (
+                <div style={note}>
+                  {due && <span style={{ color: due.days <= 3 ? T.warn : T.muted }}>{due.label} 결제 · {due.days === 0 ? "오늘" : `${due.days}일 뒤`}</span>}
+                  {due && c.syncedAtMs && " · "}
+                  {c.syncedAtMs && <span style={{ color: old7 ? T.warn : T.muted }}>카드 앱과 {agoAt(c.syncedAtMs)} 맞춤</span>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {/*
+          대리결제는 카드로 내가 전액 내고 나중에 돌려받는다. 카드값엔 그대로 들어 있어서 '안 낸
+          카드값'이 실제보다 커 보인다. 식(부호 붙은 줄)은 안 흔들고 설명 한 줄로 둔다.
+        */}
+        {receivable > 0 && <div style={note}>이 중 정산받을 돈 {fmtWon(receivable)} — 돌려받으면 통장으로 들어와요</div>}
+      </Group>
+
+      <Group>
+        <Row bold sign="−" label={`${top.curMonth} 남은 고정지출`} amount={unpaidFixedSum} strong={unpaidFixed.length ? T.warn : null} />
+        {unpaidFixed.map((f) => {
+          const d = days.get(f.id);
+          const late = d && d.day < todayDay;
+          return (
+            <Row key={f.id} label={`${f.name}${d ? ` · ${d.guess ? "지난달 " : ""}${d.day}일` : ""}`} amount={f.info.amount} dim={late ? T.warn : null} />
+          );
+        })}
+        {overdue.length > 0 && <div style={{ ...note, color: T.warn }}>날짜가 지난 것 {overdue.length}건 — 냈으면 아래 '고정지출 처리'에서 눌러 주세요</div>}
+      </Group>
+
       {hasPay && (
         <>
-          <Row bold sign="−" label={`${top.month} 고정지출`} amount={top.fixedCash + top.fixedCard} />
-          <div style={{ color: T.muted, fontSize: 12, paddingInlineStart: "1.2em" }}>통장 {fmtWon(top.fixedCash)} · 카드 할부·정기결제 {fmtWon(top.fixedCard)}</div>
-          {/*
-            **다음 달 것도 무엇이 들었는지 보이게**(2026-09-21). 이번 달 남은 고정지출엔 이름이 붙는데
-            다음 달은 300만 원이 덩어리로만 떠서, 왜 그렇게 큰지 알려면 다른 화면을 봐야 했다.
-            큰 것 셋만 적고 나머지는 건수로. 미리 냈거나 건너뛴 것은 이미 금액에서 빠졌으니 여기서도 뺀다.
-          */}
-          {nextTop.length > 0 && (
-            <div style={{ ...sub, fontSize: 12 }}>
-              {nextTop.map((f) => `${f.name} ${fmtWon(f.amount)}`).join(" · ")}
-              {nextRest > 0 ? ` 외 ${nextRest}건` : ""}
-            </div>
-          )}
-          <div style={line} />
-          <Row bold sign="=" label={top.value < 0 ? "월급 들어와도 모자라는 돈" : "카드로 더 써도 되는 돈"} amount={top.value} strong={top.value < 0 ? T.danger : T.good} />
+          <Group>
+            <Row bold sign="−" label={`${top.month} 고정지출`} amount={top.fixedCash + top.fixedCard} />
+            {nextTop.map((f) => <Row key={f.id} label={f.name} amount={f.amount} />)}
+            {nextRest.length > 0 && <Row label={`그 밖에 ${nextRest.length}건`} amount={nextRestSum} />}
+            <div style={note}>통장 {fmtWon(top.fixedCash)} · 카드 할부·정기결제 {fmtWon(top.fixedCard)}</div>
+          </Group>
+
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1.5px solid ${T.border}` }}>
+            <Row bold sign="=" label={top.value < 0 ? "월급 들어와도 모자라는 돈" : "카드로 더 써도 되는 돈"} amount={top.value} strong={top.value < 0 ? T.danger : T.good} />
+          </div>
         </>
       )}
     </section>
