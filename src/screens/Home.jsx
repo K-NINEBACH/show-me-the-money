@@ -310,6 +310,14 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
   };
   const days = new Map(unpaidFixed.map((f) => [f.id, dayOf(f)]));
   const overdue = unpaidFixed.filter((f) => (days.get(f.id)?.day || 99) < todayDay);
+  // 날짜가 지난 것을 먼저, 그다음 큰 것부터 — 눌러야 할 것이 위로 온다
+  const unpaidSorted = [...unpaidFixed].sort((a, b) => {
+    const la = (days.get(a.id)?.day || 99) < todayDay ? 0 : 1;
+    const lb = (days.get(b.id)?.day || 99) < todayDay ? 0 : 1;
+    return la - lb || Number(b.info.amount) - Number(a.info.amount);
+  });
+  const unpaidTop = unpaidSorted.slice(0, 4);
+  const unpaidRest = unpaidSorted.slice(4);
   // 다음 달 고정지출 — 미리 냈거나 건너뛴 것은 빼고 큰 것부터(ctx.nextFixedCash/Card와 같은 기준)
   const nextAll = (ctx.data.fixedExpenses || [])
     .filter((f) => !(f.paidMonths && f.paidMonths[ctx.nextKey]) && !(f.skipMonths && f.skipMonths[ctx.nextKey]))
@@ -364,13 +372,15 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
 
       <Group>
         <Row bold sign="−" label={`${top.curMonth} 남은 고정지출`} amount={unpaidFixedSum} strong={unpaidFixed.length ? T.warn : null} />
-        {unpaidFixed.map((f) => {
+        {/* 홈은 한 화면에 들어와야 한다 — 큰 것 넷만 줄로, 나머지는 한 줄로 묶는다(2026-09-21) */}
+        {unpaidTop.map((f) => {
           const d = days.get(f.id);
           const late = d && d.day < todayDay;
           return (
             <Row key={f.id} label={`${f.name}${d ? ` · ${d.guess ? "지난달 " : ""}${d.day}일` : ""}`} amount={f.info.amount} dim={late ? T.warn : null} />
           );
         })}
+        {unpaidRest.length > 0 && <Row label={`그 밖에 ${unpaidRest.length}건`} amount={unpaidRest.reduce((a, f) => a + Number(f.info.amount), 0)} />}
         {overdue.length > 0 && <div style={{ ...note, color: T.warn }}>날짜가 지난 것 {overdue.length}건 — 냈으면 아래 '고정지출 처리'에서 눌러 주세요</div>}
       </Group>
 
