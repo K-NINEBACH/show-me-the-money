@@ -56,7 +56,8 @@ export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={rowTitle(T)}>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{title}</span>
-          {e.memo && <Badge color={cat ? cat.color : T.inkMuted}>{catName}</Badge>}
+          {/* 적요가 카테고리 이름과 같으면 같은 말을 두 번 적지 않는다 */}
+          {e.memo && e.memo !== catName && <Badge color={cat ? cat.color : T.inkMuted}>{catName}</Badge>}
           <Badge color={methodColor}>{methodLabel}</Badge>
           {e.reimbursedAmount != null && <Badge color={T.good}>정산받음 {fmtWon(e.reimbursedAmount)}</Badge>}
           {/* 알림에서 확인 없이 들어온 줄 — 이상하면 이것만 훑어 지울 수 있게 */}
@@ -139,7 +140,7 @@ function BalanceRow({ b, accountName, onDelete, dateNode }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={rowTitle(T)}>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{b.memo || kind}</span>
-          {b.memo && <Badge color={b.type === "in" ? T.good : T.danger}>{kind}</Badge>}
+          {b.memo && b.memo !== kind && <Badge color={b.type === "in" ? T.good : T.danger}>{kind}</Badge>}
           {accountName && <Badge color={T.inkMuted}>{accountName}</Badge>}
           {b.auto && <Badge color={T.inkMuted}>자동</Badge>}
         </div>
