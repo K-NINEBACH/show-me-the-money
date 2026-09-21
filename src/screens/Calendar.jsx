@@ -97,7 +97,7 @@ export function CalendarView({ ctx }) {
           <div key={d} style={{ color: T.muted, fontSize: 13, padding: "4px 0" }}>{d}</div>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", rowGap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", rowGap: 18 }}>
         {cells.map((day, i) => {
           if (day == null) return <div key={i} />;
           const dateStr = dateStrFor(viewKey, day);
@@ -112,10 +112,10 @@ export function CalendarView({ ctx }) {
           const hasIncome = incomeDays.has(day);
           return (
             <button key={i} onClick={() => setSelectedDate(isSelected ? null : dateStr)}
-              style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "2px 0" }}>
+              style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "2px 0" }}>
               <span style={{
-                position: "relative", width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 14.5, fontWeight: isToday ? 700 : 500,
+                position: "relative", width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 15, fontWeight: isToday ? 700 : 500,
                 background: isToday ? T.ink : isSelected ? T.gold + "33" : amt ? `${T.danger}${heatAlpha}` : "transparent",
                 color: isToday ? T.paper : isSelected ? T.gold : T.cream,
                 border: isTop ? `1.5px solid ${T.gold}` : isSelected && !isToday ? `1.5px solid ${T.gold}` : "none",
@@ -125,32 +125,32 @@ export function CalendarView({ ctx }) {
                   <span style={{ position: "absolute", top: -2, right: -2, width: 7, height: 7, borderRadius: "50%", background: T.good, border: `1px solid ${T.bg}` }} />
                 )}
               </span>
-              <span style={{ fontSize: 11, color: amt ? (big ? T.ink : T.muted) : "transparent", fontFamily: F.mono, fontWeight: big ? 700 : 400 }}>
+              <span style={{ fontSize: 11.5, color: amt ? (big ? T.ink : T.muted) : "transparent", fontFamily: F.mono, fontWeight: big ? 700 : 400 }}>
                 {amt ? (amt >= 10000 ? `${Math.round(amt / 1000) / 10}만` : amt.toLocaleString("ko-KR")) : "-"}
               </span>
             </button>
           );
         })}
       </div>
-      <div style={{ display: "flex", gap: 14, marginTop: 14, fontSize: 12, color: T.muted }}>
+      <div style={{ display: "flex", gap: 14, marginTop: 20, fontSize: 12, color: T.muted }}>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: "50%", background: `${T.danger}70` }} /> 많이 쓴 날</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: T.good }} /> 입금일</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: "50%", border: `1.5px solid ${T.gold}` }} /> 최고 지출일</span>
       </div>
 
       {byCategory.length > 0 && (
-        <div style={{ marginTop: 18 }}>
-          <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 8 }}>어디에 썼나</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        <div style={{ marginTop: 24 }}>
+          <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 12 }}>어디에 썼나</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {byCategory.slice(0, 6).map((c) => (
               <div key={c.id}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 13.5, color: T.cream }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 14, color: T.cream }}>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
                   <span style={{ fontFamily: F.mono, color: T.muted, flexShrink: 0 }}>
                     {fmtWon(c.amount)} <span style={{ fontSize: 12 }}>{Math.round((c.amount / monthTotal) * 100)}%</span>
                   </span>
                 </div>
-                <div style={{ height: 5, borderRadius: 3, background: `${T.border}`, overflow: "hidden", marginTop: 2 }}>
+                <div style={{ height: 7, borderRadius: 4, background: `${T.border}`, overflow: "hidden", marginTop: 5 }}>
                   <div style={{ width: `${(c.amount / byCategory[0].amount) * 100}%`, height: "100%", background: c.color || T.muted, borderRadius: 3 }} />
                 </div>
               </div>
@@ -161,20 +161,20 @@ export function CalendarView({ ctx }) {
 
       {selectedDate && (
         <div style={{ marginTop: 20 }}>
-          <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 8 }}>{selectedDate} 내역</div>
+          <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 10 }}>{selectedDate} 내역</div>
           {selectedList.length === 0 ? (
             <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "24px 14px" }}>이 날 기록이 없어요.</div>
           ) : (
             <div style={paperCard(T)}>
               {selectedList.map((e) => (
-                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                   <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {/* 내역 화면과 같은 규칙 — 가맹점이 제목, 카테고리는 옆에 작게(2026-09-21) */}
                     <div style={{ color: T.ink, fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {e.memo || (catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류")}
                     </div>
-                    <div style={{ color: T.inkMuted, fontSize: 12.5 }}>
+                    <div style={{ color: T.inkMuted, fontSize: 12.5, marginTop: 3 }}>
                       {e.memo ? `${catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"} · ` : ""}
                       {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
                       {e.reimbursedAmount != null ? ` · 정산받음 ${fmtWon(e.reimbursedAmount)}` : ""}

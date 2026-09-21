@@ -20,9 +20,9 @@ import { settleReceivable } from "./Home";
 // 제목과 배지를 한 줄에 흘려 두고, 넘치면 배지가 다음 줄 맨 앞부터 이어진다.
 // 예전엔 배지마다 왼쪽 여백을 붙여서, 줄이 넘어가면 그 여백까지 같이 넘어가
 // 들여쓰기처럼 보였다.
-function rowTitle(T) { return { display: "flex", flexWrap: "wrap", alignItems: "baseline", columnGap: 6, rowGap: 1, color: T.ink, fontSize: 16, fontWeight: 600 }; }
+function rowTitle(T) { return { display: "flex", flexWrap: "wrap", alignItems: "baseline", columnGap: 7, rowGap: 3, color: T.ink, fontSize: 16, fontWeight: 600, lineHeight: 1.45 }; }
 function rowSub(T) { return { color: T.inkMuted, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }; }
-function rowDate(T) { return { color: T.inkMuted, fontSize: 12.5, fontFamily: F.mono }; }
+function rowDate(T) { return { color: T.inkMuted, fontSize: 12.5, fontFamily: F.mono, marginTop: 3 }; }
 function Badge({ color, children }) {
   return <span style={{ fontSize: 12, fontWeight: 700, color, whiteSpace: "nowrap" }}>{children}</span>;
 }
@@ -51,7 +51,7 @@ export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, 
   const catName = cat ? cat.name : "미분류";
   const title = e.memo || catName;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
       <div aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={rowTitle(T)}>
@@ -86,7 +86,7 @@ function ReceivableRow({ ctx, e, cat, onDelete, dateNode }) {
   const confirmSettle = () => { settleReceivable(ctx, e, repaidInput); setSettling(false); setRepaidInput(""); };
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
         <div aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={rowTitle(T)}>
@@ -135,7 +135,7 @@ function BalanceRow({ b, accountName, onDelete, dateNode }) {
   const kind = b.isAdjustment ? "잔액 맞춤" : b.type === "in" ? "입금" : "출금";
   // 지출 줄과 같은 규칙 — 적요(무엇인지)가 제목, 종류·통장은 태그(2026-09-21)
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
       {b.type === "in" ? <ArrowDownCircle size={15} color={T.good} aria-hidden="true" style={{ flexShrink: 0, marginInline: -3.5 }} /> : <ArrowUpCircle size={15} color={T.danger} aria-hidden="true" style={{ flexShrink: 0, marginInline: -3.5 }} />}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={rowTitle(T)}>
@@ -161,8 +161,8 @@ function DayHead({ T, date, total, first }) {
   const today = date === todayISO();
   return (
     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8,
-      padding: "10px 0 4px", marginTop: first ? 0 : 4, borderTop: first ? "none" : `1px solid ${T.paperLine}` }}>
-      <span style={{ color: today ? T.gold : T.inkMuted, fontSize: 13.5, fontWeight: 700 }}>
+      padding: first ? "6px 0 8px" : "18px 0 8px", marginTop: first ? 0 : 6, borderTop: first ? "none" : `1px solid ${T.paperLine}` }}>
+      <span style={{ color: today ? T.gold : T.inkMuted, fontSize: 14, fontWeight: 700 }}>
         {today ? "오늘" : `${d.getMonth() + 1}월 ${d.getDate()}일`} <span style={{ fontWeight: 400 }}>({wd})</span>
       </span>
       {total > 0 && <span style={{ color: T.inkMuted, fontFamily: F.mono, fontSize: 13 }}>{fmtWon(total)}</span>}
