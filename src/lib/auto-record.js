@@ -362,6 +362,22 @@ function reconcileExpense(expenses, { amount, date, cardId }) {
 }
 
 /** 문자에 찍힌 결제 시각 "17:15". 없으면 null */
+/*
+  **문구에 날짜가 없으면 '알림이 온 시각'의 날짜를 쓴다**(2026-09-21, 사용자: "오늘 5만 원 결제한 적이
+  없는데?"). 현대카드 자동납부 문자에는 결제 날짜가 없다 — "[현대카드] 자동납부 승인 … SKT
+  09월-**86-2827 58,220원". 예전엔 그런 문구를 무조건 '오늘'로 적어서, 어제 빠진 휴대폰요금이
+  오늘 쓴 돈으로 잡혔다(홈의 '오늘' 막대까지 틀어졌다). 껍데기가 알림·문자를 받은 시각(at)이 있으면
+  그 날짜가 훨씬 가깝다. 시각이 없거나 이상하면 예전처럼 오늘로 둔다.
+*/
+function dateOfItem(item) {
+  const at = Number(item?.at);
+  if (!at || !Number.isFinite(at)) return todayISO();
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return todayISO();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+
 function timeOf(text) {
   const m = String(text || "").match(/(?:^|[^\d])(\d{1,2}):(\d{2})(?!\d)/);
   return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
@@ -864,7 +880,7 @@ export function autoRecordPayments(data, items, held = []) {
       const card = findCard(cards, text, pkg);
       const acc = findAccount(data.accounts, text, pkg);
       if (card && !acc) {
-        if (settleCard(card, r.date || todayISO(), amount, item)) continue;
+        if (settleCard(card, r.date || dateOfItem(item), amount, item)) continue;
         ignored.push(item);
         continue;
       }
@@ -928,7 +944,7 @@ export function autoRecordPayments(data, items, held = []) {
         leftover.push(item);
         continue;
       }
-      const bDate = r.date || todayISO();
+      const bDate = r.date || dateOfItem(item);
       const bKey = keyOf(bDate);
       const time = timeOf(text);
       /*
@@ -1011,7 +1027,7 @@ export function autoRecordPayments(data, items, held = []) {
       continue;
     }
 
-    const date = r.date || todayISO();
+    const date = r.date || dateOfItem(item);
     const eKey = keyOf(date);
     const time = timeOf(text);
 
