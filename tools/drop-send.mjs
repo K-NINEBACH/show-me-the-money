@@ -23,16 +23,18 @@ const prepaid = argv.includes("--prepaid");
 const billArg = flag("--bill");
 const installArg = flag("--install");
 const rowArgs = argv.map((a, i) => (a === "--row" ? argv[i + 1] : null)).filter(Boolean);
-const payDayArg = flag("--payday");   // 카드 결제일(매달 N일) — 홈이 "10/12 결제 · 23일 뒤"로 보여 준다
+const payDayArg = flag("--payday");
+// 기록 한 줄의 날짜 고치기: --fixdate <금액>:<새날짜>[:<지금날짜>[:<적요조각>]]
+const fixArg = flag("--fixdate");   // 카드 결제일(매달 N일) — 홈이 "10/12 결제 · 23일 뒤"로 보여 준다
 // 값을 가진 옵션과 그 값은 자리 인자에서 뺀다
 const skip = new Set();
 for (let i = 0; i < argv.length; i++) {
-  if (["--bill", "--install", "--row", "--payday"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
+  if (["--bill", "--install", "--row", "--payday", "--fixdate"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
 }
 const pos = argv.filter((a, i) => !skip.has(i) && a !== "--prepaid");
 const [rawCode, card, third, fourth] = pos;
 
-if (!rawCode || !card || (!billArg && !payDayArg && !third)) {
+if (!rawCode || !card || (!billArg && !payDayArg && !fixArg && !third)) {
   console.error("사용: node drop-send.mjs <받기코드> <카드이름조각> <명세서.txt> [메모] [--prepaid]");
   console.error("      node drop-send.mjs <받기코드> <카드이름조각> --bill <금액> [메모] [--install 이름:YYYY-MM:금액]");
   process.exit(1);
@@ -52,7 +54,14 @@ const key = await subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, h
 
 const id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 let msg;
-if (billArg || payDayArg) {
+if (fixArg) {
+  const [amount, date, on, memo] = String(fixArg).split(":");
+  if (!Number(String(amount).replace(/[^\d]/g, "")) || !/^\d{4}-\d{2}-\d{2}$/.test(date || "")) {
+    console.error("--fixdate 는 금액:YYYY-MM-DD[:지금날짜[:적요조각]] 모양이어야 해요:", fixArg); process.exit(1);
+  }
+  msg = { id, at: new Date().toISOString(), kind: "fixdate", card, amount: Number(String(amount).replace(/[^\d]/g, "")), date, on: on || null, memo: memo || null };
+  console.log(`날짜 고치기: ${Number(msg.amount).toLocaleString("ko-KR")}원 → ${date}${on ? ` (지금 ${on})` : ""}${memo ? ` · '${memo}'` : ""}`);
+} else if (billArg || payDayArg) {
   const bill = billArg ? Number(String(billArg).replace(/[^\d]/g, "")) : null;
   if (billArg && !Number.isFinite(bill)) { console.error("--bill 금액을 못 읽었어요:", billArg); process.exit(1); }
   let install = null;

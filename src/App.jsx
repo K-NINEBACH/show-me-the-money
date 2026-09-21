@@ -344,7 +344,7 @@ function AppInner() {
         const logs = [];
         const notes = [];
         for (const m of msgs) {
-          if (m.kind !== "statement" && m.kind !== "cardbill") { done.push(m.id); continue; }
+          if (!["statement", "cardbill", "fixdate"].includes(m.kind)) { done.push(m.id); continue; }
           const hits = (d.cards || []).filter((c) => String(c.name).includes(m.card));
           if (hits.length !== 1) {
             logs.push({ at: Date.now(), id: m.id, text: `${m.card} — 앱에서 그 카드를 못 찾아 아직 안 넣었어요` });
@@ -356,6 +356,28 @@ function AppInner() {
             사용자가 카드 앱의 '결제 예정 금액'을 보여 주면 그 금액으로 맞춘다(일부 결제·리볼빙처럼 우리 계산이
             못 따라가는 경우). 할부 몫은 카드값(bill)에 또 들어가면 두 번 세므로, 할부는 그 달 금액만 고친다.
           */
+          /*
+            **기록 한 줄의 날짜를 바로잡기**(2026-09-21). 문구에 결제 날짜가 없는 문자(자동납부)는
+            받은 날로 적히는데, 카드 앱에는 진짜 결제일이 찍혀 있다. 사용자가 그 화면을 보여 주면
+            Claude가 날짜만 고쳐 준다 — 금액·적요 조각으로 그 줄 하나를 찾아서.
+            같은 금액이 여럿이면(2건 이상) 건드리지 않는다. 잘못 고치는 게 안 고치는 것보다 나쁘다.
+          */
+          if (m.kind === "fixdate") {
+            const want = String(m.amount);
+            const hits = (d.expenses || []).filter((e) => String(e.amount) === want
+              && (!m.on || e.date === m.on)
+              && (!m.memo || String(e.memo || "").includes(m.memo)));
+            if (hits.length !== 1) {
+              logs.push({ at: Date.now(), id: m.id, text: `${Number(m.amount).toLocaleString("ko-KR")}원 기록을 하나로 못 찾아 날짜를 안 고쳤어요(${hits.length}건)` });
+              continue;
+            }
+            const was = hits[0].date;
+            d = { ...d, expenses: d.expenses.map((e) => (e.id === hits[0].id ? { ...e, date: m.date, dateRepaired: was } : e)) };
+            logs.push({ at: Date.now(), id: m.id, text: `${hits[0].memo || Number(m.amount).toLocaleString("ko-KR") + "원"} 날짜를 ${was} → ${m.date}로 고쳤어요` });
+            notes.push(`${hits[0].memo || "기록"} 날짜를 고쳤어요`);
+            done.push(m.id);
+            continue;
+          }
           if (m.kind === "cardbill") {
             // 결제일만 보낼 수도 있다(금액 없이) — 그땐 카드값을 건드리지 않는다
             const hasBill = m.bill != null && Number.isFinite(Number(m.bill));
