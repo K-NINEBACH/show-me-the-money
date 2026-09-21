@@ -41,23 +41,29 @@ function IconBtn({ label, color, onClick, children }) {
   );
 }
 
+/*
+  **제목은 가맹점, 카테고리는 태그**(2026-09-21). 예전엔 '식비·교통·미분류'가 굵은 제목이고
+  정작 찾는 이름(코스트코·쏘카)이 작은 회색 줄이었다. 같은 카테고리가 줄줄이 이어지면
+  제목이 다 똑같아 보여서 눈이 걸릴 데가 없었다. 가맹점이 없으면 카테고리를 제목으로 쓴다.
+*/
 export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, onDelete }) {
   const T = useTheme();
-  const title = cat ? cat.name : "미분류";
+  const catName = cat ? cat.name : "미분류";
+  const title = e.memo || catName;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
       <div aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={rowTitle(T)}>
-          {title}
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{title}</span>
+          {e.memo && <Badge color={cat ? cat.color : T.inkMuted}>{catName}</Badge>}
           <Badge color={methodColor}>{methodLabel}</Badge>
           {e.reimbursedAmount != null && <Badge color={T.good}>정산받음 {fmtWon(e.reimbursedAmount)}</Badge>}
           {/* 알림에서 확인 없이 들어온 줄 — 이상하면 이것만 훑어 지울 수 있게 */}
           {e.auto && <Badge color={T.inkMuted}>자동</Badge>}
           {e.fromStatement && <Badge color={T.inkMuted}>명세서</Badge>}
         </div>
-        {e.memo && <div style={rowSub(T)}>{e.memo}</div>}
-        {dateNode || <div style={rowDate(T)}>{e.date}</div>}
+        {dateNode}
       </div>
       <div style={{ color: T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16, textAlign: "right", whiteSpace: "nowrap" }}>{fmtWon(e.amount)}</div>
       {onEdit && <IconBtn label={`${title} ${fmtWon(e.amount)} 수정`} color={T.gold} onClick={onEdit}><Pencil size={15} aria-hidden="true" /></IconBtn>}
@@ -69,7 +75,7 @@ export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, 
 // 대리결제 한 줄 — 정산 상태(미정산/정산완료/부족분·초과분)를 태그로 붙여서,
 // 카드/현금 어느 쪽으로 결제했든 결과가 어떻게 됐는지 한눈에 보이게 함. 미정산이면
 // 여기서 바로 정산까지 할 수 있음 — 홈 화면까지 갈 필요 없이.
-function ReceivableRow({ ctx, e, cat, onDelete }) {
+function ReceivableRow({ ctx, e, cat, onDelete, dateNode }) {
   const T = useTheme();
   const [settling, setSettling] = useState(false);
   const [repaidInput, setRepaidInput] = useState("");
@@ -83,11 +89,10 @@ function ReceivableRow({ ctx, e, cat, onDelete }) {
         <div aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={rowTitle(T)}>
-            {cat ? cat.name : "대리결제"}
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{e.memo || (cat ? cat.name : "대리결제")}</span>
             <Badge color={T.inkMuted}>대리결제 · {methodLabel}</Badge>
           </div>
-          {e.memo && <div style={rowSub(T)}>{e.memo}</div>}
-          <div style={rowDate(T)}>{e.date}</div>
+          {dateNode}
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
           <span style={{ color: T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16 }}>{fmtWon(e.amount)}</span>
@@ -124,25 +129,42 @@ function ReceivableRow({ ctx, e, cat, onDelete }) {
   이 줄은 그걸 안 그려서, 지출과 달리 무엇이 자동으로 들어왔는지 안 보였다.
   통장이 여럿이라 어느 통장인지도 같이 적는다.
 */
-function BalanceRow({ b, accountName, onDelete }) {
+function BalanceRow({ b, accountName, onDelete, dateNode }) {
   const T = useTheme();
   const kind = b.isAdjustment ? "잔액 맞춤" : b.type === "in" ? "입금" : "출금";
+  // 지출 줄과 같은 규칙 — 적요(무엇인지)가 제목, 종류·통장은 태그(2026-09-21)
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
       {b.type === "in" ? <ArrowDownCircle size={15} color={T.good} aria-hidden="true" style={{ flexShrink: 0, marginInline: -3.5 }} /> : <ArrowUpCircle size={15} color={T.danger} aria-hidden="true" style={{ flexShrink: 0, marginInline: -3.5 }} />}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={rowTitle(T)}>
-          {kind}
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{b.memo || kind}</span>
+          {b.memo && <Badge color={b.type === "in" ? T.good : T.danger}>{kind}</Badge>}
           {accountName && <Badge color={T.inkMuted}>{accountName}</Badge>}
           {b.auto && <Badge color={T.inkMuted}>자동</Badge>}
         </div>
-        {b.memo && <div style={rowSub(T)}>{b.memo}</div>}
-        <div style={rowDate(T)}>{b.date}</div>
+        {dateNode}
       </div>
       <div style={{ color: b.type === "in" ? T.good : T.danger, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16, whiteSpace: "nowrap" }}>
         {b.type === "in" ? "+" : "-"}{fmtWon(b.amount)}
       </div>
       <IconBtn label={`${kind} ${b.memo || ""} ${fmtWon(b.amount)} 삭제`} color={T.danger} onClick={onDelete}><Trash2 size={15} aria-hidden="true" /></IconBtn>
+    </div>
+  );
+}
+
+/** 날짜 묶음 머리글 — "9월 17일 (목) · 633,020원" */
+function DayHead({ T, date, total, first }) {
+  const d = new Date(`${date}T12:00:00`);
+  const wd = ["일", "월", "화", "수", "목", "금", "토"][d.getDay()];
+  const today = date === todayISO();
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8,
+      padding: "10px 0 4px", marginTop: first ? 0 : 4, borderTop: first ? "none" : `1px solid ${T.paperLine}` }}>
+      <span style={{ color: today ? T.gold : T.inkMuted, fontSize: 13.5, fontWeight: 700 }}>
+        {today ? "오늘" : `${d.getMonth() + 1}월 ${d.getDate()}일`} <span style={{ fontWeight: 400 }}>({wd})</span>
+      </span>
+      {total > 0 && <span style={{ color: T.inkMuted, fontFamily: F.mono, fontSize: 13 }}>{fmtWon(total)}</span>}
     </div>
   );
 }
@@ -214,6 +236,17 @@ export function LedgerView({ ctx }) {
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoryExpenses, categoryReceivables, categoryBalance, amountSort]);
+
+  // 최신순(날짜순)일 때만 날짜로 묶는다 — 금액순은 날짜가 섞여서 묶을 수가 없다
+  const grouped = amountSort !== "amountDesc" && amountSort !== "amountAsc";
+  const dayTotals = useMemo(() => {
+    const m = {};
+    for (const { kind, item } of combined) {
+      if (kind !== "expense") continue;   // 그날 '쓴 돈'만 — 통장 입출금은 잔액을 옮긴 것이라 뺀다
+      m[item.date] = (m[item.date] || 0) + netAmount(item);
+    }
+    return m;
+  }, [combined]);
 
   /*
     합계는 내가 부담한 금액(netAmount)으로 낸다. 줄마다 보이는 숫자는 실제
@@ -619,12 +652,35 @@ export function LedgerView({ ctx }) {
       ) : (
         <div style={paperCard(T)}>
           {totalsLine}
-          {combined.map(({ kind, item }) => {
-            if (kind === "balance") return <BalanceRow key={item.id} b={item} accountName={data.accounts.length > 1 ? data.accounts.find((a) => a.id === (item.accountId || data.accounts[0]?.id))?.name : null} onDelete={() => removeBalance(item.id)} />;
-            if (kind === "receivable") return <ReceivableRow key={item.id} ctx={ctx} e={item} cat={catMap[item.categoryId]} onDelete={() => remove(item.id)} />;
+          {/*
+            **날짜는 줄마다가 아니라 묶음 머리글에**(2026-09-21). 같은 날 여러 건이면 "2026-09-17"이
+            똑같이 몇 줄씩 반복돼서, 눈이 날짜를 읽느라 정작 무엇을 썼는지를 못 봤다. 날짜로 묶고
+            그날 지출 합계를 옆에 적는다. 금액순으로 볼 땐 날짜가 섞이므로 예전처럼 줄마다 적는다.
+          */}
+          {combined.map(({ kind, item }, i) => {
+            const newDay = grouped && (i === 0 || combined[i - 1].item.date !== item.date);
+            const head = newDay ? <DayHead T={T} date={item.date} total={dayTotals[item.date] || 0} first={i === 0} /> : null;
+            const dateNode = grouped ? null : <div style={rowDate(T)}>{item.date}</div>;
+            if (kind === "balance") {
+              return (
+                <div key={item.id}>
+                  {head}
+                  <BalanceRow b={item} dateNode={dateNode} accountName={data.accounts.length > 1 ? data.accounts.find((a) => a.id === (item.accountId || data.accounts[0]?.id))?.name : null} onDelete={() => removeBalance(item.id)} />
+                </div>
+              );
+            }
+            if (kind === "receivable") {
+              return (
+                <div key={item.id}>
+                  {head}
+                  <ReceivableRow ctx={ctx} e={item} cat={catMap[item.categoryId]} dateNode={dateNode} onDelete={() => remove(item.id)} />
+                </div>
+              );
+            }
             return (
               <div key={item.id}>
-                <LedgerRow e={item} cat={catMap[item.categoryId]}
+                {head}
+                <LedgerRow e={item} cat={catMap[item.categoryId]} dateNode={dateNode}
                   methodLabel={(item.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === (item.cardId || data.cards[0]?.id))?.name || "카드") : "현금"}
                   methodColor={(item.paymentMethod || "cash") === "card" ? T.gold : T.good}
                   onEdit={() => startEdit(item)} />

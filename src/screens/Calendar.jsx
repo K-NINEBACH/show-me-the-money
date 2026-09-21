@@ -41,12 +41,19 @@ export function CalendarView({ ctx }) {
     return Number(entries.sort((a, b) => b[1] - a[1])[0][0]);
   }, [dailyTotals]);
 
-  const topCategory = useMemo(() => {
+  /*
+    카테고리별 합계(2026-09-21). 예전엔 "식비에서 가장 많이 썼어요" 한 줄뿐이라 얼마인지·다음은
+    무엇인지 알 수 없었고, 달력 아래가 통째로 비어 있었다. 큰 것부터 막대로 보여 준다.
+  */
+  const byCategory = useMemo(() => {
     const map = {};
     monthExpenses.forEach((e) => { map[e.categoryId] = (map[e.categoryId] || 0) + netAmount(e); });
-    const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]);
-    return sorted.length ? catMap[sorted[0][0]]?.name : null;
+    return Object.entries(map)
+      .map(([id, amount]) => ({ id, amount, name: catMap[id]?.name || "미분류", color: catMap[id]?.color || null }))
+      .filter((c) => c.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
   }, [monthExpenses]);
+  const topCategory = byCategory.length ? byCategory[0].name : null;
 
   const compareBadge = useMemo(() => {
     const prevKey = monthKeyOffset(viewKey, -1);
@@ -98,8 +105,10 @@ export function CalendarView({ ctx }) {
           const isToday = dateStr === todayStr2;
           const isSelected = dateStr === selectedDate;
           const isTop = day === topDay && amt > 0;
+          // 옅어서 어느 날이 큰 날인지 잘 안 보였다 — 진하기를 올리고(최대 70 → 170) 큰 날은 글자도 진하게
           const intensity = maxDaily > 0 && amt ? Math.min(amt / maxDaily, 1) : 0;
-          const heatAlpha = Math.round(intensity * 70).toString(16).padStart(2, "0");
+          const heatAlpha = Math.round(30 + intensity * 140).toString(16).padStart(2, "0");
+          const big = intensity >= 0.5;
           const hasIncome = incomeDays.has(day);
           return (
             <button key={i} onClick={() => setSelectedDate(isSelected ? null : dateStr)}
@@ -116,7 +125,7 @@ export function CalendarView({ ctx }) {
                   <span style={{ position: "absolute", top: -2, right: -2, width: 7, height: 7, borderRadius: "50%", background: T.good, border: `1px solid ${T.bg}` }} />
                 )}
               </span>
-              <span style={{ fontSize: 11, color: amt ? T.muted : "transparent", fontFamily: F.mono }}>
+              <span style={{ fontSize: 11, color: amt ? (big ? T.ink : T.muted) : "transparent", fontFamily: F.mono, fontWeight: big ? 700 : 400 }}>
                 {amt ? (amt >= 10000 ? `${Math.round(amt / 1000) / 10}만` : amt.toLocaleString("ko-KR")) : "-"}
               </span>
             </button>
@@ -129,6 +138,27 @@ export function CalendarView({ ctx }) {
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: "50%", border: `1.5px solid ${T.gold}` }} /> 최고 지출일</span>
       </div>
 
+      {byCategory.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 8 }}>어디에 썼나</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {byCategory.slice(0, 6).map((c) => (
+              <div key={c.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 13.5, color: T.cream }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                  <span style={{ fontFamily: F.mono, color: T.muted, flexShrink: 0 }}>
+                    {fmtWon(c.amount)} <span style={{ fontSize: 12 }}>{Math.round((c.amount / monthTotal) * 100)}%</span>
+                  </span>
+                </div>
+                <div style={{ height: 5, borderRadius: 3, background: `${T.border}`, overflow: "hidden", marginTop: 2 }}>
+                  <div style={{ width: `${(c.amount / byCategory[0].amount) * 100}%`, height: "100%", background: c.color || T.muted, borderRadius: 3 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {selectedDate && (
         <div style={{ marginTop: 20 }}>
           <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 8 }}>{selectedDate} 내역</div>
@@ -140,14 +170,15 @@ export function CalendarView({ ctx }) {
                 <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
                   <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: T.ink, fontSize: 15, fontWeight: 600 }}>
-                      {catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"}
-                      <span style={{ fontSize: 12.5, marginLeft: 6, fontWeight: 700, color: (e.paymentMethod || "cash") === "card" ? T.gold : T.good }}>
-                        {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
-                      </span>
-                      {e.reimbursedAmount != null && <span style={{ fontSize: 11.5, marginLeft: 6, fontWeight: 700, color: T.good }}>정산받음 {fmtWon(e.reimbursedAmount)}</span>}
+                    {/* 내역 화면과 같은 규칙 — 가맹점이 제목, 카테고리는 옆에 작게(2026-09-21) */}
+                    <div style={{ color: T.ink, fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {e.memo || (catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류")}
                     </div>
-                    {e.memo && <div style={{ color: T.inkMuted, fontSize: 13 }}>{e.memo}</div>}
+                    <div style={{ color: T.inkMuted, fontSize: 12.5 }}>
+                      {e.memo ? `${catMap[e.categoryId] ? catMap[e.categoryId].name : "미분류"} · ` : ""}
+                      {(e.paymentMethod || "cash") === "card" ? "카드" : "현금"}
+                      {e.reimbursedAmount != null ? ` · 정산받음 ${fmtWon(e.reimbursedAmount)}` : ""}
+                    </div>
                   </div>
                   <div style={{ color: T.ink, fontFamily: F.mono, fontWeight: 700, fontSize: 15 }}>{fmtWon(e.amount)}</div>
                 </div>
