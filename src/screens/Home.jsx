@@ -229,14 +229,19 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
           <div style={{ color: short ? T.danger : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, lineHeight: 1.2 }}>
             {signed(v)}
           </div>
-          {hasPay && bankKnown && perDay > 0 && (
+          {hasPay && bankKnown && (
             <div style={{ marginTop: 8 }}>
-              <div style={{ height: 6, borderRadius: 3, background: `${T.border}`, overflow: "hidden" }}>
-                <div style={{ width: `${(over ? 1 : ratio) * 100}%`, height: "100%", background: over ? T.danger : T.good, borderRadius: 3 }} />
-              </div>
-              <div style={{ color: over ? T.danger : T.muted, fontSize: 12.5, marginTop: 3 }}>
-                오늘 <b style={{ fontFamily: F.mono, color: over ? T.danger : T.cream }}>{fmtWon(today)}</b> / 하루 몫 {fmtWon(perDay)}
-                {over ? ` · ${fmtWon(today - perDay)} 더 썼어요` : ` · ${fmtWon(perDay - today)} 남았어요`}
+              {/* 쓸 몫이 없는 날(이미 모자람)엔 막대를 안 그린다 — 0을 채운 빈 막대는 '오늘은 괜찮다'로 읽힌다 */}
+              {perDay > 0 && (
+                <div style={{ height: 6, borderRadius: 3, background: `${T.border}`, overflow: "hidden" }}>
+                  <div style={{ width: `${(over ? 1 : ratio) * 100}%`, height: "100%", background: over ? T.danger : T.good, borderRadius: 3 }} />
+                </div>
+              )}
+              <div style={{ color: over || perDay === 0 ? T.danger : T.muted, fontSize: 12.5, marginTop: 3 }}>
+                오늘 <b style={{ fontFamily: F.mono, color: over || perDay === 0 ? T.danger : T.cream }}>{fmtWon(today)}</b>
+                {perDay === 0
+                  ? " · 오늘 쓸 몫이 없어요"
+                  : ` / 하루 몫 ${fmtWon(perDay)}${over ? ` · ${fmtWon(today - perDay)} 더 썼어요` : ` · ${fmtWon(perDay - today)} 남았어요`}`}
               </div>
             </div>
           )}
