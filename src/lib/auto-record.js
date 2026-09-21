@@ -834,9 +834,17 @@ export function autoRecordPayments(data, items, held = []) {
         카드의 결제 확인(paidAtMs)이 이미 있고 합계가 지난달 것이면, 그 돈은 방금 낸 청구에 들어
         있었다 → 기록(카테고리·내역용)만 남긴다. 아직 안 냈으면 예전처럼 카드값에 더한다.
       */
-      const paidAt = cards.find((c) => c.id === card.id)?.paidAtMs;
+      /*
+        **카드 앱 숫자로 맞춘 뒤에 오는 합계도 마찬가지다**(2026-09-22). 카드값을 카드 앱의 '결제
+        예정 금액'으로 맞추면 그 달 대중교통도 이미 그 숫자에 들어 있다. 그런데 합계 문자는 달이
+        끝난 뒤에 와서, 그대로 더하면 그만큼 부풀었다(9/21에 통신요금에서 겪은 것과 같은 병).
+      */
+      const c0 = cards.find((c) => c.id === card.id);
+      const paidAt = c0?.paidAtMs;
       const paidThisMonth = !!paidAt && keyOf(new Date(paidAt - new Date(paidAt).getTimezoneOffset() * 6e4).toISOString()) === keyOf(today);
-      const inPaidBill = paidThisMonth && tKey < keyOf(today);   // 이미 낸 청구에 들어 있던 대중교통
+      const syncedKey = c0?.syncedAtMs ? keyOf(dateOfItem({ at: c0.syncedAtMs })) : null;
+      const inPaidBill = (paidThisMonth && tKey < keyOf(today))   // 이미 낸 청구에 들어 있던 대중교통
+        || (!!syncedKey && tKey <= syncedKey);                     // 카드 앱 숫자에 이미 들어 있던 것
       if (inPaidBill) {
         if (was) expenses = expenses.map((e) => (e.id === was.id ? { ...e, amount: total, cardId: card.id, auto: true } : e));
         else {
