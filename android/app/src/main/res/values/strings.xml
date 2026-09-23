@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">내돈챙겨줘</string>
+    <string name="listener_label">결제 알림 읽기</string>
+    <string name="widget_label">내 돈 챙겨줘</string>
+    <string name="widget_desc">오늘 쓸 수 있는 돈을 홈 화면에서 바로 봐요</string>
+
+    <!--
+      배포된 가계부 주소. 바뀌면 여기만 고치고 다시 빌드한다.
+      끝에 슬래시를 남겨 둔다 — 웹의 서비스워커 범위(scope)가 "/"라서
+      경로가 어긋나면 오프라인 캐시가 안 잡힌다.
+    -->
+    <string name="app_url" translatable="false">https://show-me-the-money-k-ninebach0.vercel.app/</string>
+</resources>

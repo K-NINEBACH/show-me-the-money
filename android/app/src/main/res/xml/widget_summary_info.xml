@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  위젯 정의.
+
+  updatePeriodMillis를 0으로 둔다 — 숫자는 앱이 넘겨줄 때만 바뀌므로 주기적으로
+  깨울 이유가 없다(깨우면 배터리만 쓴다). 앱이 요약을 넘길 때와 아침 알람 때 다시 그린다.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="70dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/widget_summary"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_desc" />

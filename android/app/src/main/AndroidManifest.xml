@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      인터넷: 배포된 가계부 주소를 WebView로 띄운다.
+      알림 접근 권한(BIND_NOTIFICATION_LISTENER_SERVICE)은 여기 적는 것만으로는
+      켜지지 않는다 — 사람이 설정에서 직접 허용해야 한다. 폰의 모든 알림을 볼
+      수 있는 힘이라 안드로이드가 그렇게 막아 뒀고, 그게 맞다.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 배터리 최적화에서 빼 달라고 물을 수 있게. 삼성은 최적화 대상 앱의 알림 리스너를 끊곤 한다 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 문자함 읽기(1.2). 알림을 놓쳐도 문자함엔 남아 있어서, 앱을 열 때 거기서 결제 문자를 건진다 -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <!--
+      알림 띄우기(1.3). 안드로이드 13부터는 적는 것만으론 안 되고 사람이 한 번 허용해야 한다.
+      폰을 켰을 때 아침 알람을 다시 걸려면 BOOT_COMPLETED도 필요하다 — 알람은 재부팅되면 사라진다.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
+        android:theme="@style/Theme.Passbook">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          알림을 읽는 서비스. 이 앱이 존재하는 이유다.
+          웹앱은 알림을 볼 수 없어서(브라우저에 그 통로가 없다) 이것만 네이티브로 둔다.
+        -->
+        <service
+            android:name=".PaymentListener"
+            android:exported="true"
+            android:label="@string/listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!--
+          홈 화면 위젯(1.3) — 앱을 안 열어도 오늘 쓸 수 있는 돈이 보이게.
+          숫자는 웹이 넘겨 준 요약만 쓴다(위젯은 WebView의 데이터를 직접 못 읽는다).
+        -->
+        <receiver
+            android:name=".SummaryWidget"
+            android:exported="false"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_summary_info" />
+        </receiver>
+
+        <!-- 아침 알림 알람과, 폰을 켰을 때 그 알람을 다시 거는 자리 -->
+        <receiver android:name=".Daily" android:exported="false">
+            <intent-filter>
+                <action android:name="kr.gct.passbook.DAILY" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>
