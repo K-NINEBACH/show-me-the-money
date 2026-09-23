@@ -2,7 +2,7 @@
 
 개인 가계부 PWA. 급여 후 과소비 방지가 목적. 서버 없이 브라우저 localStorage에만 저장.
 
-2026-09-08부터 안드로이드 껍데기 앱이 하나 붙어 있음(별도 폴더 `D:\passbook-android`).
+2026-09-08부터 안드로이드 껍데기 앱이 하나 붙어 있음(같은 저장소의 `android/` 폴더).
 알림 읽기와 자동 백업만 맡고 화면은 이 웹앱을 그대로 띄움 — **§10** 참고.
 
 ---
@@ -1004,7 +1004,7 @@ netAmount(e) = e.amount - (e.reimbursedAmount || 0)   // lib/data.js
 
 ## 10. 안드로이드 껍데기 (2026-09-08)
 
-**위치: `D:\passbook-android` — 이 저장소 밖의 별도 폴더.** 패키지 `kr.gct.passbook`,
+**위치: `D:\passbookndroid` — 이 저장소 안의 `android/` 폴더(2026-09-24 이전엔 `D:\passbook-android`).** 패키지 `kr.gct.passbook`,
 minSdk 29 / targetSdk 34.
 
 웹앱은 알림을 읽을 수 없어서(권한 문제가 아니라 **기능이 아예 없음**) 그것만 네이티브로

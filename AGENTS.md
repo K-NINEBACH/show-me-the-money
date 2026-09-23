@@ -417,7 +417,10 @@ src/
 
 ## 안드로이드 껍데기
 
-`D:\passbook-android` (별도 폴더, 이 저장소 밖).
+**위치: `D:\passbook\android` — 이 저장소 안의 `android/` 폴더**(2026-09-24에 옮김).
+예전엔 `D:\passbook-android`로 저장소 밖에 있어서 깃에 백업이 안 됐고, 앱 폴더도
+`D:\passbook-app (1)\passbook-app`처럼 두 겹에 공백·괄호가 있어 명령마다 걸렸다.
+**앱 하나 = 폴더 하나 = 저장소 하나**로 맞췄다. 빌드 결과·SDK 경로·서명 키는 `.gitignore`로 뺀다.
 
 웹앱은 알림을 읽을 수 없어서(권한이 아니라 기능이 없다) 그것만 네이티브로 뺐다.
 화면은 하나도 새로 만들지 않는다 — WebView로 이 앱을 띄운다.
@@ -427,12 +430,14 @@ D:\dev\jdk17          JDK
 D:\dev\android-sdk    SDK
 D:\dev\gradle-8.7     Gradle
 
-빌드:  JAVA_HOME=D:\dev\jdk17  gradle assembleRelease --no-daemon
-결과:  app\build\outputs\apk\release\app-release.apk
+빌드:  cd D:\passbook\android
+       JAVA_HOME=D:\dev\jdk17  gradle assembleRelease --no-daemon
+결과:  android\app\build\outputs\apk\release\app-release.apk
 ```
 
 **서명 키를 잃으면 업데이트를 덮어 설치할 수 없다.** 지웠다 깔아야 하고 그러면
-앱 안의 기록이 날아간다. 키: `E:\클로드백업\passbook.jks` (비밀번호 `passbook`).
+앱 안의 기록이 날아간다. 키: `android/keys/passbook.jks`, 사본 `E:\클로드백업\passbook.jks` (비밀번호 `passbook`).
+**키는 깃에 안 올라간다**(`.gitignore`의 `android/keys`) — 공개 저장소라서다. PC를 옮기면 사본에서 가져온다.
 
 웹만 고쳤으면 **APK를 다시 깔 필요가 없다** — 원격 주소를 띄우므로 푸시하면
 앱을 다시 켤 때 반영된다. 네이티브(알림 규칙·백업·앱 이름)를 고칠 때만 재설치.

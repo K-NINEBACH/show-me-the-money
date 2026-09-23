@@ -1,3 +1,12 @@
 node_modules
 dist
 .DS_Store
+
+# 안드로이드 껍데기(android/)는 소스만 깃에 남긴다 — 빌드 결과와 이 PC에서만 맞는 값은 뺀다
+android/build
+android/app/build
+android/.gradle
+# SDK 경로가 적힌 파일
+android/local.properties
+# 서명 키. 공개 저장소에 올리면 안 된다(사본: E:\클로드백업\passbook.jks)
+android/keys
