@@ -349,8 +349,32 @@ function AppInner() {
             옛 판을 띄운 채로 먼저 받아서 모르는 메시지로 보고 적용함으로 적어 버렸다 — 새 판이 와도 '이미
             넣음'으로 건너뛰어 영영 안 들어갔다(9/16 롯데와 같은 병). 남겨 두면 새 판이 받아서 넣는다.
           */
-          if (!["statement", "cardbill", "fixdate", "inbox"].includes(m.kind)) {
+          if (!["statement", "cardbill", "fixdate", "inbox", "alert"].includes(m.kind)) {
             logs.push({ at: Date.now(), id: m.id, text: `이 판이 모르는 메시지(${m.kind}) — 새 판에서 넣을게요` });
+            continue;
+          }
+          /*
+            **앱까지 못 온 알림을 Claude가 흘려 넣기**(2026-09-25). 폰 껍데기가 걸러서(예: 한 자리 금액
+            '입금 1원') 앱에 아예 안 온 알림은 알림함에도 없다. 사용자가 보여 준 알림 문구를 받은 것처럼
+            지금 규칙에 그대로 태운다 — 사람이 손으로 적는 게 아니라 은행 알림이 온 것과 똑같이 처리된다
+            (잔액 맞춤까지). 같은 거래 표시(dealKey)도 남겨서, 나중에 껍데기가 같은 알림을 다시 보내도 두 번 안 들어간다.
+          */
+          if (m.kind === "alert") {
+            const item = { text: String(m.text || ""), pkg: m.pkg || "", at: Number(m.alertAt) || Date.now() };
+            const r = autoRecordPayments(d, [item], []);
+            d = r.next;
+            try {
+              const k = dealKey(item.text);
+              if (k) {
+                const deals = JSON.parse(localStorage.getItem(SEEN_DEAL_KEY) || "[]");
+                if (!deals.includes(k)) localStorage.setItem(SEEN_DEAL_KEY, JSON.stringify([...deals, k].slice(-300)));
+              }
+            } catch { /* 못 적어도 아래 '이미 적힌 거래' 검사가 두 번째를 막는다 */ }
+            const what = r.registered.length ? `${r.registered.length}건 넣음` : r.leftover.length ? "여전히 못 넣음(알림함으로)" : "이미 있는 거래라 넘김";
+            if (r.leftover.length) setInbox((prev) => [...prev, ...r.leftover.map((x) => ({ ...x, checked: true }))]);
+            logs.push({ at: Date.now(), id: m.id, text: `못 받았던 알림 '${item.text.slice(0, 24)}…' — ${what}${r.synced?.length ? " · 잔액도 은행과 맞춤" : ""}` });
+            if (r.registered.length) notes.push(`못 받았던 알림 ${r.registered.length}건을 넣었어요`);
+            done.push(m.id);
             continue;
           }
           /*

@@ -28,15 +28,19 @@ const payDayArg = flag("--payday");   // 카드 결제일(매달 N일) — 홈�
 const fixArg = flag("--fixdate");
 // 알림함에 보류된 알림을 지금 규칙으로 다시 넣기: --inbox <문구 조각>  (카드 자리엔 아무 글자나 — 예: -)
 const inboxArg = flag("--inbox");
+// 앱까지 못 온 알림 흘려 넣기: --alert "<알림 문구>" [--pkg <보낸 앱>] [--at <YYYY-MM-DDTHH:MM>]
+const alertArg = flag("--alert");
+const pkgArg = flag("--pkg");
+const atArg = flag("--at");
 // 값을 가진 옵션과 그 값은 자리 인자에서 뺀다
 const skip = new Set();
 for (let i = 0; i < argv.length; i++) {
-  if (["--bill", "--install", "--row", "--payday", "--fixdate", "--inbox"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
+  if (["--bill", "--install", "--row", "--payday", "--fixdate", "--inbox", "--alert", "--pkg", "--at"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
 }
 const pos = argv.filter((a, i) => !skip.has(i) && a !== "--prepaid");
 const [rawCode, card, third, fourth] = pos;
 
-if (!rawCode || !card || (!billArg && !payDayArg && !fixArg && !inboxArg && !third)) {
+if (!rawCode || !card || (!billArg && !payDayArg && !fixArg && !inboxArg && !alertArg && !third)) {
   console.error("사용: node drop-send.mjs <받기코드> <카드이름조각> <명세서.txt> [메모] [--prepaid]");
   console.error("      node drop-send.mjs <받기코드> <카드이름조각> --bill <금액> [메모] [--install 이름:YYYY-MM:금액]");
   process.exit(1);
@@ -56,7 +60,12 @@ const key = await subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, h
 
 const id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 let msg;
-if (inboxArg) {
+if (alertArg) {
+  const alertAt = atArg ? new Date(atArg).getTime() : Date.now();
+  if (!Number.isFinite(alertAt)) { console.error("--at 을 못 읽었어요:", atArg); process.exit(1); }
+  msg = { id, at: new Date().toISOString(), kind: "alert", card, text: alertArg, pkg: pkgArg || "", alertAt };
+  console.log(`못 받은 알림 흘려 넣기: ${alertArg.slice(0, 40)}… (${pkgArg || "보낸 앱 모름"})`);
+} else if (inboxArg) {
   msg = { id, at: new Date().toISOString(), kind: "inbox", card, match: inboxArg };
   console.log(`알림함 다시 넣기: '${inboxArg}'`);
 } else if (fixArg) {
