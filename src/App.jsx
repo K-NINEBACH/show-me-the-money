@@ -344,7 +344,30 @@ function AppInner() {
         const logs = [];
         const notes = [];
         for (const m of msgs) {
-          if (!["statement", "cardbill", "fixdate"].includes(m.kind)) { done.push(m.id); continue; }
+          if (!["statement", "cardbill", "fixdate", "inbox"].includes(m.kind)) { done.push(m.id); continue; }
+          /*
+            **알림함에 보류된 알림을 다시 판단해 넣기**(2026-09-24, 사용자: "알림함에 남은 그 1원도 너가 넣어놔").
+            한 번 보류한 건 다시 자동으로 판단하지 않는 게 원칙이라(엉뚱한 변경에 편승하지 않게), 규칙을
+            고친 뒤에도 이미 보류된 건 그대로 남는다. Claude가 문구 조각으로 **그것만 골라** 지금 규칙으로
+            다시 돌린다. 넣은 건 알림함에서 빠지고, 여전히 못 넣는 건 그대로 남는다.
+          */
+          if (m.kind === "inbox") {
+            const picked = (inboxRef.current || []).filter((i) => String(i.text || "").includes(m.match));
+            if (!picked.length) {
+              logs.push({ at: Date.now(), id: m.id, text: `알림함에서 '${m.match}'를 못 찾았어요(이미 지웠거나 넣은 것)` });
+              done.push(m.id);
+              continue;
+            }
+            const r = autoRecordPayments(d, picked.map(({ checked, ...rest }) => rest), []);
+            d = r.next;
+            const stillHeld = new Set(r.leftover);
+            const handled = picked.filter((p) => !r.leftover.some((l) => l.text === p.text && l.at === p.at));
+            setInbox((prev) => prev.filter((i) => !handled.some((h) => h.text === i.text && h.at === i.at)));
+            logs.push({ at: Date.now(), id: m.id, text: `알림함의 '${m.match}' ${picked.length}건 다시 판단 — ${r.registered.length}건 넣음${stillHeld.size ? `, ${stillHeld.size}건은 여전히 못 넣음` : ""}` });
+            if (r.registered.length) notes.push(`알림함에 있던 ${r.registered.length}건을 넣었어요`);
+            done.push(m.id);
+            continue;
+          }
           const hits = (d.cards || []).filter((c) => String(c.name).includes(m.card));
           if (hits.length !== 1) {
             logs.push({ at: Date.now(), id: m.id, text: `${m.card} — 앱에서 그 카드를 못 찾아 아직 안 넣었어요` });

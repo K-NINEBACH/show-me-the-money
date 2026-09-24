@@ -23,18 +23,20 @@ const prepaid = argv.includes("--prepaid");
 const billArg = flag("--bill");
 const installArg = flag("--install");
 const rowArgs = argv.map((a, i) => (a === "--row" ? argv[i + 1] : null)).filter(Boolean);
-const payDayArg = flag("--payday");
+const payDayArg = flag("--payday");   // 카드 결제일(매달 N일) — 홈이 "10/12 결제 · 23일 뒤"로 보여 준다
 // 기록 한 줄의 날짜 고치기: --fixdate <금액>:<새날짜>[:<지금날짜>[:<적요조각>]]
-const fixArg = flag("--fixdate");   // 카드 결제일(매달 N일) — 홈이 "10/12 결제 · 23일 뒤"로 보여 준다
+const fixArg = flag("--fixdate");
+// 알림함에 보류된 알림을 지금 규칙으로 다시 넣기: --inbox <문구 조각>  (카드 자리엔 아무 글자나 — 예: -)
+const inboxArg = flag("--inbox");
 // 값을 가진 옵션과 그 값은 자리 인자에서 뺀다
 const skip = new Set();
 for (let i = 0; i < argv.length; i++) {
-  if (["--bill", "--install", "--row", "--payday", "--fixdate"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
+  if (["--bill", "--install", "--row", "--payday", "--fixdate", "--inbox"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
 }
 const pos = argv.filter((a, i) => !skip.has(i) && a !== "--prepaid");
 const [rawCode, card, third, fourth] = pos;
 
-if (!rawCode || !card || (!billArg && !payDayArg && !fixArg && !third)) {
+if (!rawCode || !card || (!billArg && !payDayArg && !fixArg && !inboxArg && !third)) {
   console.error("사용: node drop-send.mjs <받기코드> <카드이름조각> <명세서.txt> [메모] [--prepaid]");
   console.error("      node drop-send.mjs <받기코드> <카드이름조각> --bill <금액> [메모] [--install 이름:YYYY-MM:금액]");
   process.exit(1);
@@ -54,7 +56,10 @@ const key = await subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, h
 
 const id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 let msg;
-if (fixArg) {
+if (inboxArg) {
+  msg = { id, at: new Date().toISOString(), kind: "inbox", card, match: inboxArg };
+  console.log(`알림함 다시 넣기: '${inboxArg}'`);
+} else if (fixArg) {
   const [amount, date, on, memo] = String(fixArg).split(":");
   if (!Number(String(amount).replace(/[^\d]/g, "")) || !/^\d{4}-\d{2}-\d{2}$/.test(date || "")) {
     console.error("--fixdate 는 금액:YYYY-MM-DD[:지금날짜[:적요조각]] 모양이어야 해요:", fixArg); process.exit(1);
