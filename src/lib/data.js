@@ -255,7 +255,13 @@ function findDatePart(text) {
 }
 
 export function parsePaymentText(text) {
-  const amountMatch = text.match(/([\d,]{3,})\s*원/);
+  /*
+    **한 자리·두 자리 금액도 금액이다**(2026-09-24, 사용자: "이건 왜 자동등록이 안 돼?").
+    예전엔 세 자리 이상(`{3,}`)만 봐서 KB "입금 1원 … SKT119 전자금융입금 1 잔액700,417"이
+    금액을 못 읽은 알림으로 알림함에 남았다. 본인 확인용 1원 입금도 통장 잔액은 바꾼다.
+    앞에 숫자·쉼표가 붙은 걸 잘라 먹지 않게(누적1,705,556원 속의 '556원') 숫자 경계를 본다.
+  */
+  const amountMatch = text.match(/(?<![\d,])(\d[\d,]*)\s*원/);
   const amount = amountMatch ? amountMatch[1].replace(/,/g, "") : "";
 
   let type = "unknown";
