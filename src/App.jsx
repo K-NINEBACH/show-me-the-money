@@ -344,7 +344,15 @@ function AppInner() {
         const logs = [];
         const notes = [];
         for (const m of msgs) {
-          if (!["statement", "cardbill", "fixdate", "inbox"].includes(m.kind)) { done.push(m.id); continue; }
+          /*
+            **모르는 종류는 '적용함'으로 적지 않는다**(2026-09-25). 새 종류(예: inbox)를 보내면, 폰이 아직
+            옛 판을 띄운 채로 먼저 받아서 모르는 메시지로 보고 적용함으로 적어 버렸다 — 새 판이 와도 '이미
+            넣음'으로 건너뛰어 영영 안 들어갔다(9/16 롯데와 같은 병). 남겨 두면 새 판이 받아서 넣는다.
+          */
+          if (!["statement", "cardbill", "fixdate", "inbox"].includes(m.kind)) {
+            logs.push({ at: Date.now(), id: m.id, text: `이 판이 모르는 메시지(${m.kind}) — 새 판에서 넣을게요` });
+            continue;
+          }
           /*
             **알림함에 보류된 알림을 다시 판단해 넣기**(2026-09-24, 사용자: "알림함에 남은 그 1원도 너가 넣어놔").
             한 번 보류한 건 다시 자동으로 판단하지 않는 게 원칙이라(엉뚱한 변경에 편승하지 않게), 규칙을
@@ -354,8 +362,8 @@ function AppInner() {
           if (m.kind === "inbox") {
             const picked = (inboxRef.current || []).filter((i) => String(i.text || "").includes(m.match));
             if (!picked.length) {
-              logs.push({ at: Date.now(), id: m.id, text: `알림함에서 '${m.match}'를 못 찾았어요(이미 지웠거나 넣은 것)` });
-              done.push(m.id);
+              // 닫지 않고 남겨 둔다 — 알림함을 다 못 읽은 순간일 수 있다. 다음에 열 때 다시 찾는다(안내는 한 줄만 남는다)
+              logs.push({ at: Date.now(), id: m.id, text: `알림함에서 '${m.match}'를 아직 못 찾았어요 — 다음에 다시 찾을게요` });
               continue;
             }
             const r = autoRecordPayments(d, picked.map(({ checked, ...rest }) => rest), []);
