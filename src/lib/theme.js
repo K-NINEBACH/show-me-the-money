@@ -32,13 +32,22 @@ export const THEMES = {
     danger: "#8C332C", muted: "#5C5546", border: "#D2C4A6",
     onGold: "#FFFFFF", field: "#8A806B", inkMuted: "#5C5546",
   },
+  /*
+    **흰색 = 2026-09-26 새 디자인**(사용자가 GPT 시안을 보여 주며 "이렇게 깔끔하게 바꾸자").
+    초록을 중심 색으로, 상태는 초록(여유)·주황(빠듯)·빨강(모자람). 시안의 밝은 색은 막대·아이콘
+    채움(*Fill)에만 쓰고, 글자에는 대비(4.5:1)가 되는 진한 값을 쓴다 — 시안 그대로(#FFB02E 등)
+    글자에 쓰면 흰 바탕에서 거의 안 읽힌다.
+  */
   white: {
-    id: "white", label: "흰색", swatch: "#F5F5F1", mode: "light",
-    bg: "#FAFAF8", bg2: "#FFFFFF", navBg: "rgba(250,250,248,0.95)",
-    paper: "#FBFBF8", paperLine: "#E6E4DC", ink: "#242320", cream: "#242320",
-    gold: "#6B6B63", goldSoft: "#4A4A44", good: "#3A6640", warn: "#9A5320",
-    danger: "#8C332C", muted: "#6E6A5F", border: "#E8E6DE",
-    onGold: "#FFFFFF", field: "#949086", inkMuted: "#6E6A5F",
+    id: "white", label: "흰색", swatch: "#6FAF2E", mode: "light",
+    bg: "#F6F8F3", bg2: "#FFFFFF", navBg: "rgba(255,255,255,0.97)",
+    paper: "#FFFFFF", paperLine: "#EEF0EA", ink: "#1B2614", cream: "#1B2614",
+    gold: "#4D8A1C", goldSoft: "#3D6E16", good: "#3F7A17", warn: "#B25E00",
+    danger: "#D2381C", muted: "#66756A", border: "#E5E7EB",
+    onGold: "#FFFFFF", field: "#A3AEA3", inkMuted: "#66756A",
+    goodFill: "#6FAF2E", warnFill: "#FFB02E", dangerFill: "#FF5A3C",
+    goodTint: "#EEF7E3", warnTint: "#FFF4E3", dangerTint: "#FFECE8",
+    shadow: "0 1px 2px rgba(27,38,20,0.04), 0 4px 16px rgba(27,38,20,0.05)",
   },
   teal: {
     id: "teal", label: "청록", swatch: "#2E7D6E", mode: "light",
@@ -71,18 +80,36 @@ export const ThemeContext = createContext(DARK);
 export const useTheme = () => useContext(ThemeContext);
 
 export const F = {
-  display: "'Noto Serif KR', serif",
-  body: "-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif",
-  mono: "'IBM Plex Mono', monospace",
+  display: "'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif",
+  body: "'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif",
+  // 숫자: 자릿수가 세로로 맞게(tabular). 한글이 섞이면 Pretendard로 넘어간다
+  mono: "'Space Grotesk', 'Pretendard Variable', Pretendard, monospace",
 };
+
+/*
+  상태 색 세 벌(2026-09-26 새 디자인). 새 디자인 토큰(*Fill·*Tint)이 없는 옛 테마는 기존 색에서 만든다.
+    fill — 막대·아이콘 동그라미 채움   tint — 옅은 바탕   text — 글자(대비 확보된 값)
+*/
+export function tone(T, kind) {
+  const text = T[kind];
+  const fill = T[kind + "Fill"] || text;
+  const tint = T[kind + "Tint"] || `${text}1A`;
+  return { text, fill, tint };
+}
+/** 새 디자인의 흰 카드 — 둥근 모서리·옅은 테두리·아주 옅은 그림자 */
+export function card(T, extra = {}) {
+  return { background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 18, boxShadow: T.shadow || "none", ...extra };
+}
 export function paperCard(T) {
+  // 새 디자인(흰색 테마, 2026-09-26)은 줄무늬 종이 대신 깨끗한 흰 카드
+  if (T.shadow) return { background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 18, padding: "14px 16px", boxShadow: T.shadow };
   return { background: T.paper, borderRadius: 14, padding: "16px 14px", boxShadow: T.mode === "dark" ? "0 8px 24px rgba(0,0,0,0.25)" : "0 6px 20px rgba(80,60,20,0.12)", backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 27px, ${T.paperLine}66 28px)` };
 }
 // outline을 끄지 않는다 — 어느 칸에 들어가 있는지 보여주는 표시는 index.html의
 // :focus-visible 규칙이 테마 색(--focus)으로 그린다. 예전엔 outline:none만 있고
 // 대신할 표시가 없어서, 칸을 눌러도 어디에 쓰고 있는지 안 보였다.
 export function inputSty(T) { return { width: "100%", background: T.bg2, border: `1px solid ${T.field}`, borderRadius: 10, padding: "12px 14px", color: T.cream, fontSize: 15.5 }; }
-export function primaryBtn(T) { return { width: "100%", background: T.gold, color: T.onGold, border: "none", borderRadius: 10, padding: "12px 0", fontWeight: 700, fontSize: 15.5, cursor: "pointer" }; }
+export function primaryBtn(T) { return { width: "100%", background: T.gold, color: T.onGold, border: "none", borderRadius: 14, padding: "13px 0", fontWeight: 700, fontSize: 15.5, cursor: "pointer" }; }
 
 /*
   테마 색을 CSS 변수로도 내놓는다. 인라인 style로는 :focus-visible·:active·

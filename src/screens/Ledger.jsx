@@ -2,10 +2,10 @@
 // 대리결제, 입출금), scoped by time (이번달/전체/기간) and optionally narrowed by
 // category (카드/대리결제/입출금). LedgerRow renders the expense rows within that feed.
 import { useState, useMemo, useEffect } from "react";
-import { Pencil, Trash2, ArrowDownCircle, ArrowUpCircle, Search } from "lucide-react";
+import { Pencil, Trash2, ArrowDownCircle, ArrowUpCircle, Search, ArrowDownLeft, ArrowUpRight, Scale } from "lucide-react";
 import { useTheme, F, paperCard, inputSty, primaryBtn } from "../lib/theme";
 import { fmtWon, createdTime, dateStrFor, monthKeyOffset, todayISO, netAmount } from "../lib/data";
-import { MoneyInput, QuickAmountButtons } from "../components/common";
+import { MoneyInput, QuickAmountButtons, CatBadge } from "../components/common";
 import { settleReceivable } from "./Home";
 
 /*
@@ -46,29 +46,31 @@ function IconBtn({ label, color, onClick, children }) {
   정작 찾는 이름(코스트코·쏘카)이 작은 회색 줄이었다. 같은 카테고리가 줄줄이 이어지면
   제목이 다 똑같아 보여서 눈이 걸릴 데가 없었다. 가맹점이 없으면 카테고리를 제목으로 쓴다.
 */
+/*
+  **내역 한 줄 — 새 디자인(2026-09-26)**: 카테고리 아이콘 동그라미 · 가맹점(굵게) · 흐린 한 줄
+  ("식비 · 현대카드 · 자동") · 오른쪽 금액. 예전의 알록달록한 태그 여러 개 대신 흐린 한 줄로 모았다.
+  **줄 전체를 누르면 고치기**가 열린다(연필 아이콘은 뺐다 — 줄마다 있으면 목록이 시끄럽다).
+*/
 export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, onDelete }) {
   const T = useTheme();
   const catName = cat ? cat.name : "미분류";
   const title = e.memo || catName;
+  // 적요가 카테고리 이름과 같으면 같은 말을 두 번 적지 않는다. '자동'은 알림에서 확인 없이 들어온 줄
+  const tags = [e.memo && e.memo !== catName ? catName : null, methodLabel, e.auto ? "자동" : null, e.fromStatement ? "명세서" : null].filter(Boolean).join(" · ");
+  const Body = onEdit ? "button" : "div";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-      <div aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={rowTitle(T)}>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{title}</span>
-          {/* 적요가 카테고리 이름과 같으면 같은 말을 두 번 적지 않는다 */}
-          {e.memo && e.memo !== catName && <Badge color={cat ? cat.color : T.inkMuted}>{catName}</Badge>}
-          <Badge color={methodColor}>{methodLabel}</Badge>
-          {e.reimbursedAmount != null && <Badge color={T.good}>정산받음 {fmtWon(e.reimbursedAmount)}</Badge>}
-          {/* 알림에서 확인 없이 들어온 줄 — 이상하면 이것만 훑어 지울 수 있게 */}
-          {e.auto && <Badge color={T.inkMuted}>자동</Badge>}
-          {e.fromStatement && <Badge color={T.inkMuted}>명세서</Badge>}
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: `1px solid ${T.paperLine}` }}>
+      <CatBadge name={catName} color={cat?.color} />
+      <Body {...(onEdit ? { onClick: onEdit, "aria-label": `${title} ${fmtWon(e.amount)} 고치기` } : {})}
+        style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: onEdit ? "pointer" : "default", fontFamily: "inherit", color: "inherit" }}>
+        <div style={{ color: T.ink, fontSize: 15, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+        <div style={{ color: T.inkMuted, fontSize: 12, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {tags}{e.reimbursedAmount != null && <span style={{ color: T.good, fontWeight: 700 }}> · 정산받음 {fmtWon(e.reimbursedAmount)}</span>}
         </div>
         {dateNode}
-      </div>
-      <div style={{ color: T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16, textAlign: "right", whiteSpace: "nowrap" }}>{fmtWon(e.amount)}</div>
-      {onEdit && <IconBtn label={`${title} ${fmtWon(e.amount)} 수정`} color={T.gold} onClick={onEdit}><Pencil size={15} aria-hidden="true" /></IconBtn>}
-      {onDelete && <IconBtn label={`${title} ${fmtWon(e.amount)} 삭제`} color={T.danger} onClick={onDelete}><Trash2 size={15} aria-hidden="true" /></IconBtn>}
+      </Body>
+      <div style={{ color: T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 15.5, textAlign: "right", whiteSpace: "nowrap" }}>−{fmtWon(e.amount)}</div>
+      {onDelete && <IconBtn label={`${title} ${fmtWon(e.amount)} 삭제`} color={T.inkMuted} onClick={onDelete}><Trash2 size={15} aria-hidden="true" /></IconBtn>}
     </div>
   );
 }
@@ -87,7 +89,7 @@ function ReceivableRow({ ctx, e, cat, onDelete, dateNode }) {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-        <div aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: cat ? cat.color : T.muted, flexShrink: 0 }} />
+        <CatBadge name={cat ? cat.name : "대리결제"} color={cat?.color} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={rowTitle(T)}>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{e.memo || (cat ? cat.name : "대리결제")}</span>
@@ -133,23 +135,22 @@ function ReceivableRow({ ctx, e, cat, onDelete, dateNode }) {
 function BalanceRow({ b, accountName, onDelete, dateNode }) {
   const T = useTheme();
   const kind = b.isAdjustment ? "잔액 맞춤" : b.type === "in" ? "입금" : "출금";
-  // 지출 줄과 같은 규칙 — 적요(무엇인지)가 제목, 종류·통장은 태그(2026-09-21)
+  // 지출 줄과 같은 모양 — 적요가 제목, 종류·통장·자동은 흐린 한 줄. 입금은 초록 +, 출금은 − (2026-09-26)
+  const tags = [b.memo && b.memo !== kind ? kind : null, accountName, b.auto ? "자동" : null].filter(Boolean).join(" · ");
+  const inflow = b.type === "in";
+  const color = b.isAdjustment ? T.inkMuted : inflow ? T.good : T.danger;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-      {b.type === "in" ? <ArrowDownCircle size={15} color={T.good} aria-hidden="true" style={{ flexShrink: 0, marginInline: -3.5 }} /> : <ArrowUpCircle size={15} color={T.danger} aria-hidden="true" style={{ flexShrink: 0, marginInline: -3.5 }} />}
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: `1px solid ${T.paperLine}` }}>
+      <CatBadge name={kind} color={color} icon={b.isAdjustment ? Scale : inflow ? ArrowDownLeft : ArrowUpRight} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={rowTitle(T)}>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{b.memo || kind}</span>
-          {b.memo && b.memo !== kind && <Badge color={b.type === "in" ? T.good : T.danger}>{kind}</Badge>}
-          {accountName && <Badge color={T.inkMuted}>{accountName}</Badge>}
-          {b.auto && <Badge color={T.inkMuted}>자동</Badge>}
-        </div>
+        <div style={{ color: T.ink, fontSize: 15, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.memo || kind}</div>
+        {tags && <div style={{ color: T.inkMuted, fontSize: 12, marginTop: 2 }}>{tags}</div>}
         {dateNode}
       </div>
-      <div style={{ color: b.type === "in" ? T.good : T.danger, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16, whiteSpace: "nowrap" }}>
-        {b.type === "in" ? "+" : "-"}{fmtWon(b.amount)}
+      <div style={{ color: inflow ? T.good : T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap" }}>
+        {inflow ? "+" : "−"}{fmtWon(b.amount)}
       </div>
-      <IconBtn label={`${kind} ${b.memo || ""} ${fmtWon(b.amount)} 삭제`} color={T.danger} onClick={onDelete}><Trash2 size={15} aria-hidden="true" /></IconBtn>
+      <IconBtn label={`${kind} ${b.memo || ""} ${fmtWon(b.amount)} 삭제`} color={T.inkMuted} onClick={onDelete}><Trash2 size={15} aria-hidden="true" /></IconBtn>
     </div>
   );
 }
@@ -162,10 +163,10 @@ function DayHead({ T, date, total, first }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8,
       padding: first ? "6px 0 8px" : "18px 0 8px", marginTop: first ? 0 : 6, borderTop: first ? "none" : `1px solid ${T.paperLine}` }}>
-      <span style={{ color: today ? T.gold : T.inkMuted, fontSize: 14, fontWeight: 700 }}>
+      <span style={{ color: today ? T.gold : T.ink, fontSize: 14.5, fontWeight: 800 }}>
         {today ? "오늘" : `${d.getMonth() + 1}월 ${d.getDate()}일`} <span style={{ fontWeight: 400 }}>({wd})</span>
       </span>
-      {total > 0 && <span style={{ color: T.inkMuted, fontFamily: F.mono, fontSize: 13 }}>{fmtWon(total)}</span>}
+      {total > 0 && <span style={{ color: T.ink, fontFamily: F.mono, fontSize: 14, fontWeight: 700 }}>{fmtWon(total)}</span>}
     </div>
   );
 }
@@ -562,7 +563,7 @@ export function LedgerView({ ctx }) {
     // 더하면 이 금액"처럼 보이는 게 실제로는 성립 안 했음(예: 67건인데 그중 일부만
     // 지출 합계에 들어감) — 건수도 실제로 더해진 지출 개수로 맞춤.
     <div style={{ marginBottom: 6 }}>
-      <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700 }}>총 지출 {fmtWon(totalSpent)} · {categoryExpenses.length}건</div>
+      <div style={{ color: T.ink, fontSize: 16, fontWeight: 800 }}>총 지출 <span style={{ fontFamily: F.mono }}>{fmtWon(totalSpent)}</span> · {categoryExpenses.length}건</div>
       {reimbursedInView > 0 && <div style={{ color: T.good, fontSize: 12.5, fontWeight: 700, marginTop: 2 }}>정산받은 {fmtWon(reimbursedInView)}은 뺐어요</div>}
     </div>
   );
@@ -570,20 +571,20 @@ export function LedgerView({ ctx }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-        <h1 style={{ margin: 0, color: T.cream, fontFamily: F.display, fontSize: 20.5, fontWeight: 700 }}>전체 내역</h1>
+        <h1 style={{ margin: 0, color: T.cream, fontFamily: F.display, fontSize: 22, fontWeight: 800 }}>내역</h1>
         {/* 좁은 화면(320px)에서 검색 버튼이 화면 밖으로 잘렸다 — 이제 '전체 흐름' 칸이 줄어든다 */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, maxWidth: "100%", minWidth: 0 }}>
-          <div role="group" aria-label="기간" style={{ display: "flex", flexShrink: 0, background: T.bg2, borderRadius: 8, padding: 3 }}>
-            {[["cycle", "이번달"], ["all", "전체"], ["range", "기간"]].map(([k, l]) => (
+          <div role="group" aria-label="기간" style={{ display: "flex", flexShrink: 0, gap: 5 }}>
+            {[["cycle", "이번 달"], ["all", "전체"], ["range", "기간"]].map(([k, l]) => (
               <button key={k} onClick={() => setTimeScope(k)} aria-pressed={timeScope === k}
-                style={{ border: "none", borderRadius: 6, padding: "0 10px", minHeight: 32, fontSize: 14, fontWeight: 600,
-                  background: timeScope === k ? T.gold : "transparent", color: timeScope === k ? T.onGold : T.muted, cursor: "pointer" }}>
+                style={{ border: timeScope === k ? "none" : `1px solid ${T.border}`, borderRadius: 999, padding: "0 13px", minHeight: 34, fontSize: 13.5, fontWeight: 700,
+                  background: timeScope === k ? T.gold : T.bg2, color: timeScope === k ? T.onGold : T.muted, cursor: "pointer" }}>
                 {l}
               </button>
             ))}
           </div>
           <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="보기"
-            style={{ flex: "1 1 auto", minWidth: 0, border: "none", borderRadius: 8, padding: "0 8px", minHeight: 38, fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+            style={{ flex: "1 1 auto", minWidth: 0, border: `1px solid ${T.border}`, borderRadius: 999, padding: "0 10px", minHeight: 34, fontSize: 13, fontWeight: 700, cursor: "pointer",
               background: category === "all" ? T.bg2 : T.gold, color: category === "all" ? T.muted : T.onGold }}>
             <option value="all">전체 흐름</option>
             <option value="card">카드</option>
@@ -592,7 +593,7 @@ export function LedgerView({ ctx }) {
           </select>
           <button onClick={() => { setSearchOpen(!searchOpen); if (searchOpen) setSearch(""); }}
             aria-label={searchOpen ? "검색 닫기" : "검색"} aria-expanded={searchOpen}
-            style={{ flexShrink: 0, border: "none", borderRadius: 8, width: 38, height: 38, cursor: "pointer", background: searchOpen ? T.gold : T.bg2, color: searchOpen ? T.onGold : T.muted, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            style={{ flexShrink: 0, border: `1px solid ${T.border}`, borderRadius: "50%", width: 36, height: 36, cursor: "pointer", background: searchOpen ? T.gold : T.bg2, color: searchOpen ? T.onGold : T.muted, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Search size={16} aria-hidden="true" />
           </button>
         </div>
@@ -614,7 +615,7 @@ export function LedgerView({ ctx }) {
       <div role="group" aria-label="정렬" style={{ display: "flex", gap: 6, marginBottom: 14 }}>
         {[["date", "최신순"], ["amountDesc", "높은금액순"], ["amountAsc", "낮은금액순"]].map(([k, l]) => (
           <button key={k} onClick={() => setAmountSort(k)} aria-pressed={amountSort === k}
-            style={{ border: "none", borderRadius: 8, padding: "0 12px", minHeight: 32, fontSize: 13, fontWeight: 700, cursor: "pointer",
+            style={{ border: amountSort === k ? "none" : `1px solid ${T.border}`, borderRadius: 999, padding: "0 13px", minHeight: 32, fontSize: 13, fontWeight: 700, cursor: "pointer",
               background: amountSort === k ? T.gold : T.bg2, color: amountSort === k ? T.onGold : T.muted }}>
             {l}
           </button>

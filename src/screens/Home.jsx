@@ -1,8 +1,8 @@
 // Home tab: balance card, spending-goal ring, card bills, transit quick-add,
 // plus the money-moving actions (settle, reconcile, pay card, mark fixed paid).
 import { useState, useEffect, useRef } from "react";
-import { HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Repeat, ClipboardPaste, ChevronRight, Check } from "lucide-react";
-import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
+import { HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Repeat, ClipboardPaste, ChevronRight, Check, Landmark, ShieldCheck, Sprout, AlertCircle, Plus, Minus, Equal } from "lucide-react";
+import { useTheme, F, inputSty, primaryBtn, tone, card } from "../lib/theme";
 import { fmtWon, monthLabel, todayISO, parsePaymentText, sortFixedList, fixedInfo, nextDayOfMonth } from "../lib/data";
 import { MoneyInput, QuickAmountButtons } from "../components/common";
 import { syncMoment } from "../lib/auto-record";
@@ -87,19 +87,25 @@ export function HomeView({ ctx }) {
   };
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
   const hasFixed = fixedActive.length > 0 || fixedCardActive.length > 0 || receivables.length > 0 || (ctx.fixedSkipped || []).length > 0;
-  const actBtn = (on) => ({
-    flex: 1, minWidth: 0, minHeight: 40, padding: "6px 4px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
-    border: `1px solid ${on ? T.gold : T.border}`, background: on ? T.gold + "1f" : "transparent", color: T.cream, fontSize: 13, fontWeight: 600,
+  // 새 디자인(2026-09-26): 가장 자주 쓰는 '입출금·맞추기'만 채운 초록, 나머지는 흰 테두리 버튼
+  const actBtn = (on, primary) => ({
+    flex: 1, minWidth: 0, minHeight: 46, padding: "6px 4px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+    border: primary ? "none" : `1px solid ${on ? T.gold : T.border}`,
+    background: primary ? T.gold : on ? tone(T, "good").tint : T.bg2,
+    color: primary ? T.onGold : T.cream, fontSize: 13.5, fontWeight: 700, boxShadow: T.shadow || "none",
   });
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <h1 style={{ margin: 0, color: T.cream, fontFamily: F.display, fontSize: 19, fontWeight: 700 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+        <h1 style={{ margin: 0, color: T.cream, fontFamily: F.display, fontSize: 18, fontWeight: 800, letterSpacing: -0.3 }}>
           {monthLabel(curKey)} · {dayIntoCycle}일차
         </h1>
         {/* '오늘'은 아래 막대로 옮겼다(2026-09-21) — 같은 숫자가 두 군데 있으면 눈이 어디를 봐야 할지 모른다 */}
-        <span style={{ color: T.goldSoft, fontSize: 13 }}>이번 달 쓴 돈 {fmtWon(ctx.totalSpentThisMonth)}</span>
+        <div style={{ textAlign: "right", lineHeight: 1.3 }}>
+          <div style={{ color: T.muted, fontSize: 11.5 }}>이번 달 쓴 돈</div>
+          <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtWon(ctx.totalSpentThisMonth)}</div>
+        </div>
       </div>
 
       <Hero T={T} ctx={ctx} top={top} hasPay={hasPay} bankKnown={bankKnown} left={left} daysLeft={daysLeft} />
@@ -109,11 +115,11 @@ export function HomeView({ ctx }) {
       <AssetList T={T} ctx={ctx} top={top} hasPay={hasPay} accounts={ctx.accountTotals || []} cardTotals={cardTotals}
         balance={accountBalance} cardBill={cardBillTotal} unpaidFixed={unpaidFixed} unpaidFixedSum={unpaidFixedSum} pending={ctx.payPending} />
 
-      <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-        <button onClick={() => openPanel("bank")} aria-expanded={panel === "bank"} aria-controls="home-panel" style={actBtn(panel === "bank")}>입출금·맞추기</button>
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+        <button onClick={() => openPanel("bank")} aria-expanded={panel === "bank"} aria-controls="home-panel" style={actBtn(panel === "bank", true)}>입출금·맞추기</button>
         <button onClick={() => openPanel("card")} aria-expanded={panel === "card"} aria-controls="home-panel" style={actBtn(panel === "card")}>카드 결제·명세서</button>
         <button onClick={() => openPanel("fixed")} aria-expanded={panel === "fixed"} aria-controls="home-panel" style={actBtn(panel === "fixed")}>
-          고정지출 처리{unpaidFixed.length ? <span style={{ color: T.warn }}> {unpaidFixed.length}</span> : ""}
+          고정지출 처리{unpaidFixed.length ? <span style={{ color: T.warn, fontFamily: F.mono }}> {unpaidFixed.length}</span> : ""}
         </button>
       </div>
 
@@ -167,21 +173,29 @@ function SyncNudge({ T, ctx, cardTotals, onOpen }) {
       const due = nextDayOfMonth(c.payDay);
       const old = !c.syncedAtMs || Date.now() - c.syncedAtMs > week;
       if (Number(c.total || 0) <= 0) return null;          // 낼 게 없으면 맞출 것도 없다
-      if (due && due.days <= 3) return { c, why: `${due.label} 결제까지 ${due.days === 0 ? "오늘" : `${due.days}일`}` };
+      if (due && due.days <= 3) return { c, why: `${due.label} 결제까지 ${due.days === 0 ? "오늘" : `${due.days}일`}`, soon: true };
       if (old) return { c, why: c.syncedAtMs ? `카드 앱과 맞춘 지 ${Math.round((Date.now() - c.syncedAtMs) / 86400000)}일` : "카드 앱과 맞춘 적 없음" };
       return null;
     })
     .filter(Boolean);
   if (!need.length) return null;
+  const t = tone(T, need.some((n) => n.soon) ? "warn" : "good");
+  // 새 디자인(2026-09-26): 흰 카드 + 동그란 방패 아이콘 + 오른쪽 화살표 — 누르면 카드 칸이 열린다
   return (
     <button onClick={onOpen}
-      style={{ width: "100%", textAlign: "left", marginTop: 8, background: `${T.warn}1a`, border: `1px solid ${T.warn}66`, borderRadius: 12, padding: "9px 12px", cursor: "pointer", fontFamily: "inherit" }}>
-      <div style={{ color: T.warn, fontSize: 13.5, fontWeight: 700 }}>
-        {need.map((n) => `${n.c.name} — ${n.why}`).join(" · ")}
-      </div>
-      <div style={{ color: T.muted, fontSize: 12.5, marginTop: 2 }}>
-        알림이 안 오는 결제가 있어요. 카드 앱 '결제 예정 금액'과 한 번 맞춰 두면 홈 숫자가 정확해져요.
-      </div>
+      style={{ ...card(T), width: "100%", display: "flex", alignItems: "center", gap: 12, textAlign: "left", marginTop: 12, padding: "12px 14px", cursor: "pointer", fontFamily: "inherit" }}>
+      <span aria-hidden="true" style={{ flexShrink: 0, width: 36, height: 36, borderRadius: "50%", background: t.tint, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <ShieldCheck size={18} color={t.text} strokeWidth={2.2} />
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "block", color: T.cream, fontSize: 13.5, fontWeight: 700 }}>
+          {need.map((n) => `${n.c.name} · ${n.why}`).join("  /  ")}
+        </span>
+        <span style={{ display: "block", color: T.muted, fontSize: 12, marginTop: 2, lineHeight: 1.45 }}>
+          카드 앱 '결제 예정 금액'과 한 번 맞춰 보세요.
+        </span>
+      </span>
+      <ChevronRight size={18} color={T.muted} aria-hidden="true" style={{ flexShrink: 0 }} />
     </button>
   );
 }
@@ -190,8 +204,12 @@ const cardBox = (T, bad) => ({ background: T.bg2, border: `1.5px solid ${(bad ? 
 const cardTitle = (T) => ({ color: T.goldSoft, fontSize: 13.5, fontWeight: 700, marginBottom: 4 });
 
 /*
-  **맨 위** — 카드로 더 써도 되는 돈(통장 + 다음 달 월급 − 나갈 돈 전부). 계산은 HomeView의 top 설명.
-  비교용 두 숫자(월급만으로 · 지금 통장으로 다 내면)는 한 줄로 작게.
+  **맨 위 큰 카드** — 카드로 더 써도 되는 돈(통장 + 다음 달 월급 − 나갈 돈 전부). 계산은 App.jsx ctx.
+
+  새 디자인(2026-09-26, 사용자가 보여 준 시안): 카드 전체가 **상태 색으로 옅게 물든다** —
+  여유 초록 · 빠듯 주황 · 모자람 빨강. 한 카드 안의 순서가 곧 중요도다:
+    ① 제목 + 하루 몫(오른쪽 작게) ② 아주 큰 숫자 ③ 오늘 쓴 돈 / 하루 몫 + 막대
+    ④ 상태 한 줄(아이콘 동그라미) ⑤ 선 아래 비교 두 칸(월급만으로 · 지금 통장으로 다 내면)
 */
 function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
   const v = top.value;
@@ -199,68 +217,95 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
   const perDay = ctx.perDay;
   const signed = (n) => `${n < 0 ? "-" : ""}${fmtWon(Math.abs(n))}`;
   /*
-    **하루 몫이 빠듯한지 색으로**(2026-09-17). 숫자만 있으면 9,788원이 큰지 작은지 알 수 없다.
-    기준은 남의 평균이 아니라 **내가 이번 달 실제로 쓴 하루 평균**이다 — 그보다 한참 적으면
-    지금 속도로는 못 버틴다는 뜻이다. 아직 며칠 안 지났으면(3일 미만) 평균이 안 믿을 만해서 안 띄운다.
+    하루 몫이 빠듯한지 — 남의 평균이 아니라 **내가 이번 달 실제로 쓴 하루 평균**과 견준다.
+    그보다 한참(60% 아래) 적으면 지금 속도로는 못 버틴다. 3일 전엔 평균이 안 믿을 만해서 안 본다.
   */
   const usedSoFar = ctx.normalSpent + ctx.cardSpentThisCycle;
   const avgDay = ctx.dayIntoCycle >= 3 ? Math.round(usedSoFar / ctx.dayIntoCycle) : 0;
   const tight = !short && avgDay > 0 && perDay < avgDay * 0.6;
-  /*
-    **오늘 쓴 돈을 하루 몫과 나란히**(2026-09-21). 하루 몫은 "하루 9,788원"이라고만 떠 있고 오늘 쓴
-    67,000원은 화면 맨 위 구석에 따로 있어서, 둘을 견주려면 사람이 머릿속으로 빼야 했다.
-    이 앱은 하루 단위로 쓰는 도구라 **오늘 몫을 넘겼는지**가 제일 자주 보는 숫자다. 막대 하나로 붙인다.
-  */
+  // 오늘 쓴 돈 / 하루 몫 — 하루 단위로 쓰는 도구라 제일 자주 보는 비교
   const today = Number(ctx.todaySpent || 0);
   const over = perDay > 0 && today > perDay;
   const ratio = perDay > 0 ? Math.min(1, today / perDay) : 0;
+
+  const state = short ? "danger" : tight || !bankKnown ? "warn" : "good";
+  const t = tone(T, state);
+  const bar = over || perDay === 0 ? tone(T, "danger") : t;
+  const num = { fontFamily: F.mono, fontVariantNumeric: "tabular-nums" };
+
+  const status = !bankKnown
+    ? { head: "통장 잔액을 먼저 맞춰 주세요", sub: "아래 '입출금·맞추기'에서 은행 잔액을 넣으면 숫자가 맞아요" }
+    : short
+      ? { head: "이번 달은 월급으로도 모자라요", sub: `${top.month} 월급이 들어와도 카드값·고정지출을 다 못 내요` }
+      : tight
+        ? { head: "이번 달은 빠듯해요", sub: `지금까지 하루 평균 ${fmtWon(avgDay)} 썼어요` }
+        : avgDay > 0
+          ? { head: "이번 달은 여유 있어요!", sub: `지금까지 하루 평균 ${fmtWon(avgDay)} 썼어요` }
+          : null;
+
   return (
-    <section aria-label="카드로 더 써도 되는 돈" style={{ ...cardBox(T, short), padding: "12px 16px" }}>
+    <section aria-label="카드로 더 써도 되는 돈"
+      style={{ ...card(T), borderColor: `${t.fill}40`, borderRadius: 22, padding: "16px 18px 16px", background: `linear-gradient(165deg, ${t.tint} 0%, ${T.bg2} 72%)` }}>
       {!hasPay ? (
-        <div style={{ color: T.warn, fontSize: 15, fontWeight: 700, padding: "4px 0" }}>설정에서 월급(실수령)을 적어 주세요</div>
+        <div style={{ color: T.warn, fontSize: 15, fontWeight: 700, padding: "6px 0" }}>설정에서 월급(실수령)을 적어 주세요</div>
       ) : (
         <>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ color: short ? T.danger : T.good, fontSize: 14, fontWeight: 700 }}>{short ? "월급 들어와도 모자라는 돈" : "카드로 더 써도 되는 돈"}</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+            <span style={{ color: short ? t.text : T.cream, fontSize: 14.5, fontWeight: 700 }}>
+              {short ? "월급 들어와도 모자라는 돈" : "카드로 더 써도 되는 돈"}
+            </span>
             {!short && bankKnown && (
-              <span style={{ color: T.muted, fontSize: 13 }}>하루 <b style={{ color: tight ? T.warn : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums" }}>{fmtWon(perDay)}</b> · 말일까지 {daysLeft}일</span>
+              <span style={{ color: T.muted, fontSize: 12, textAlign: "right", lineHeight: 1.4 }}>
+                하루 <b style={{ ...num, color: T.cream }}>{fmtWon(perDay)}</b><br />· 말일까지 {daysLeft}일
+              </span>
             )}
           </div>
-          <div style={{ color: short ? T.danger : T.cream, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, lineHeight: 1.25, marginTop: 2 }}>
-            {signed(v)}
+          <div style={{ ...num, color: short ? t.text : T.cream, fontSize: 44, fontWeight: 700, letterSpacing: -1.5, lineHeight: 1.15, marginTop: 4 }}>
+            {signed(v).replace(/원$/, "")}<span style={{ fontSize: 22, fontWeight: 700, marginLeft: 2, fontFamily: F.body }}>원</span>
           </div>
-          {hasPay && bankKnown && (
-            <div style={{ marginTop: 8 }}>
-              {/* 쓸 몫이 없는 날(이미 모자람)엔 막대를 안 그린다 — 0을 채운 빈 막대는 '오늘은 괜찮다'로 읽힌다 */}
+
+          {bankKnown && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ color: T.muted, fontSize: 12.5 }}>
+                오늘 <b style={{ ...num, color: T.cream }}>{fmtWon(today)}</b>
+                {perDay === 0
+                  ? <span style={{ color: bar.text }}> · 오늘 쓸 몫이 없어요</span>
+                  : <> / 하루 몫 {fmtWon(perDay)} · <b style={{ color: bar.text }}>{over ? `${fmtWon(today - perDay)} 더 썼어요` : `${fmtWon(perDay - today)} 남았어요`}</b></>}
+              </div>
+              {/* 쓸 몫이 없는 날엔 막대를 안 그린다 — 0을 채운 빈 막대는 '오늘은 괜찮다'로 읽힌다 */}
               {perDay > 0 && (
-                <div style={{ height: 6, borderRadius: 3, background: `${T.border}`, overflow: "hidden" }}>
-                  <div style={{ width: `${(over ? 1 : ratio) * 100}%`, height: "100%", background: over ? T.danger : T.good, borderRadius: 3 }} />
+                <div style={{ height: 10, borderRadius: 6, background: T.paperLine || T.border, overflow: "hidden", marginTop: 8 }}>
+                  <div style={{ width: `${(over ? 1 : ratio) * 100}%`, height: "100%", background: bar.fill, borderRadius: 6 }} />
                 </div>
               )}
-              <div style={{ color: over || perDay === 0 ? T.danger : T.muted, fontSize: 12.5, marginTop: 3 }}>
-                오늘 <b style={{ fontFamily: F.mono, color: over || perDay === 0 ? T.danger : T.cream }}>{fmtWon(today)}</b>
-                {perDay === 0
-                  ? " · 오늘 쓸 몫이 없어요"
-                  : ` / 하루 몫 ${fmtWon(perDay)}${over ? ` · ${fmtWon(today - perDay)} 더 썼어요` : ` · ${fmtWon(perDay - today)} 남았어요`}`}
-              </div>
             </div>
           )}
-          {tight && bankKnown && (
-            <div style={{ color: T.warn, fontSize: 13, marginTop: 6, lineHeight: 1.5 }}>
-              이번 달은 빠듯해요 — 지금까지 하루 평균 {fmtWon(avgDay)} 썼어요
-            </div>
-          )}
-          {(short || !bankKnown) && (
-            <div style={{ color: short ? T.danger : T.warn, fontSize: 13.5, marginTop: 6, lineHeight: 1.5 }}>
-              {!bankKnown ? "통장 잔액을 먼저 맞춰 주세요 — 아래 '입출금·맞추기'" : `${top.month} 월급이 들어와도 카드값·고정지출을 다 못 내요`}
+
+          {status && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, background: t.tint, borderRadius: 14, padding: "10px 12px" }}>
+              <span aria-hidden="true" style={{ flexShrink: 0, width: 30, height: 30, borderRadius: "50%", background: t.fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {state === "good" ? <Sprout size={16} color="#fff" strokeWidth={2.4} /> : <AlertCircle size={16} color="#fff" strokeWidth={2.4} />}
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", color: t.text, fontSize: 13.5, fontWeight: 700 }}>{status.head}</span>
+                <span style={{ display: "block", color: T.muted, fontSize: 12, marginTop: 1 }}>{status.sub}</span>
+              </span>
             </div>
           )}
         </>
       )}
-      {/* 한 줄씩 — 둘을 한 줄에 이으면 "다 / 내면"처럼 말 중간에서 끊겼다. 위 숫자와 섞이지 않게 선으로 나눈다 */}
-      <div style={{ color: T.muted, fontSize: 12.5, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${T.border}`, lineHeight: 2 }}>
-        {hasPay && <div>통장 없이 {top.month} 월급만으로 <b style={{ color: ctx.payLeft < 0 ? T.danger : T.cream, fontFamily: F.mono, whiteSpace: "nowrap" }}>{signed(ctx.payLeft)}</b></div>}
-        <div>지금 통장으로 다 내면 <b style={{ color: left < 0 ? T.danger : T.cream, fontFamily: F.mono, whiteSpace: "nowrap" }}>{signed(left)}</b></div>
+      {/* 비교 두 칸 — 선으로 위 숫자와 나눈다. 한 줄에 이으면 말 중간에서 끊겼다 */}
+      <div style={{ display: "flex", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
+        {hasPay && (
+          <div style={{ flex: 1, minWidth: 0, paddingRight: 10, borderRight: `1px solid ${T.border}` }}>
+            <div style={{ color: T.muted, fontSize: 11.5 }}>통장 없이 {top.month} 월급만으로</div>
+            <div style={{ ...num, color: ctx.payLeft < 0 ? T.danger : T.good, fontSize: 18, fontWeight: 700, marginTop: 2 }}>{signed(ctx.payLeft)}</div>
+          </div>
+        )}
+        <div style={{ flex: 1, minWidth: 0, paddingLeft: hasPay ? 12 : 0, textAlign: hasPay ? "right" : "left" }}>
+          <div style={{ color: T.muted, fontSize: 11.5 }}>지금 통장으로 다 내면</div>
+          <div style={{ ...num, color: left < 0 ? T.danger : T.good, fontSize: 18, fontWeight: 700, marginTop: 2 }}>{signed(left)}</div>
+        </div>
       </div>
     </section>
   );
@@ -269,35 +314,49 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
 /*
   **한눈에 목록** — 누르지 않아도 늘 보인다. 줄 순서와 부호가 곧 위 큰 숫자의 식이다:
     통장 + 다음 달 월급 − 안 낸 카드값 − 이번 달 남은 고정지출 − 다음 달 고정지출 = 카드로 더 써도 되는 돈
-  통장·카드는 하나씩 풀어 적고, 남은 고정지출은 이름까지 적는다 — 무엇이 남았는지가 궁금한 거라서.
+
+  새 디자인(2026-09-26): 흰 카드 한 장 위에 묶음마다 **동그란 부호 표시**(+ 초록 · − 빨강 · 통장 아이콘)를
+  달고, 묶음 사이는 여백과 옅은 선으로 끊는다. 하위 줄은 들여 쓴 흐린 글자로 금액을 세로로 맞춘다.
+  (그 전 판의 교훈 — 이름을 쉼표로 줄줄이 잇지 말 것, 한 항목 한 줄, 큰 것 몇 개 + '그 밖에 N건'.)
 */
 function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBill, unpaidFixed, unpaidFixedSum, pending }) {
-  /*
-    **줄이 다닥다닥 붙어 읽기 힘들었다**(2026-09-21, 사용자). 고쳐야 했던 건 셋이다.
-      · 줄 간격 — 큰 줄 padding 5px/1px에 작은 줄 11.5px 글자라 통째로 뭉쳐 보였다.
-      · 이름 나열 — "가족모임 지난달 1일 · KB손해보험 지난달 20일 · …"이 석 줄로 접히며 금액도 없었다.
-        **한 항목 한 줄**로, 이름은 왼쪽 금액은 오른쪽으로 세운다.
-      · 묶음 구분 — 들어올 돈 / 카드값 / 이번 달 / 다음 달 / 결과가 한 덩어리였다. 묶음마다 띄우고 선을 둔다.
-  */
-  const Row = ({ sign, label, amount, tag, bold, strong, dim }) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: bold ? "3px 0" : "4px 0" }}>
-      <span style={{ minWidth: 0, color: bold ? T.cream : dim || T.muted, fontSize: bold ? 15 : 13.5, fontWeight: bold ? 700 : 400, paddingInlineStart: bold ? 0 : "1.4em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {sign && <span aria-hidden="true" style={{ display: "inline-block", width: "1.4em", color: T.muted, fontWeight: 400 }}>{sign}</span>}{label}
-        {tag && <span style={{ marginInlineStart: 6, fontSize: 11.5, color: T.goldSoft, fontWeight: 400 }}>{tag}</span>}
+  const num = { fontFamily: F.mono, fontVariantNumeric: "tabular-nums" };
+  const Badge = ({ kind, children }) => {
+    const t = tone(T, kind);
+    return (
+      <span aria-hidden="true" style={{ flexShrink: 0, width: 28, height: 28, borderRadius: "50%", background: t.tint, color: t.text, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {children}
       </span>
-      <span style={{ flexShrink: 0, color: strong || (bold ? T.cream : dim || T.muted), fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontSize: bold ? 16 : 13.5, fontWeight: bold ? 700 : 500 }}>{fmtWon(amount)}</span>
+    );
+  };
+  const Head = ({ icon, kind = "good", label, amount, tag, strong, sign }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
+      <Badge kind={kind}>{icon}</Badge>
+      <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 14.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {label}
+        {tag && <span style={{ marginInlineStart: 6, fontSize: 11.5, color: T.muted, fontWeight: 500 }}>{tag}</span>}
+      </span>
+      <span style={{ ...num, flexShrink: 0, color: strong || T.cream, fontSize: 15.5, fontWeight: 700 }}>{fmtWon(amount)}</span>
     </div>
   );
-  /** 묶음 — 위에 여백과 옅은 선을 둬서 어디서 끊기는지 눈에 보이게 */
-  const Group = ({ children, first }) => (
-    <div style={{ marginTop: first ? 0 : 14, paddingTop: first ? 0 : 12, borderTop: first ? "none" : `1px solid ${T.border}` }}>{children}</div>
+  const Sub = ({ label, amount, tag, dim }) => (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "3px 0 3px 38px" }}>
+      <span style={{ flex: 1, minWidth: 0, color: dim || T.muted, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {label}{tag && <span style={{ marginInlineStart: 6, fontSize: 11.5, color: T.muted }}>{tag}</span>}
+      </span>
+      <span style={{ ...num, flexShrink: 0, color: dim || T.muted, fontSize: 13.5, fontWeight: 500 }}>{fmtWon(amount)}</span>
+    </div>
   );
-  const note = { color: T.muted, fontSize: 12, paddingInlineStart: "1.4em", lineHeight: 1.6, marginTop: 1 };
+  const Note = ({ children, color }) => (
+    <div style={{ color: color || T.muted, fontSize: 11.5, padding: "0 0 4px 38px", lineHeight: 1.5 }}>{children}</div>
+  );
+  const Group = ({ children, first }) => (
+    <div style={{ padding: first ? "4px 0 10px" : "12px 0 10px", borderTop: first ? "none" : `1px solid ${T.paperLine || T.border}` }}>{children}</div>
+  );
 
   /*
-    **고정지출은 이름만이 아니라 며칠에 나가는지도**(2026-09-17). 자동이체일(autoPayDay)이 적힌 것은
-    그날 앱이 알아서 처리하므로 여기 안 남는다 → 남은 건 대개 날짜를 모르는 것들이라 **지난달에 며칠에
-    나갔는지**로 짐작해 적는다. 날짜가 지났는데 아직 남아 있으면 빨갛게.
+    고정지출 날짜 — 자동이체일(autoPayDay)이 있으면 그날, 없으면 **지난달에 며칠에 나갔는지**로 짐작.
+    자동이체일이 적힌 건 그날 앱이 알아서 처리해 여기 안 남으므로, 남는 건 대개 날짜를 모르는 것들이다.
   */
   const todayDay = new Date().getDate();
   const dayOf = (f) => {
@@ -310,7 +369,7 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
   };
   const days = new Map(unpaidFixed.map((f) => [f.id, dayOf(f)]));
   const overdue = unpaidFixed.filter((f) => (days.get(f.id)?.day || 99) < todayDay);
-  // 날짜가 지난 것을 먼저, 그다음 큰 것부터 — 눌러야 할 것이 위로 온다
+  // 날짜가 지난 것을 먼저, 그다음 큰 것부터 넷 — 홈은 한 화면에 들어와야 한다
   const unpaidSorted = [...unpaidFixed].sort((a, b) => {
     const la = (days.get(a.id)?.day || 99) < todayDay ? 0 : 1;
     const lb = (days.get(b.id)?.day || 99) < todayDay ? 0 : 1;
@@ -326,79 +385,87 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
     .sort((a, b) => b.amount - a.amount);
   const nextTop = nextAll.slice(0, 3);
   const nextRest = nextAll.slice(3);
-  const nextRestSum = nextRest.reduce((a, f) => a + f.amount, 0);
   const receivable = (ctx.receivables || []).reduce((a, r) => a + Number(r.amount || 0), 0);
+  const resultBad = top.value < 0;
 
   return (
-    <section aria-label="한눈에" style={{ background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 15px 14px", marginTop: 10 }}>
-      <Group first>
-        <Row bold label="통장" amount={balance} />
-        {accounts.length > 1 && accounts.map((a) => (
-          <Row key={a.id} label={a.name} amount={a.balance} tag={a.bankSync ? `${agoAt(a.bankSync.at)} 맞춤` : null} />
-        ))}
-        {pending > 0 && <Row sign="+" label={`아직 안 들어온 ${top.curMonth} 월급`} amount={pending} />}
-        {hasPay && <Row bold sign="+" label={`${top.month} 월급`} amount={top.pay} tag={top.tag} />}
-      </Group>
+    <>
+      <h2 style={{ margin: "20px 2px 8px", color: T.cream, fontSize: 16, fontWeight: 800 }}>한눈에</h2>
+      <section aria-label="한눈에" style={{ ...card(T), padding: "8px 16px 6px" }}>
+        <Group first>
+          <Head icon={<Landmark size={15} strokeWidth={2.2} />} label="통장" amount={balance} />
+          {accounts.length > 1 && accounts.map((a) => (
+            <Sub key={a.id} label={`+ ${a.name}`} amount={a.balance} tag={a.bankSync ? `${agoAt(a.bankSync.at)} 맞춤` : null} />
+          ))}
+          {pending > 0 && <Sub label={`+ 아직 안 들어온 ${top.curMonth} 월급`} amount={pending} />}
+        </Group>
 
-      <Group>
-        <Row bold sign="−" label="안 낸 카드값" amount={cardBill} />
-        {cardTotals.map((c) => {
-          /*
-            **언제 나가는지, 언제 맞춘 숫자인지**(2026-09-17). 카드값은 결제 확인·명세서·맞추기가
-            같은 한 칸을 덮어써서 어긋나도 조용하다(9/17에 552,948원이 어긋나 있었다).
-          */
-          const due = nextDayOfMonth(c.payDay);
-          const old7 = c.syncedAtMs && Date.now() - c.syncedAtMs > 7 * 86400000;
-          return (
-            <div key={c.id} style={{ marginBottom: 2 }}>
-              <Row label={c.name} amount={c.total}
-                tag={c.earlyPay && c.installPaid?.[ctx.curKey] ? "이번 달 할부 미리 냄" : c.fixedPortion > 0 ? `할부 ${fmtWon(c.fixedPortion)} 포함` : null} />
-              {(due || c.syncedAtMs) && (
-                <div style={note}>
-                  {due && <span style={{ color: due.days <= 3 ? T.warn : T.muted }}>{due.label} 결제 · {due.days === 0 ? "오늘" : `${due.days}일 뒤`}</span>}
-                  {due && c.syncedAtMs && " · "}
-                  {c.syncedAtMs && <span style={{ color: old7 ? T.warn : T.muted }}>카드 앱과 {agoAt(c.syncedAtMs)} 맞춤</span>}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {/*
-          대리결제는 카드로 내가 전액 내고 나중에 돌려받는다. 카드값엔 그대로 들어 있어서 '안 낸
-          카드값'이 실제보다 커 보인다. 식(부호 붙은 줄)은 안 흔들고 설명 한 줄로 둔다.
-        */}
-        {receivable > 0 && <div style={note}>이 중 정산받을 돈 {fmtWon(receivable)} — 돌려받으면 통장으로 들어와요</div>}
-      </Group>
-
-      <Group>
-        <Row bold sign="−" label={`${top.curMonth} 남은 고정지출`} amount={unpaidFixedSum} strong={unpaidFixed.length ? T.warn : null} />
-        {/* 홈은 한 화면에 들어와야 한다 — 큰 것 넷만 줄로, 나머지는 한 줄로 묶는다(2026-09-21) */}
-        {unpaidTop.map((f) => {
-          const d = days.get(f.id);
-          const late = d && d.day < todayDay;
-          return (
-            <Row key={f.id} label={`${f.name}${d ? ` · ${d.guess ? "지난달 " : ""}${d.day}일` : ""}`} amount={f.info.amount} dim={late ? T.warn : null} />
-          );
-        })}
-        {unpaidRest.length > 0 && <Row label={`그 밖에 ${unpaidRest.length}건`} amount={unpaidRest.reduce((a, f) => a + Number(f.info.amount), 0)} />}
-        {overdue.length > 0 && <div style={{ ...note, color: T.warn }}>날짜가 지난 것 {overdue.length}건 — 냈으면 아래 '고정지출 처리'에서 눌러 주세요</div>}
-      </Group>
-
-      {hasPay && (
-        <>
+        {hasPay && (
           <Group>
-            <Row bold sign="−" label={`${top.month} 고정지출`} amount={top.fixedCash + top.fixedCard} />
-            {nextTop.map((f) => <Row key={f.id} label={f.name} amount={f.amount} />)}
-            {nextRest.length > 0 && <Row label={`그 밖에 ${nextRest.length}건`} amount={nextRestSum} />}
-            <div style={note}>통장 {fmtWon(top.fixedCash)} · 카드 할부·정기결제 {fmtWon(top.fixedCard)}</div>
+            <Head icon={<Plus size={15} strokeWidth={2.6} />} sign="더하기" label={`${top.month} 월급`} tag={top.tag} amount={top.pay} />
           </Group>
+        )}
 
-          <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1.5px solid ${T.border}` }}>
-            <Row bold sign="=" label={top.value < 0 ? "월급 들어와도 모자라는 돈" : "카드로 더 써도 되는 돈"} amount={top.value} strong={top.value < 0 ? T.danger : T.good} />
-          </div>
-        </>
-      )}
-    </section>
+        <Group>
+          <Head icon={<Minus size={15} strokeWidth={2.6} />} kind="danger" sign="빼기" label="안 낸 카드값" amount={cardBill} />
+          {cardTotals.map((c) => {
+            /*
+              언제 나가는지, 언제 맞춘 숫자인지(2026-09-17). 카드값은 결제 확인·명세서·맞추기가 같은 한 칸을
+              덮어써서 어긋나도 조용하다 — 통장의 '2시간 전 맞춤'처럼 기준 시각을 적고, 오래되면 색을 바꾼다.
+            */
+            const due = nextDayOfMonth(c.payDay);
+            const old7 = c.syncedAtMs && Date.now() - c.syncedAtMs > 7 * 86400000;
+            return (
+              <div key={c.id}>
+                <Sub label={c.name} amount={c.total}
+                  tag={c.earlyPay && c.installPaid?.[ctx.curKey] ? "이번 달 할부 미리 냄" : c.fixedPortion > 0 ? `할부 ${fmtWon(c.fixedPortion)} 포함` : null} />
+                {(due || c.syncedAtMs) && (
+                  <Note>
+                    {due && <span style={{ color: due.days <= 3 ? T.warn : T.muted }}>{due.label} 결제 · {due.days === 0 ? "오늘" : `${due.days}일 뒤`}</span>}
+                    {due && c.syncedAtMs && " · "}
+                    {c.syncedAtMs && <span style={{ color: old7 ? T.warn : T.muted }}>카드 앱과 {agoAt(c.syncedAtMs)} 맞춤</span>}
+                  </Note>
+                )}
+              </div>
+            );
+          })}
+          {/* 대리결제로 돌려받을 돈 — 카드값엔 들어 있지만 내 돈이 아니다. 식은 안 흔들고 설명 한 줄로 */}
+          {receivable > 0 && <Note>이 중 정산받을 돈 {fmtWon(receivable)} — 돌려받으면 통장으로 들어와요</Note>}
+        </Group>
+
+        <Group>
+          <Head icon={<Minus size={15} strokeWidth={2.6} />} kind={unpaidFixed.length ? "warn" : "good"} sign="빼기"
+            label={`${top.curMonth} 남은 고정지출`} amount={unpaidFixedSum} strong={unpaidFixed.length ? T.warn : null} />
+          {unpaidTop.map((f) => {
+            const d = days.get(f.id);
+            const late = d && d.day < todayDay;
+            return <Sub key={f.id} label={`${f.name}${d ? ` · ${d.guess ? "지난달 " : ""}${d.day}일` : ""}`} amount={f.info.amount} dim={late ? T.warn : null} />;
+          })}
+          {unpaidRest.length > 0 && <Sub label={`그 밖에 ${unpaidRest.length}건`} amount={unpaidRest.reduce((a, f) => a + Number(f.info.amount), 0)} />}
+          {overdue.length > 0 && <Note color={T.warn}>날짜가 지난 것 {overdue.length}건 — 냈으면 아래 '고정지출 처리'에서 눌러 주세요</Note>}
+        </Group>
+
+        {hasPay && (
+          <>
+            <Group>
+              <Head icon={<Minus size={15} strokeWidth={2.6} />} kind="danger" sign="빼기" label={`${top.month} 고정지출`} amount={top.fixedCash + top.fixedCard} />
+              {/*
+                다음 달 것도 무엇이 들었는지(2026-09-21) — 300만 원이 덩어리로만 뜨면 왜 큰지 모른다.
+                큰 것 셋 + 그 밖에. 미리 냈거나 건너뛴 것은 금액에서 이미 빠졌으니 여기서도 뺀다.
+              */}
+              {nextTop.map((f) => <Sub key={f.id} label={f.name} amount={f.amount} />)}
+              {nextRest.length > 0 && <Sub label={`그 밖에 ${nextRest.length}건`} amount={nextRest.reduce((a, f) => a + f.amount, 0)} />}
+              <Note>통장 {fmtWon(top.fixedCash)} · 카드 할부·정기결제 {fmtWon(top.fixedCard)}</Note>
+            </Group>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0 10px", borderTop: `1.5px solid ${T.border}` }}>
+              <Badge kind={resultBad ? "danger" : "good"}><Equal size={15} strokeWidth={2.6} /></Badge>
+              <span style={{ flex: 1, color: T.cream, fontSize: 15, fontWeight: 800 }}>{resultBad ? "월급 들어와도 모자라는 돈" : "카드로 더 써도 되는 돈"}</span>
+              <span style={{ ...num, color: resultBad ? T.danger : T.good, fontSize: 18, fontWeight: 700 }}>{fmtWon(top.value)}</span>
+            </div>
+          </>
+        )}
+      </section>
+    </>
   );
 }
 

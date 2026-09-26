@@ -1,4 +1,5 @@
 // Small presentational pieces shared by several screens.
+import { Utensils, Coffee, Bus, Fuel, ShoppingBag, ShoppingCart, Pill, Smartphone, Home, GraduationCap, Film, Receipt, Wallet, Car, Gift } from "lucide-react";
 import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
 import { QUICK_AMOUNTS } from "../lib/constants";
 import { FIXED_SORTS } from "../lib/data";
@@ -86,5 +87,32 @@ export function Field({ label, children, htmlFor }) {
       {htmlFor ? <label htmlFor={htmlFor} style={labelStyle}>{label}</label> : <div style={labelStyle}>{label}</div>}
       {children}
     </div>
+  );
+}
+
+/*
+  **카테고리 아이콘 동그라미**(2026-09-26 새 디자인 — 내역·달력). 카테고리 이름에서 알맞은 그림을 고르고,
+  카테고리 색을 옅게 깐 동그라미 안에 그 색으로 그린다. 사용자가 이름을 자유롭게 짓기 때문에 낱말로 고르고,
+  못 고르면 영수증 그림.
+*/
+const CAT_ICONS = [
+  [/식비|음식|외식|배달|밥/, Utensils], [/카페|커피|디저트/, Coffee], [/주유|기름/, Fuel],
+  [/차량|자동차|정비|하이패스|통행/, Car], [/교통|버스|지하철|택시/, Bus], [/마트|장보기|생필/, ShoppingCart],
+  [/쇼핑|의류|옷/, ShoppingBag], [/의료|병원|약|건강/, Pill], [/통신|휴대폰|핸드폰|인터넷/, Smartphone],
+  [/주거|관리비|월세|생활|집/, Home], [/교육|학원|책/, GraduationCap], [/여가|문화|영화|취미|구독/, Film],
+  [/선물|경조|모임/, Gift], [/급여|월급|입금|수입/, Wallet],
+];
+export function iconForCategory(name) {
+  const n = String(name || "");
+  return (CAT_ICONS.find(([re]) => re.test(n)) || [null, Receipt])[1];
+}
+export function CatBadge({ name, color, size = 36, icon }) {
+  const T = useTheme();
+  const Icon = icon || iconForCategory(name);
+  const c = color || T.muted;
+  return (
+    <span aria-hidden="true" style={{ flexShrink: 0, width: size, height: size, borderRadius: "50%", background: `${c}1F`, color: c, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Icon size={Math.round(size * 0.46)} strokeWidth={2.2} />
+    </span>
   );
 }

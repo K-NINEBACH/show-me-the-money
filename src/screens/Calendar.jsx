@@ -1,7 +1,8 @@
 // Calendar tab: month grid heatmap of daily spending.
 import { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useTheme, F, paperCard } from "../lib/theme";
+import { useTheme, F, paperCard, tone, card } from "../lib/theme";
+import { CatBadge } from "../components/common";
 import { fmtWon, netAmount, monthLabel, monthKeyOffset, daysInMonthKey, firstWeekday, dateStrFor, todayISO } from "../lib/data";
 
 export function CalendarView({ ctx }) {
@@ -77,21 +78,26 @@ export function CalendarView({ ctx }) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <button onClick={() => { setViewKey(monthKeyOffset(viewKey, -1)); setSelectedDate(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.muted }}><ChevronLeft size={22} /></button>
-        <div style={{ color: T.cream, fontFamily: F.display, fontSize: 19.5, fontWeight: 700 }}>{monthLabel(viewKey)}</div>
-        <button onClick={() => { setViewKey(monthKeyOffset(viewKey, 1)); setSelectedDate(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.muted }}><ChevronRight size={22} /></button>
+      {/* 새 디자인(2026-09-26): 제목 '달력' + 이번 달 합계, 그 아래 흰 카드 한 장에 달 넘기기와 달력 */}
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+        <h1 style={{ margin: 0, color: T.cream, fontFamily: F.display, fontSize: 22, fontWeight: 800 }}>달력</h1>
+        <span style={{ color: T.cream, fontFamily: F.mono, fontSize: 18, fontWeight: 700 }}>{fmtWon(monthTotal)}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12, minHeight: 20 }}>
+        {topCategory && <span style={{ color: T.muted, fontSize: 13 }}>이번 달 <b style={{ color: T.gold }}>{topCategory}</b>에서 가장 많이 썼어요</span>}
+        {compareBadge && (
+          <span style={{ color: compareBadge.up ? T.danger : T.good, background: tone(T, compareBadge.up ? "danger" : "good").tint, borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 }}>
+            지난달 이맘때보다 {compareBadge.up ? "+" : ""}{compareBadge.pct}%
+          </span>
+        )}
       </div>
 
-      <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 26, fontWeight: 700, marginBottom: 4 }}>{fmtWon(monthTotal)}</div>
-      {topCategory && <div style={{ color: T.muted, fontSize: 14, marginBottom: 6 }}>이번 달 <span style={{ color: T.gold, fontWeight: 700 }}>{topCategory}</span>에서 가장 많이 썼어요</div>}
-      {compareBadge && (
-        <div style={{ display: "inline-block", color: compareBadge.up ? T.danger : T.good, background: (compareBadge.up ? T.danger : T.good) + "1A", borderRadius: 8, padding: "3px 8px", fontSize: 13, fontWeight: 700, marginBottom: 14 }}>
-          지난달 이맘때보다 {compareBadge.up ? "+" : ""}{compareBadge.pct}%
-        </div>
-      )}
-      {!topCategory && <div style={{ marginBottom: 10 }} />}
-
+      <section aria-label="달력" style={{ ...card(T), padding: "12px 12px 16px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <button onClick={() => { setViewKey(monthKeyOffset(viewKey, -1)); setSelectedDate(null); }} aria-label="지난달" style={{ background: "none", border: "none", cursor: "pointer", color: T.muted, width: 40, height: 40 }}><ChevronLeft size={20} /></button>
+        <div style={{ color: T.cream, fontFamily: F.display, fontSize: 17, fontWeight: 800 }}>{monthLabel(viewKey)}</div>
+        <button onClick={() => { setViewKey(monthKeyOffset(viewKey, 1)); setSelectedDate(null); }} aria-label="다음 달" style={{ background: "none", border: "none", cursor: "pointer", color: T.muted, width: 40, height: 40 }}><ChevronRight size={20} /></button>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", marginBottom: 6 }}>
         {["일", "월", "화", "수", "목", "금", "토"].map((d) => (
           <div key={d} style={{ color: T.muted, fontSize: 13, padding: "4px 0" }}>{d}</div>
@@ -107,7 +113,8 @@ export function CalendarView({ ctx }) {
           const isTop = day === topDay && amt > 0;
           // 옅어서 어느 날이 큰 날인지 잘 안 보였다 — 진하기를 올리고(최대 70 → 170) 큰 날은 글자도 진하게
           const intensity = maxDaily > 0 && amt ? Math.min(amt / maxDaily, 1) : 0;
-          const heatAlpha = Math.round(30 + intensity * 140).toString(16).padStart(2, "0");
+          const heatAlpha = Math.round(24 + intensity * 90).toString(16).padStart(2, "0");
+          const g = tone(T, "good");
           const big = intensity >= 0.5;
           const hasIncome = incomeDays.has(day);
           return (
@@ -116,59 +123,62 @@ export function CalendarView({ ctx }) {
               <span style={{
                 position: "relative", width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 15, fontWeight: isToday ? 700 : 500,
-                background: isToday ? T.ink : isSelected ? T.gold + "33" : amt ? `${T.danger}${heatAlpha}` : "transparent",
-                color: isToday ? T.paper : isSelected ? T.gold : T.cream,
-                border: isTop ? `1.5px solid ${T.gold}` : isSelected && !isToday ? `1.5px solid ${T.gold}` : "none",
+                // 새 디자인(2026-09-26): 빨강 대신 초록 농도 — 쓴 날이 '경고'로 읽히지 않게. 가장 많이 쓴 날은 초록으로 꽉 채운다
+                background: isToday ? T.ink : isTop ? g.fill : isSelected ? g.tint : amt ? `${g.fill}${heatAlpha}` : "transparent",
+                color: isToday || isTop ? "#FFFFFF" : T.cream,
+                border: isSelected && !isToday ? `1.5px solid ${T.gold}` : "none",
               }}>
                 {day}
                 {hasIncome && (
                   <span style={{ position: "absolute", top: -2, right: -2, width: 7, height: 7, borderRadius: "50%", background: T.good, border: `1px solid ${T.bg}` }} />
                 )}
               </span>
-              <span style={{ fontSize: 11.5, color: amt ? (big ? T.ink : T.muted) : "transparent", fontFamily: F.mono, fontWeight: big ? 700 : 400 }}>
+              <span style={{ fontSize: 11, color: amt ? (big ? T.ink : T.muted) : "transparent", fontFamily: F.mono, fontWeight: big ? 700 : 500 }}>
                 {amt ? (amt >= 10000 ? `${Math.round(amt / 1000) / 10}만` : amt.toLocaleString("ko-KR")) : "-"}
               </span>
             </button>
           );
         })}
       </div>
-      <div style={{ display: "flex", gap: 14, marginTop: 20, fontSize: 12, color: T.muted }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: "50%", background: `${T.danger}70` }} /> 많이 쓴 날</span>
+      <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 18, fontSize: 12, color: T.muted }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: "50%", background: `${tone(T, "good").fill}66` }} /> 많이 쓴 날</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: "50%", background: tone(T, "good").fill }} /> 최고 지출일</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: T.good }} /> 입금일</span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: "50%", border: `1.5px solid ${T.gold}` }} /> 최고 지출일</span>
       </div>
+      </section>
 
       {byCategory.length > 0 && (
-        <div style={{ marginTop: 24 }}>
-          <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 12 }}>어디에 썼나</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {byCategory.slice(0, 6).map((c) => (
-              <div key={c.id}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 14, color: T.cream }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
-                  <span style={{ fontFamily: F.mono, color: T.muted, flexShrink: 0 }}>
-                    {fmtWon(c.amount)} <span style={{ fontSize: 12 }}>{Math.round((c.amount / monthTotal) * 100)}%</span>
+        <>
+          <h2 style={{ margin: "22px 2px 8px", color: T.cream, fontSize: 16, fontWeight: 800 }}>어디에 썼나</h2>
+          <section aria-label="어디에 썼나" style={{ ...card(T), padding: "8px 14px" }}>
+            {byCategory.slice(0, 6).map((c, i) => {
+              const color = c.color || T.muted;
+              return (
+                <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: i ? `1px solid ${T.paperLine}` : "none" }}>
+                  <CatBadge name={c.name} color={color} size={30} />
+                  <span style={{ width: 58, flexShrink: 0, color: T.cream, fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                  <span style={{ flex: 1, minWidth: 30, height: 8, borderRadius: 5, background: T.paperLine || T.border, overflow: "hidden" }}>
+                    <span style={{ display: "block", width: `${(c.amount / byCategory[0].amount) * 100}%`, height: "100%", background: color, borderRadius: 5 }} />
                   </span>
+                  <span style={{ width: 34, flexShrink: 0, textAlign: "right", color: T.muted, fontFamily: F.mono, fontSize: 12 }}>{Math.round((c.amount / monthTotal) * 100)}%</span>
+                  <span style={{ width: 84, flexShrink: 0, textAlign: "right", color: T.cream, fontFamily: F.mono, fontSize: 13, fontWeight: 700 }}>{fmtWon(c.amount)}</span>
                 </div>
-                <div style={{ height: 7, borderRadius: 4, background: `${T.border}`, overflow: "hidden", marginTop: 5 }}>
-                  <div style={{ width: `${(c.amount / byCategory[0].amount) * 100}%`, height: "100%", background: c.color || T.muted, borderRadius: 3 }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+              );
+            })}
+          </section>
+        </>
       )}
 
       {selectedDate && (
         <div style={{ marginTop: 20 }}>
-          <div style={{ color: T.goldSoft, fontSize: 14, marginBottom: 10 }}>{selectedDate} 내역</div>
+          <h2 style={{ margin: "0 2px 8px", color: T.cream, fontSize: 16, fontWeight: 800 }}>{Number(selectedDate.slice(5, 7))}월 {Number(selectedDate.slice(8, 10))}일 내역</h2>
           {selectedList.length === 0 ? (
             <div style={{ ...paperCard(T), textAlign: "center", color: T.muted, padding: "24px 14px" }}>이 날 기록이 없어요.</div>
           ) : (
             <div style={paperCard(T)}>
               {selectedList.map((e) => (
                 <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px dashed ${T.paperLine}` }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: catMap[e.categoryId] ? catMap[e.categoryId].color : T.muted, flexShrink: 0 }} />
+                  <CatBadge name={catMap[e.categoryId]?.name || "미분류"} color={catMap[e.categoryId]?.color} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {/* 내역 화면과 같은 규칙 — 가맹점이 제목, 카테고리는 옆에 작게(2026-09-21) */}
                     <div style={{ color: T.ink, fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
