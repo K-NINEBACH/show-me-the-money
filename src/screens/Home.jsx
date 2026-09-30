@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Repeat, ClipboardPaste, ChevronRight, Check, Landmark, ShieldCheck, Sprout, AlertCircle, Plus, Minus, Equal } from "lucide-react";
 import { useTheme, F, inputSty, primaryBtn, tone, card } from "../lib/theme";
-import { fmtWon, monthLabel, todayISO, parsePaymentText, sortFixedList, fixedInfo, nextDayOfMonth } from "../lib/data";
+import { fmtWon, monthLabel, todayISO, parsePaymentText, sortFixedList, fixedInfo, nextDayOfMonth, monthKeyOffset } from "../lib/data";
 import { MoneyInput, QuickAmountButtons } from "../components/common";
 import { syncMoment } from "../lib/auto-record";
 import { parseStatement, reconcileStatement } from "../lib/statement";
@@ -832,7 +832,12 @@ function payCard(ctx, card) {
   const { curKey } = ctx;
   // 이번 달 할부 몫을 냈다고 적는다 — 안 적으면 내자마자 카드값에 다시 뜬다(App.jsx cardTotals)
   const nextCards = data.cards.map((c) => (c.id === card.id
-    ? { ...c, bill: 0, paidAtMs: Date.now(), ...(fixedPortion > 0 ? { installPaid: { [curKey]: Number(c.installPaid?.[curKey] || 0) + fixedPortion } } : {}) }
+    ? { ...c, bill: 0, paidAtMs: Date.now(), ...(fixedPortion > 0 ? { installPaid: {
+        ...(c.installPaid || {}),
+        [curKey]: Number(c.installPaid?.[curKey] || 0) + Number(card.curPortion ?? fixedPortion),
+        // 지난달 몫(제때 내는 카드의 이번 결제일 몫)도 같이 냈다 — App.jsx cardTotals의 prevPortion
+        ...(card.prevPortion > 0 ? { [monthKeyOffset(curKey, -1)]: Number(c.installPaid?.[monthKeyOffset(curKey, -1)] || 0) + card.prevPortion } : {}),
+      } } : {}) }
     : c));
   const aid = data.accounts?.[0]?.id;
 
@@ -873,7 +878,7 @@ function CardsBlock({ ctx, cardTotals }) {
             <div style={{ flex: 1 }}>
               <div style={{ color: T.muted, fontSize: 14 }}>{c.name}</div>
               <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 15.5, fontWeight: 700 }}>{fmtWon(c.total)}</div>
-              {c.fixedPortion > 0 && <div style={{ color: T.goldSoft, fontSize: 13 }}>이번 달 할부 {fmtWon(c.fixedPortion)} 포함</div>}
+              {c.fixedPortion > 0 && <div style={{ color: T.goldSoft, fontSize: 13 }}>할부 {fmtWon(c.fixedPortion)} 포함{c.prevPortion > 0 ? ` (이번 결제일에 나갈 지난달 몫 ${fmtWon(c.prevPortion)})` : ""}</div>}
             </div>
             <button onClick={() => { setReconcileId(reconcileId === c.id ? null : c.id); setReconcileInput(String(c.total || "")); }}
               style={{ padding: "0 12px", minHeight: 40, borderRadius: 8, border: `1px solid ${T.field}`, background: "transparent", color: T.muted, fontSize: 13.5, cursor: "pointer" }}>

@@ -733,14 +733,30 @@ export function autoRecordPayments(data, items, held = []) {
 
       한 달 일찍 내는 카드(롯데)는 청구액을 통째로 미리 내는 방식이라 늘 전액이다(위 installPaid).
     */
+    /*
+      **제때 내는 카드의 결제에는 지난달 할부 몫이 들어 있다**(2026-10-01). 현대카드 10/12 결제 = 9월 일시불 +
+      데스크탑 할부 4/12(96,418). 사용자는 일시불만 먼저 내기도 한다("일단 일시불로 결제한 것만 먼저 결제해 놨어").
+      그래서 낸 금액을 셋 중 하나로 본다 — 일시불 + 지난달 할부 / 일시불만 / 지난달 할부만. 할부 몫을 냈으면
+      installPaid[지난달]에 적어 홈의 안 낸 카드값(App.jsx cardTotals.prevPortion)에서 빠지게 한다.
+    */
+    const prevKey = monthKeyOffset(mKey, -1);
+    const prevInst = cur?.earlyPay ? 0 : Math.max(0, fixedExpenses
+      .filter((f) => (f.paymentMethod || "cash") === "card" && f.totalMonths > 0 && f.cardId === card.id && fixedInfo(f, prevKey).active)
+      .reduce((s2, f) => s2 + Number(fixedInfo(f, prevKey).amount), 0) - Number(cur?.installPaid?.[prevKey] || 0));
+    const near = (x, want) => want > 0 && Math.abs(x - want) <= Math.max(10000, want * 0.05);
     const oldBill = before - monthUse;
-    const full = !!cur?.earlyPay || (oldBill > 0 && Math.abs(paid - oldBill) <= Math.max(10000, oldBill * 0.05));
-    const after = full ? monthUse : Math.max(0, before - paid);
+    let full = !!cur?.earlyPay;
+    let instOnly = false;
+    if (!full && prevInst > 0 && near(paid, oldBill + prevInst)) { full = true; installPaid = prevInst; }
+    else if (!full && near(paid, oldBill)) full = true;
+    else if (!full && prevInst > 0 && near(paid, prevInst)) { instOnly = true; installPaid = paid; }
+    const after = full ? monthUse : instOnly ? before : Math.max(0, before - paid);
+    const instKey = cur?.earlyPay ? mKey : prevKey;
     const paidLog = [...(prev?.paidLog || []), { at: Date.now(), amount: paid }].slice(-10);
     cards = cards.map((c) => (c.id === card.id
-      ? { ...c, bill: after, paidAtMs: Date.now(), paidLog, ...(installPaid ? { installPaid: { [mKey]: installPaid } } : {}) }
+      ? { ...c, bill: after, paidAtMs: Date.now(), paidLog, ...(installPaid ? { installPaid: { ...(c.installPaid || {}), [instKey]: installPaid } } : {}) }
       : c));
-    settled.push({ item, card: card.name, paid, before, after, partial: !full, fixedNote });
+    settled.push({ item, card: card.name, paid, before, after, partial: !full && !instOnly, instOnly, fixedNote });
     return true;
   };
 

@@ -238,7 +238,7 @@ function AppInner() {
         : other.has(i) ? "등록 안 한 다른 통장(계좌 끝자리가 다름)이라 넘김"
         : dupSet.has(i) ? "이미 반영한 카드값 결제라 넘김"
         : quiet.has(i) ? "명세서·결제금액 안내라 넘김"
-        : paidOf.has(i) ? `카드값 ${paidOf.get(i).partial ? "일부" : "전액"} 결제 확인 → ${paidOf.get(i).card} ${Number(paidOf.get(i).before).toLocaleString("ko-KR")}원 → ${Number(paidOf.get(i).after).toLocaleString("ko-KR")}원${paidOf.get(i).fixedNote ? ` · ${paidOf.get(i).fixedNote.name} ${paidOf.get(i).fixedNote.after.toLocaleString("ko-KR")}원으로(남은 회차 다시 계산)` : ""}`
+        : paidOf.has(i) ? `카드값 ${paidOf.get(i).instOnly ? "지난달 할부 몫" : paidOf.get(i).partial ? "일부" : "전액"} 결제 확인 → ${paidOf.get(i).card} ${Number(paidOf.get(i).before).toLocaleString("ko-KR")}원 → ${Number(paidOf.get(i).after).toLocaleString("ko-KR")}원${paidOf.get(i).fixedNote ? ` · ${paidOf.get(i).fixedNote.name} ${paidOf.get(i).fixedNote.after.toLocaleString("ko-KR")}원으로(남은 회차 다시 계산)` : ""}`
         : transitOf.has(i) ? `${transitOf.get(i).month}월 대중교통 합계 반영${transitOf.get(i).paid ? " · 이미 낸 카드값이라 카드값은 그대로" : ""}`
         : isCancelText(i.text) ? "취소 → 기록 되돌림"
         : inBill.has(i) ? "자동 기록함 · 이미 맞춘 카드값에 들어 있어 카드값은 그대로"
@@ -259,7 +259,7 @@ function AppInner() {
     if (otherAcct?.length) msgs.push(`등록 안 한 다른 통장 알림 ${otherAcct.length}건은 넘겼어요`);
     for (const s of settled.filter((x, i, a) => a.findIndex((y) => y.card === x.card) === i)) {
       const last = settled.filter((y) => y.card === s.card).slice(-1)[0];
-      msgs.push(`${s.card} 카드값 ${last.partial ? "일부 " : ""}결제를 확인했어요 · 남은 카드값 ${last.after.toLocaleString("ko-KR")}원${last.fixedNote ? ` · ${last.fixedNote.name} ${last.fixedNote.after.toLocaleString("ko-KR")}원` : ""}`);
+      msgs.push(`${s.card} 카드값 ${last.instOnly ? "지난달 할부 몫 " : last.partial ? "일부 " : ""}결제를 확인했어요 · 남은 카드값 ${last.after.toLocaleString("ko-KR")}원${last.fixedNote ? ` · ${last.fixedNote.name} ${last.fixedNote.after.toLocaleString("ko-KR")}원` : ""}`);
     }
     for (const t of transits) {
       msgs.push(t.paid
@@ -690,8 +690,24 @@ function AppInner() {
       통장에서 두 번 빠졌고, 여유와 통장 기준 여유도 이미 낸 할부를 한 번 더 뺐다.
       낸 금액을 달별로 적어 두고(installPaid) 그만큼만 뺀다 — 낸 뒤 새 할부가 생기면 그건 남는다.
     */
-    const fixedPortion = Math.max(0, installThisMonth - Number(c.installPaid?.[curKey] || 0));
-    return { ...c, fixedPortion, total: Number(c.bill || 0) + fixedPortion };
+    const curPortion = Math.max(0, installThisMonth - Number(c.installPaid?.[curKey] || 0));
+    /*
+      **제때 내는 카드는 지난달 할부 몫이 이번 달 결제일에 나간다**(2026-10-01, 사용자: 현대카드 데스크탑 할부
+      9월분 96,418원이 10/12에 나가는데 홈엔 10월분 95,162원만 떴다). 달이 바뀌면 지난달 몫이 안 낸 카드값에서
+      통째로 빠지고 있었다. 결제일까지는 남기고, 결제 확인이 그 몫을 낸 것으로 적으면(installPaid[지난달]) 빠진다.
+      결제일이 지나도 확인이 없으면 낸 것으로 본다(알림을 놓쳐도 영영 남지 않게). 결제일을 모르면 예전처럼.
+      한 달 일찍 내는 카드(롯데)는 지난달 몫을 이미 지난달에 냈다.
+    */
+    const prevMonth = monthKeyOffset(curKey, -1);
+    const prevInstall = !c.earlyPay && Number(c.payDay) >= 1 && dayIntoCycle <= Number(c.payDay)
+      ? data.fixedExpenses
+          .filter((f) => (f.paymentMethod || "cash") === "card" && f.totalMonths > 0 && f.cardId === c.id && fixedInfo(f, prevMonth).active)
+          .reduce((s, f) => s + Number(fixedInfo(f, prevMonth).amount), 0)
+      : 0;
+    const prevPortion = Math.max(0, prevInstall - Number(c.installPaid?.[prevMonth] || 0));
+    // fixedPortion = 카드값에 든 할부 전부(지난달 몫 + 이번 달 몫). '할부 N원 포함'·결제하기·맞추기가 이걸 쓴다
+    const fixedPortion = curPortion + prevPortion;
+    return { ...c, curPortion, prevPortion, fixedPortion, total: Number(c.bill || 0) + fixedPortion };
   });
   const cardBillTotal = cardTotals.reduce((s, c) => s + c.total, 0);
 
