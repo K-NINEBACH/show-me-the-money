@@ -32,15 +32,17 @@ const inboxArg = flag("--inbox");
 const alertArg = flag("--alert");
 const pkgArg = flag("--pkg");
 const atArg = flag("--at");
+// 통장에 계좌 끝자리 적기: --account <끝자리>[:<잔액>[:<뺄 종류 in|out>:<금액>:<HH:MM>[:<YYYY-MM-DD>]]]  (카드 자리엔 통장 이름 조각)
+const accountArg = flag("--account");
 // 값을 가진 옵션과 그 값은 자리 인자에서 뺀다
 const skip = new Set();
 for (let i = 0; i < argv.length; i++) {
-  if (["--bill", "--install", "--row", "--payday", "--fixdate", "--inbox", "--alert", "--pkg", "--at"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
+  if (["--bill", "--install", "--row", "--payday", "--fixdate", "--inbox", "--alert", "--pkg", "--at", "--account"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
 }
 const pos = argv.filter((a, i) => !skip.has(i) && a !== "--prepaid");
 const [rawCode, card, third, fourth] = pos;
 
-if (!rawCode || !card || (!billArg && !payDayArg && !fixArg && !inboxArg && !alertArg && !third)) {
+if (!rawCode || !card || (!billArg && !payDayArg && !fixArg && !inboxArg && !alertArg && !accountArg && !third)) {
   console.error("사용: node drop-send.mjs <받기코드> <카드이름조각> <명세서.txt> [메모] [--prepaid]");
   console.error("      node drop-send.mjs <받기코드> <카드이름조각> --bill <금액> [메모] [--install 이름:YYYY-MM:금액]");
   process.exit(1);
@@ -60,7 +62,15 @@ const key = await subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, h
 
 const id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 let msg;
-if (alertArg) {
+if (accountArg) {
+  const [tail, balance, dType, dAmount, dTime, dDate] =
+    String(accountArg).match(/^(\d{2,4})(?::(-?\d+))?(?::(in|out):(\d+):(\d{2}:\d{2})(?::(\d{4}-\d{2}-\d{2}))?)?$/)?.slice(1) || [];
+  if (!tail) { console.error("--account 는 끝자리[:잔액[:in|out:금액:HH:MM[:YYYY-MM-DD]]] 모양이어야 해요:", accountArg); process.exit(1); }
+  msg = { id, at: new Date().toISOString(), kind: "account", card, tail,
+    balance: balance != null ? Number(balance) : null,
+    drop: dType ? { type: dType, amount: Number(dAmount), time: dTime, date: dDate || null } : null };
+  console.log(`통장 끝자리: ${card} → ${tail}${msg.balance != null ? ` · 잔액 ${msg.balance.toLocaleString("ko-KR")}원` : ""}${msg.drop ? ` · 뺄 기록 ${dType} ${Number(dAmount).toLocaleString("ko-KR")}원 ${dTime}` : ""}`);
+} else if (alertArg) {
   const alertAt = atArg ? new Date(atArg).getTime() : Date.now();
   if (!Number.isFinite(alertAt)) { console.error("--at 을 못 읽었어요:", atArg); process.exit(1); }
   msg = { id, at: new Date().toISOString(), kind: "alert", card, text: alertArg, pkg: pkgArg || "", alertAt };

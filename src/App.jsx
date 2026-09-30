@@ -5,7 +5,7 @@ import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
 import { defaultData, migrate, autoProcessFixed, repairMisdatedAuto, findPayDeposit, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount, nextDayOfMonth } from "./lib/data";
 import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup, inNativeApp, pushSummary } from "./lib/native";
-import { autoRecordPayments, isCancelText, dealKey } from "./lib/auto-record";
+import { autoRecordPayments, isCancelText, dealKey, ledgerBalance, syncMoment } from "./lib/auto-record";
 import { fetchDrops, markApplied } from "./lib/drop";
 import { parseStatement, reconcileStatement, reprojectInstallment } from "./lib/statement";
 
@@ -216,7 +216,7 @@ function AppInner() {
     const fresh = inbox.filter((i) => !i.checked);
     const heldBefore = inbox.filter((i) => i.checked);
     // 보류된 것도 넘긴다 — 자동으로 넣지는 않고, 결제·취소 짝을 맞출 때만 쓴다
-    const { next, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored, dupPaid, alreadyBilled } = autoRecordPayments(data, fresh, heldBefore);
+    const { next, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored, dupPaid, alreadyBilled, otherAcct } = autoRecordPayments(data, fresh, heldBefore);
     // 새로 온 것도, 치울 짝도 없으면 아무 상태도 안 바꾼다 — 안 그러면 이 효과가 끝없이 돈다
     if (fresh.length === 0 && dropped.length === 0) return;
     const keep = new Set(leftover);
@@ -229,11 +229,13 @@ function AppInner() {
     const quiet = new Set(ignored);
     const dupSet = new Set(dupPaid || []);
     const inBill = new Set(alreadyBilled || []);
+    const other = new Set(otherAcct || []);
     logAlerts(fresh.map((i) => ({
       text: i.text, at: i.at,
       outcome: (keep.has(i) ? "알림함에 남김(어느 카드·통장인지 모름 등)"
         : gone.has(i) ? "결제·취소 짝이라 안 넣음"
         : skip.has(i) ? "이미 적힌 거래라 넘김"
+        : other.has(i) ? "등록 안 한 다른 통장(계좌 끝자리가 다름)이라 넘김"
         : dupSet.has(i) ? "이미 반영한 카드값 결제라 넘김"
         : quiet.has(i) ? "명세서·결제금액 안내라 넘김"
         : paidOf.has(i) ? `카드값 ${paidOf.get(i).partial ? "일부" : "전액"} 결제 확인 → ${paidOf.get(i).card} ${Number(paidOf.get(i).before).toLocaleString("ko-KR")}원 → ${Number(paidOf.get(i).after).toLocaleString("ko-KR")}원${paidOf.get(i).fixedNote ? ` · ${paidOf.get(i).fixedNote.name} ${paidOf.get(i).fixedNote.after.toLocaleString("ko-KR")}원으로(남은 회차 다시 계산)` : ""}`
@@ -254,6 +256,7 @@ function AppInner() {
     if (undone.length) msgs.push(`취소된 결제 ${undone.length}건을 기록에서 뺐어요`);
     if (dropped.length) msgs.push(`결제 후 취소된 ${Math.round(dropped.length / 2)}건은 넣지 않았어요`);
     if (skipped.length) msgs.push(`이미 적힌 거래 ${skipped.length}건은 넘겼어요`);
+    if (otherAcct?.length) msgs.push(`등록 안 한 다른 통장 알림 ${otherAcct.length}건은 넘겼어요`);
     for (const s of settled.filter((x, i, a) => a.findIndex((y) => y.card === x.card) === i)) {
       const last = settled.filter((y) => y.card === s.card).slice(-1)[0];
       msgs.push(`${s.card} 카드값 ${last.partial ? "일부 " : ""}결제를 확인했어요 · 남은 카드값 ${last.after.toLocaleString("ko-KR")}원${last.fixedNote ? ` · ${last.fixedNote.name} ${last.fixedNote.after.toLocaleString("ko-KR")}원` : ""}`);
@@ -349,7 +352,7 @@ function AppInner() {
             옛 판을 띄운 채로 먼저 받아서 모르는 메시지로 보고 적용함으로 적어 버렸다 — 새 판이 와도 '이미
             넣음'으로 건너뛰어 영영 안 들어갔다(9/16 롯데와 같은 병). 남겨 두면 새 판이 받아서 넣는다.
           */
-          if (!["statement", "cardbill", "fixdate", "inbox", "alert"].includes(m.kind)) {
+          if (!["statement", "cardbill", "fixdate", "inbox", "alert", "account"].includes(m.kind)) {
             logs.push({ at: Date.now(), id: m.id, text: `이 판이 모르는 메시지(${m.kind}) — 새 판에서 넣을게요` });
             continue;
           }
@@ -397,6 +400,46 @@ function AppInner() {
             setInbox((prev) => prev.filter((i) => !handled.some((h) => h.text === i.text && h.at === i.at)));
             logs.push({ at: Date.now(), id: m.id, text: `알림함의 '${m.match}' ${picked.length}건 다시 판단 — ${r.registered.length}건 넣음${stillHeld.size ? `, ${stillHeld.size}건은 여전히 못 넣음` : ""}` });
             if (r.registered.length) notes.push(`알림함에 있던 ${r.registered.length}건을 넣었어요`);
+            done.push(m.id);
+            continue;
+          }
+          /*
+            **통장에 계좌 끝자리 적기**(`kind: "account"`, 2026-09-30). 같은 은행 통장이 둘이면 끝자리로 가른다
+            (auto-record의 acctTailOf). 다른 통장 알림이 이미 잘못 붙었으면 그 기록(drop: 종류·금액·시각)을 빼고,
+            balance가 있으면 은행이 알려 준 잔액으로 맞춘다.
+          */
+          if (m.kind === "account") {
+            const accHits = (d.accounts || []).filter((a) => String(a.name).includes(m.card));
+            if (accHits.length !== 1) {
+              logs.push({ at: Date.now(), id: m.id, text: `${m.card} — 그 통장을 하나로 못 찾아 아직 안 넣었어요` });
+              continue;
+            }
+            const acc = accHits[0];
+            const firstId = d.accounts[0]?.id;
+            let entries = d.balanceEntries || [];
+            let removedNote = "";
+            if (m.drop) {
+              const bad = entries.filter((b) => b.auto && !b.isAdjustment && (b.accountId || firstId) === acc.id
+                && b.type === m.drop.type && Number(b.amount) === Number(m.drop.amount) && b.autoTime === m.drop.time
+                && (!m.drop.date || b.date === m.drop.date));
+              if (bad.length === 1) {
+                entries = entries.filter((b) => b.id !== bad[0].id);
+                removedNote = ` · 잘못 붙은 ${m.drop.type === "in" ? "입금" : "출금"} ${Number(m.drop.amount).toLocaleString("ko-KR")}원을 뺐어요`;
+              } else removedNote = ` · 뺄 기록을 하나로 못 찾음(${bad.length}건)`;
+            }
+            let accounts = d.accounts.map((a) => (a.id === acc.id ? { ...a, acctTail: String(m.tail) } : a));
+            let balNote = "";
+            if (m.balance != null && Number.isFinite(Number(m.balance))) {
+              const diff = Number(m.balance) - ledgerBalance(accounts, entries, acc.id);
+              const today = syncMoment().slice(0, 10);
+              if (diff) entries = [...entries, { id: "b" + Date.now(), type: diff > 0 ? "in" : "out", amount: Math.abs(diff), date: today,
+                memo: "은행 잔액에 맞춤", accountId: acc.id, isAdjustment: true, auto: true }];
+              accounts = accounts.map((a) => (a.id === acc.id ? { ...a, bankSync: { at: syncMoment(), balance: Number(m.balance) } } : a));
+              balNote = ` · 잔액 ${Number(m.balance).toLocaleString("ko-KR")}원으로 맞춤`;
+            }
+            d = { ...d, accounts, balanceEntries: entries };
+            logs.push({ at: Date.now(), id: m.id, text: `${acc.name}에 계좌 끝자리 ${m.tail}을 적었어요${removedNote}${balNote}` });
+            notes.push(`${acc.name} 통장을 계좌 끝자리로 구분해요`);
             done.push(m.id);
             continue;
           }

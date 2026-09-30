@@ -395,8 +395,23 @@ export function balanceOf(text) {
   return m[1] ? -n : n;
 }
 
+/*
+  **계좌번호 끝자리**(2026-09-30). KB 알림엔 "529401-**-***231"처럼 가린 계좌번호가 찍힌다.
+  같은 은행에 통장이 둘이면(월급 받는 통장 → 쓰는 통장으로 옮김) 은행 이름만으로는 못 가른다 —
+  실제로 238 통장에 3,831,930원이 들어온 뒤 231 통장의 '잔액0' 출금 알림이 같은 '국민은행'에
+  붙어 잔액을 0원으로 덮었다. '*'가 섞인 번호만 계좌로 본다(전화번호와 안 헷갈리게).
+*/
+export function acctTailOf(text) {
+  for (const t of String(text || "").match(/\d{2,6}(?:-[\d*]+)+/g) || []) {
+    if (!t.includes("*")) continue;
+    const m = t.match(/(\d{2,4})$/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 /** 앱이 아는 이 통장의 잔액 — App.jsx의 accountTotals와 같은 계산 */
-function ledgerBalance(accounts, entries, accountId) {
+export function ledgerBalance(accounts, entries, accountId) {
   const first = accounts[0]?.id;
   const acc = accounts.find((a) => a.id === accountId);
   return (entries || []).reduce((s, b) => {
@@ -788,9 +803,27 @@ export function autoRecordPayments(data, items, held = []) {
   const settled = [];
   const transits = [];
   const ignored = [];
+  const otherAcct = [];   // 같은 은행의 등록 안 한 다른 통장(계좌 끝자리가 다름) — 기록도 잔액도 안 건드린다
   const skipped = [];
   const dupPaid = [];   // 같은 카드값 결제를 두 길로 받아 두 번째는 넘긴 것
   const alreadyBilled = [];   // 이미 맞춘 카드값에 들어 있어 카드값은 안 건드린 결제
+
+  /*
+    계좌 끝자리 배우기는 **알림 순서와 상관없이 먼저** 한다. 통장끼리 옮기면 입금·출금 알림이 같은 분에
+    오는데, 다른 통장의 출금이 먼저 처리되면 잔액이 0으로 덮여 그 뒤로는 어느 쪽도 안 이어진다.
+    처리 전 잔액(앱 잔액·마지막으로 맞춘 잔액)과 이어지는 알림의 끝자리를 이 통장 것으로 본다.
+  */
+  for (const { text, amount, pkg } of all.slice(0, items.length)) {
+    const tail = acctTailOf(text);
+    const bank = balanceOf(text);
+    const dir = tail && bank != null && amount > 0 && !cardApproval(text, pkg) ? bankDirection(text) : null;
+    const acc = dir ? findAccount(accounts, text, pkg) : null;
+    if (!acc || acc.acctTail) continue;
+    const before = dir === "in" ? bank - amount : bank + amount;
+    if (before === ledgerBalance(accounts, balanceEntries, acc.id) || before === acc.bankSync?.balance) {
+      accounts = accounts.map((a) => (a.id === acc.id ? { ...a, acctTail: tail } : a));
+    }
+  }
 
   for (const it of all.slice(0, items.length)) {
     const { item, text, r, amount, pkg } = it;
@@ -952,6 +985,24 @@ export function autoRecordPayments(data, items, held = []) {
       if (!dir || !acc) {
         leftover.push(item);
         continue;
+      }
+      /*
+        계좌 끝자리가 찍혔는데 이 통장의 끝자리와 다르면 다른 통장이다. 끝자리를 아직 모르면
+        **잔액이 이어질 때만** 배운다 — 거래 전 잔액(알림 잔액 ∓ 금액)이 앱이 아는 잔액이나
+        마지막으로 맞춘 잔액과 같으면 이 통장이 맞다. 안 이어지면 예전처럼 처리한다.
+      */
+      const tail = acctTailOf(text);
+      const accNow = accounts.find((a) => a.id === acc.id) || acc;
+      if (tail && accNow.acctTail && accNow.acctTail !== tail) {
+        otherAcct.push(item);
+        continue;
+      }
+      if (tail && !accNow.acctTail) {
+        const bank = balanceOf(text);
+        const before = bank == null ? null : dir === "in" ? bank - amount : bank + amount;
+        if (before != null && (before === ledgerBalance(accounts, balanceEntries, acc.id) || before === accNow.bankSync?.balance)) {
+          accounts = accounts.map((a) => (a.id === acc.id ? { ...a, acctTail: tail } : a));
+        }
       }
       const bDate = r.date || dateOfItem(item);
       const bKey = keyOf(bDate);
@@ -1179,7 +1230,7 @@ export function autoRecordPayments(data, items, held = []) {
     || balanceEntries !== (data.balanceEntries || balanceEntries0) || fixedExpenses !== (data.fixedExpenses || fixedExpenses0)
     || accounts !== (data.accounts || accounts0);
   if (!changed) {
-    return { next: data, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored, dupPaid, alreadyBilled };
+    return { next: data, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored, dupPaid, alreadyBilled, otherAcct };
   }
   return {
     next: { ...data, expenses, cards, balanceEntries, fixedExpenses, ...(accounts !== accounts0 ? { accounts } : {}) },
@@ -1194,5 +1245,6 @@ export function autoRecordPayments(data, items, held = []) {
     alreadyBilled,
     transits,
     ignored,
+    otherAcct,
   };
 }
