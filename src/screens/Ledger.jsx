@@ -75,6 +75,33 @@ export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, 
   );
 }
 
+/*
+  **할부로 결제한 건도 결제한 날 내역에 보인다**(2026-10-01, 사용자: "할부라고 해도 일단 오늘 결제한 건데 내역에 떠야
+  되는 거 아니야?"). 할부는 총액을 지출로 넣으면 이번 달 카드값에 통째로 잡히므로 고정지출(할부)로 등록한다 — 그래서
+  내역엔 안 보였다. 이 줄은 **보여 주기만** 한다: 합계·그날 합계에는 안 넣는다(이번 달 몫은 이미 고정지출로 카드값·여유에
+  들어 있다 — 또 넣으면 두 번 잡힌다). 총액은 크게, 이번 달 몫은 흐린 글씨로.
+*/
+function InstallmentRow({ f, cardName, dateNode }) {
+  const T = useTheme();
+  const first = Number(f.overrides?.[f.setupMonthKey] ?? f.baseAmount);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: `1px solid ${T.paperLine}` }}>
+      <CatBadge name="할부" />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ color: T.ink, fontSize: 15, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(f.name).replace(/\s*할부$/, "")}</div>
+        <div style={{ color: T.inkMuted, fontSize: 12, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {f.totalMonths}개월 할부 · {cardName}{f.auto ? " · 자동" : ""}
+        </div>
+        {dateNode}
+      </div>
+      <div style={{ textAlign: "right", flexShrink: 0 }}>
+        <div style={{ color: T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap" }}>−{fmtWon(f.purchaseAmount)}</div>
+        <div style={{ color: T.inkMuted, fontSize: 11.5, marginTop: 2, whiteSpace: "nowrap" }}>이번 달 {fmtWon(first)}부터</div>
+      </div>
+    </div>
+  );
+}
+
 // 대리결제 한 줄 — 정산 상태(미정산/정산완료/부족분·초과분)를 태그로 붙여서,
 // 카드/현금 어느 쪽으로 결제했든 결과가 어떻게 됐는지 한눈에 보이게 함. 미정산이면
 // 여기서 바로 정산까지 할 수 있음 — 홈 화면까지 갈 필요 없이.
@@ -202,11 +229,26 @@ export function LedgerView({ ctx }) {
   const scopedBalance = useMemo(() => (data.balanceEntries || []).filter((b) => dateInScope(b.date)).filter((b) => !searchLower || (b.memo || "").toLowerCase().includes(searchLower)),
     [data.balanceEntries, timeScope, curKey, rangeStart, rangeEnd, searchLower]);
 
+  // 할부로 결제한 것 — 결제한 날짜(purchaseDate, 없으면 등록 시각 id)로 범위를 본다
+  const instDateOf = (f) => {
+    if (f.purchaseDate) return f.purchaseDate;
+    const ms = Number(String(f.id).slice(1));
+    if (ms > 1e12) { const d = new Date(ms); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); }
+    return `${f.setupMonthKey}-01`;
+  };
+  const scopedInstalls = useMemo(() => (data.fixedExpenses || [])
+    .filter((f) => Number(f.purchaseAmount) > 0 && f.totalMonths > 0)
+    .map((f) => ({ ...f, date: instDateOf(f) }))
+    .filter((f) => dateInScope(f.date))
+    .filter((f) => !searchLower || String(f.name).toLowerCase().includes(searchLower)),
+    [data.fixedExpenses, timeScope, curKey, rangeStart, rangeEnd, searchLower]);
+
   // ...그다음 카테고리로 좁힘. "전체 흐름"이면 셋 다, 아니면 해당하는 것만.
-  let categoryExpenses = [], categoryReceivables = [], categoryBalance = [];
+  let categoryExpenses = [], categoryReceivables = [], categoryBalance = [], categoryInstalls = [];
   if (category === "all") {
-    categoryExpenses = scopedExpenses; categoryReceivables = scopedReceivables; categoryBalance = scopedBalance;
+    categoryExpenses = scopedExpenses; categoryReceivables = scopedReceivables; categoryBalance = scopedBalance; categoryInstalls = scopedInstalls;
   } else if (category === "card") {
+    categoryInstalls = scopedInstalls;
     categoryExpenses = scopedExpenses.filter((e) => (e.paymentMethod || "cash") === "card");
     categoryReceivables = scopedReceivables.filter((e) => (e.paymentMethod || "cash") === "card");
   } else if (category === "receivable") {
@@ -220,6 +262,7 @@ export function LedgerView({ ctx }) {
       ...categoryExpenses.map((e) => ({ kind: "expense", item: e, sortTime: createdTime(e), sortAmt: Number(e.amount) })),
       ...categoryReceivables.map((e) => ({ kind: "receivable", item: e, sortTime: createdTime(e), sortAmt: Number(e.amount) })),
       ...categoryBalance.map((b) => ({ kind: "balance", item: b, sortTime: createdTime(b), sortAmt: Number(b.amount) })),
+      ...categoryInstalls.map((f) => ({ kind: "installment", item: f, sortTime: Number(String(f.id).slice(1)) || 0, sortAmt: Number(f.purchaseAmount) })),
     ];
     if (amountSort === "amountDesc") items.sort((a, b) => b.sortAmt - a.sortAmt);
     else if (amountSort === "amountAsc") items.sort((a, b) => a.sortAmt - b.sortAmt);
@@ -237,7 +280,7 @@ export function LedgerView({ ctx }) {
     }
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoryExpenses, categoryReceivables, categoryBalance, amountSort]);
+  }, [categoryExpenses, categoryReceivables, categoryBalance, categoryInstalls, amountSort]);
 
   // 최신순(날짜순)일 때만 날짜로 묶는다 — 금액순은 날짜가 섞여서 묶을 수가 없다
   const grouped = amountSort !== "amountDesc" && amountSort !== "amountAsc";
@@ -668,6 +711,15 @@ export function LedgerView({ ctx }) {
                 <div key={item.id}>
                   {head}
                   <BalanceRow b={item} dateNode={dateNode} accountName={data.accounts.length > 1 ? data.accounts.find((a) => a.id === (item.accountId || data.accounts[0]?.id))?.name : null} onDelete={() => removeBalance(item.id)} />
+                </div>
+              );
+            }
+            if (kind === "installment") {
+              return (
+                <div key={item.id}>
+                  {head}
+                  <InstallmentRow f={item} dateNode={dateNode}
+                    cardName={data.cards.find((c) => c.id === (item.cardId || data.cards[0]?.id))?.name || "카드"} />
                 </div>
               );
             }

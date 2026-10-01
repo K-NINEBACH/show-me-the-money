@@ -1148,6 +1148,7 @@ export function autoRecordPayments(data, items, held = []) {
         autoPayDay: null,
         auto: true,
         purchaseAmount: amount,
+        purchaseDate: date,   // 내역에 '그날 결제한 것'으로 보여 주려고(2026-10-01) — 없던 때 것은 id의 시각으로 짐작한다
         ...(time ? { autoTime: time } : {}),
       };
       fixedExpenses = [...fixedExpenses, inst];
