@@ -707,7 +707,20 @@ function AppInner() {
     const prevPortion = Math.max(0, prevInstall - Number(c.installPaid?.[prevMonth] || 0));
     // fixedPortion = 카드값에 든 할부 전부(지난달 몫 + 이번 달 몫). '할부 N원 포함'·결제하기·맞추기가 이걸 쓴다
     const fixedPortion = curPortion + prevPortion;
-    return { ...c, curPortion, prevPortion, fixedPortion, total: Number(c.bill || 0) + fixedPortion };
+    const total = Number(c.bill || 0) + fixedPortion;
+    /*
+      **다음 결제일에 실제로 나가는 돈과 그 뒤에 나갈 돈을 가른다**(2026-10-01, 사용자: "면세점 할부 다음달부터 결제인데").
+      안 낸 카드값은 '지금 통장으로 다 내면'이라 전부 합치지만, 카드는 1일~말일 사용분이 다음 달 결제일에 청구된다.
+      결제일 전이면 이번 결제일엔 **지난달 사용분(일시불 − 이번 달 기록 + 지난달 할부 몫)**만 나가고, 이번 달에 쓴 것과
+      새로 산 할부의 첫 회차는 그다음 달 결제일에 나간다. 합(total)은 안 바뀐다 — 보여 주기만 나눈다.
+      한 달 일찍 내는 카드(롯데)나 결제일을 모르면 안 가른다. 결제일이 지났으면 이번 달 사용분이 곧 다음 결제다.
+    */
+    const monthUse = cycleExpenses
+      .filter((e) => (e.paymentMethod || "cash") === "card" && e.cardId === c.id)
+      .reduce((s, e) => s + Number(e.amount), 0);
+    const canSplit = !c.earlyPay && Number(c.payDay) >= 1 && dayIntoCycle <= Number(c.payDay);
+    const dueNow = canSplit ? Math.min(total, Math.max(0, Number(c.bill || 0) - monthUse) + prevPortion) : total;
+    return { ...c, curPortion, prevPortion, fixedPortion, total, dueNow, dueLater: total - dueNow };
   });
   const cardBillTotal = cardTotals.reduce((s, c) => s + c.total, 0);
 

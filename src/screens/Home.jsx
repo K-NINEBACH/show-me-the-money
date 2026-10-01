@@ -421,11 +421,12 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
                   tag={c.earlyPay && c.installPaid?.[ctx.curKey] ? "이번 달 할부 미리 냄" : c.fixedPortion > 0 ? `할부 ${fmtWon(c.fixedPortion)} 포함` : null} />
                 {(due || c.syncedAtMs) && (
                   <Note>
-                    {due && <span style={{ color: due.days <= 3 ? T.warn : T.muted }}>{due.label} 결제 · {due.days === 0 ? "오늘" : `${due.days}일 뒤`}</span>}
+                    {due && <span style={{ color: due.days <= 3 ? T.warn : T.muted }}>{due.label} 결제{c.dueLater > 0 ? ` ${fmtWon(c.dueNow)}` : ""} · {due.days === 0 ? "오늘" : `${due.days}일 뒤`}</span>}
                     {due && c.syncedAtMs && " · "}
                     {c.syncedAtMs && <span style={{ color: old7 ? T.warn : T.muted }}>카드 앱과 {agoAt(c.syncedAtMs)} 맞춤</span>}
                   </Note>
                 )}
+                {c.dueLater > 0 && due && <Note>그다음 결제 {fmtWon(c.dueLater)} — 이번 달에 쓴 것·새 할부 첫 회차</Note>}
               </div>
             );
           })}
