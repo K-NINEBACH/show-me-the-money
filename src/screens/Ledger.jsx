@@ -81,9 +81,12 @@ export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, 
   내역엔 안 보였다. 이 줄은 **보여 주기만** 한다: 합계·그날 합계에는 안 넣는다(이번 달 몫은 이미 고정지출로 카드값·여유에
   들어 있다 — 또 넣으면 두 번 잡힌다). 총액은 크게, 이번 달 몫은 흐린 글씨로.
 */
-function InstallmentRow({ f, cardName, dateNode }) {
+function InstallmentRow({ f, card, dateNode }) {
   const T = useTheme();
   const first = Number(f.overrides?.[f.setupMonthKey] ?? f.baseAmount);
+  // 1~말일 사용분이 다음 달 결제일에 청구된다 — 10/1에 산 1회차는 11/12에 나간다(사용자 확인 2026-10-01)
+  const billMonth = Number(monthKeyOffset(f.setupMonthKey, 1).slice(5));
+  const cardName = card?.name || "카드";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: `1px solid ${T.paperLine}` }}>
       <CatBadge name="할부" />
@@ -96,7 +99,7 @@ function InstallmentRow({ f, cardName, dateNode }) {
       </div>
       <div style={{ textAlign: "right", flexShrink: 0 }}>
         <div style={{ color: T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap" }}>−{fmtWon(f.purchaseAmount)}</div>
-        <div style={{ color: T.inkMuted, fontSize: 11.5, marginTop: 2, whiteSpace: "nowrap" }}>이번 달 {fmtWon(first)}부터</div>
+        <div style={{ color: T.inkMuted, fontSize: 11.5, marginTop: 2, whiteSpace: "nowrap" }}>{billMonth}월{card?.payDay ? ` ${card.payDay}일` : ""}부터 {fmtWon(first)}</div>
       </div>
     </div>
   );
@@ -719,7 +722,7 @@ export function LedgerView({ ctx }) {
                 <div key={item.id}>
                   {head}
                   <InstallmentRow f={item} dateNode={dateNode}
-                    cardName={data.cards.find((c) => c.id === (item.cardId || data.cards[0]?.id))?.name || "카드"} />
+                    card={data.cards.find((c) => c.id === (item.cardId || data.cards[0]?.id))} />
                 </div>
               );
             }
