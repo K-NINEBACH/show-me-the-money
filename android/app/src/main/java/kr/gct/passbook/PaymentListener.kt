@@ -170,7 +170,8 @@ class PaymentListener : NotificationListenerService() {
           … SKT119 전자금융입금"이 결제 알림으로 안 잡혀 앱에 아예 안 왔다(웹 규칙도 같은 날 고쳤다).
           앞에 숫자·쉼표가 붙은 조각('누적1,705,556원' 속 '556원')은 안 잡는다.
         */
-        private val MONEY = Regex("""(?<![\d,])\d[\d,]*\s*원""")
+        /* 해외 결제는 외화로 온다(1.6, 2026-10-01 — "[현대카드] 해외승인 … USD 25.00"이 '원'이 없어 걸러졌다) */
+        private val MONEY = Regex("""(?<![\d,])\d[\d,]*\s*원|(?:USD|US\$|EUR|JPY|CNY|GBP)\s*\d[\d,]*(?:\.\d+)?""")
 
         private val KEYWORDS = listOf(
             "승인", "결제", "출금", "입금", "이체", "사용", "취소", "매출", "청구",

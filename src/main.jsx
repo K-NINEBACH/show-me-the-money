@@ -1,6 +1,31 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
+import { setFxRates } from "./lib/data";
+
+/*
+  **해외 결제의 원화 짐작에 쓸 환율**(2026-10-01). 하루 한 번 받아 두고(1달러 = N원 꼴로 바꿔서) 쓴다.
+  못 받으면 저장해 둔 값, 그것도 없으면 data.js의 기본값. 알림 처리보다 늦게 와도 상관없다 — 짐작일 뿐이고
+  카드값은 카드 앱 숫자로 맞출 때 정확해진다.
+*/
+(() => {
+  const KEY = "passbook-fx";
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(KEY) || "null"); } catch { saved = null; }
+  if (saved?.rates) setFxRates(saved.rates);
+  if (saved?.at && Date.now() - saved.at < 20 * 3600 * 1000) return;
+  fetch("https://open.er-api.com/v6/latest/USD")
+    .then((r) => r.json())
+    .then((j) => {
+      const krw = Number(j?.rates?.KRW);
+      if (!(krw > 0)) return;
+      const rates = {};
+      for (const c of ["USD", "EUR", "JPY", "CNY", "GBP"]) if (Number(j.rates[c]) > 0) rates[c] = krw / Number(j.rates[c]);
+      setFxRates(rates);
+      try { localStorage.setItem(KEY, JSON.stringify({ at: Date.now(), rates })); } catch { /* 저장 못 해도 이번엔 쓴다 */ }
+    })
+    .catch(() => {});
+})();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

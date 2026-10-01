@@ -255,6 +255,26 @@ function findDatePart(text) {
   return found.find((f) => f.timed) || found[0];
 }
 
+/*
+  **해외 결제는 외화로 온다**(2026-10-01, "[현대카드] 해외승인 … USD 25.00 GoogleDigitalInc." — 구글 개발자 등록비).
+  '원'이 없어서 금액을 못 읽고 통째로 빠졌다. 원화는 카드사가 매입할 때(며칠 뒤) 정해지므로 **그날 환율로 짐작**한다
+  — 해외 이용 수수료(브랜드 1% 안팎 + 해외서비스)를 감안해 1.2%를 얹는다. 정확한 금액은 카드 앱 숫자로 맞출 때 맞는다.
+  환율은 앱이 하루 한 번 받아 setFxRates로 넣는다(못 받으면 아래 값).
+*/
+const FX = { USD: 1356, EUR: 1538, JPY: 8.62, CNY: 190, GBP: 1830 };
+export function setFxRates(rates) {
+  for (const k of Object.keys(FX)) if (Number(rates?.[k]) > 0) FX[k] = Number(rates[k]);
+}
+const FX_RE = /(?:^|[^A-Za-z])(USD|US\$|EUR|JPY|CNY|GBP)\s*(\d[\d,]*(?:\.\d+)?)/;
+export function fxAmountOf(text) {
+  const m = String(text || "").match(FX_RE);
+  if (!m) return null;
+  const cur = m[1] === "US$" ? "USD" : m[1];
+  const amt = Number(m[2].replace(/,/g, ""));
+  if (!(amt > 0)) return null;
+  return { cur, amt, krw: Math.round(amt * FX[cur] * 1.012) };
+}
+
 export function parsePaymentText(text) {
   /*
     **한 자리·두 자리 금액도 금액이다**(2026-09-24, 사용자: "이건 왜 자동등록이 안 돼?").
@@ -263,7 +283,8 @@ export function parsePaymentText(text) {
     앞에 숫자·쉼표가 붙은 걸 잘라 먹지 않게(누적1,705,556원 속의 '556원') 숫자 경계를 본다.
   */
   const amountMatch = text.match(/(?<![\d,])(\d[\d,]*)\s*원/);
-  const amount = amountMatch ? amountMatch[1].replace(/,/g, "") : "";
+  const fx = amountMatch ? null : fxAmountOf(text);
+  const amount = amountMatch ? amountMatch[1].replace(/,/g, "") : fx ? String(fx.krw) : "";
 
   let type = "unknown";
   if (/입금|입금액|이체입금/.test(text)) type = "in";
@@ -305,7 +326,7 @@ export function parsePaymentText(text) {
     }
   }
 
-  const noise = /^(승인|일시불|할부|원|입금|출금|결제|잔액|카드|Web발신|체크카드|신용카드|누적|사용|금액|매출|취소|이체)$/;
+  const noise = /^(승인|해외승인|일시불|할부|원|입금|출금|결제|잔액|카드|Web발신|체크카드|신용카드|누적|사용|금액|매출|취소|이체|USD|US\$|EUR|JPY|CNY|GBP)$/;
   const tokens = text.split(/[\s\[\]()]+/).filter(Boolean);
   const candidates = tokens.filter((t) => {
     if (noise.test(t)) return false;
@@ -329,6 +350,8 @@ export function parsePaymentText(text) {
     }
   }
 
+  // 외화 결제는 가맹점 옆에 원래 금액을 남긴다 — 원화는 짐작이라 나중에 카드 앱과 대조할 수 있게
+  if (fx) merchant = `${merchant || "해외 결제"} (${fx.cur} ${fx.amt} · 환율 짐작)`;
   return { amount, type, date, merchant };
 }
 export function todayISO() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); }
