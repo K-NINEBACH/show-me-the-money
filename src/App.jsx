@@ -673,7 +673,23 @@ function AppInner() {
   const fixedCardRecurringUnpaid = fixedCardRecurring.filter((f) => !(f.paidMonths && f.paidMonths[curKey]));
   const fixedSum = fixedActive.reduce((s, f) => s + Number(f.info.amount), 0) + fixedCardRecurringUnpaid.reduce((s, f) => s + Number(f.info.amount), 0);
   const fixedSumAll = fixedActiveAll.reduce((s, f) => s + Number(f.info.amount), 0);
-  const totalSpentThisMonth = normalSpent + cardSpentThisCycle + fixedSumAll;
+  /*
+    **홈 오른쪽 위 '이번 달 쓴 돈'은 정말 쓴 돈만 센다**(2026-10-02, 사용자: "우측 상단에 이번달에 쓴 돈 안 맞지 않아?").
+    예전엔 이번 달 고정지출을 **아직 안 나간 것까지 전부**(+ 할부 몫) 더해서 2일차에 327만 원이 떴다 — 달력·내역의
+    '총 지출'(기록한 지출)과도 달랐다. 이제 = 지출 기록(현금·카드, 정산받은 돈 뺀 것, 정기결제 카드반영 포함 —
+    달력·내역과 같은 숫자) + **이번 달에 실제로 나간 고정지출**(처리 완료한 현금 고정지출; 카드 정기결제는 반영
+    기록이 이미 지출에 들어 있고, 카드 할부는 지난 결제의 상환이라 안 센다). 미리 낸(지난달 말에 낸) 것은 그때 나간 돈이다.
+  */
+  const cardSpentAll = cycleExpenses.filter((e) => (e.paymentMethod || "cash") === "card").reduce((s, e) => s + netAmount(e), 0);
+  const recordedSpent = normalSpent + cardSpentAll;
+  const fixedPaidSum = fixedActive.reduce((s, f) => {
+    const mark = f.paidMonths && f.paidMonths[curKey];
+    if (!mark) return s;
+    const entry = (data.balanceEntries || []).find((b) => b.id === mark);
+    if (entry && String(entry.date).slice(0, 7) !== curKey) return s;
+    return s + Number(f.info.amount);
+  }, 0);
+  const totalSpentThisMonth = recordedSpent + fixedPaidSum;
 
   const cardTotals = cards.map((c) => {
     // f.cardId가 (예: JSON 백업을 통해 들어온) 이미 삭제된 카드를 가리키면 어느 카드와도
@@ -839,7 +855,7 @@ function AppInner() {
 
   const ctx = {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
-    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSkipped, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
+    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSkipped, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, recordedSpent, fixedPaidSum, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
     nextKey, monthlyPay, payIn, nextPay, nextFixedCash, nextFixedCard, cardSpentThisCycle, cardInstallThisMonth, cardRecurThisMonth, cardThisMonth, payLeft, payPending,
     bankLeft, canSpend, daysLeft, perDay, bankKnown, hasPay,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,

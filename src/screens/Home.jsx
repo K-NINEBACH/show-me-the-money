@@ -105,6 +105,7 @@ export function HomeView({ ctx }) {
         <div style={{ textAlign: "right", lineHeight: 1.3 }}>
           <div style={{ color: T.muted, fontSize: 11.5 }}>이번 달 쓴 돈</div>
           <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtWon(ctx.totalSpentThisMonth)}</div>
+          {ctx.fixedPaidSum > 0 && <div style={{ color: T.muted, fontSize: 10.5 }}>기록 {fmtWon(ctx.recordedSpent)} + 나간 고정 {fmtWon(ctx.fixedPaidSum)}</div>}
         </div>
       </div>
 
