@@ -14,7 +14,7 @@ const base = (bill, uses = []) => ({
   categories: [], balanceEntries: [], fixedExpenses: [],
   expenses: uses.map((a, i) => ({ id: "e" + i, amount: a, categoryId: null, date: dd, memo: "가맹점", paymentMethod: "card", cardId: "c1" })),
 });
-const paidSms = (won) => ({ text: `[현대 코스트코] 김*혁님 ${md} ${won.toLocaleString("en-US")}원이 입금되었습니다`, at: Date.now(), pkg: "com.samsung.android.messaging" });
+const paidSms = (won) => ({ text: `[현대 코스트코] 홍*동님 ${md} ${won.toLocaleString("en-US")}원이 입금되었습니다`, at: Date.now(), pkg: "com.samsung.android.messaging" });
 const run = (data, items) => autoRecordPayments(data, items, []);
 
 console.log("[1] 일부만 낸 결제 — 낸 만큼만 뺀다");
@@ -30,7 +30,7 @@ check("남은 카드값 = 이번 달 사용분", r.next.cards[0].bill, 300000);
 check("전액 결제로 봄", r.settled[0].partial, false);
 
 console.log("\n[3] 같은 결제가 문자와 통장 알림 두 길로 와도 한 번만");
-const bankOut = { text: `출금 566,020원 김*혁님 ${md} 19:15 616702-**-***238 코스트코현대 오픈뱅킹출금 566,020 잔액720,155`, at: Date.now(), pkg: "com.kbstar.kbbank" };
+const bankOut = { text: `출금 566,020원 홍*동님 ${md} 19:15 111111-**-***222 코스트코현대 오픈뱅킹출금 566,020 잔액720,155`, at: Date.now(), pkg: "com.kbstar.kbbank" };
 r = run(base(1436686, [300000]), [paidSms(566020), bankOut]);
 check("두 번 빼지 않음", r.next.cards[0].bill, 1436686 - 566020);
 check("두 번째는 넘김", r.dupPaid.length, 1);
@@ -47,7 +47,7 @@ const lotte = {
   categories: [], balanceEntries: [], expenses: [],
   fixedExpenses: [{ id: "so", name: "쏘렌토 할부", baseAmount: 849720, totalMonths: 60, startInstallment: 29, setupMonthKey: mk, overrides: {}, paymentMethod: "card", cardId: "c2", paidMonths: {} }],
 };
-r = run(lotte, [{ text: `[롯데카드] 김*혁님 ${md} 850,367원이 입금되었습니다`, at: Date.now(), pkg: "com.lcacApp" }]);
+r = run(lotte, [{ text: `[롯데카드] 홍*동님 ${md} 850,367원이 입금되었습니다`, at: Date.now(), pkg: "com.lcacApp" }]);
 check("카드값 0", r.next.cards[0].bill, 0);
 check("이번 달 할부는 낸 것으로", r.next.cards[0].installPaid[mk], 850367);
 

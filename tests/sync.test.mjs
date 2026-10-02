@@ -7,8 +7,8 @@ const md = iso.slice(5).replace("-", "/");
 const KB = "com.kbstar.kbbank";
 const bal = (d, id) => d.balanceEntries.filter((b) => b.accountId === id).reduce((s, b) => s + (b.type === "in" ? 1 : -1) * Number(b.amount), Number(d.accounts.find((a) => a.id === id).initialBalance || 0));
 const base = () => ({ accounts: [{ id: "a1", name: "국민은행", initialBalance: 0 }, { id: "a2", name: "기업은행", initialBalance: 500000 }], cards: [{ id: "c1", name: "현대카드", bill: 0 }], categories: [], expenses: [], balanceEntries: [], fixedExpenses: [] });
-const kbOut = (amt, t, b) => ({ text: `출금 ${amt.toLocaleString()}원 김*혁님 ${md} ${t} 카카오페이 FBS출금 ${amt.toLocaleString()} 잔액${b.toLocaleString()}`, pkg: KB });
-const kbIn = (amt, t, b) => ({ text: `입금 ${amt.toLocaleString()}원 김*혁님 ${md} ${t} 급여 입금 ${amt.toLocaleString()} 잔액${b.toLocaleString()}`, pkg: KB });
+const kbOut = (amt, t, b) => ({ text: `출금 ${amt.toLocaleString()}원 홍*동님 ${md} ${t} 카카오페이 FBS출금 ${amt.toLocaleString()} 잔액${b.toLocaleString()}`, pkg: KB });
+const kbIn = (amt, t, b) => ({ text: `입금 ${amt.toLocaleString()}원 홍*동님 ${md} ${t} 급여 입금 ${amt.toLocaleString()} 잔액${b.toLocaleString()}`, pkg: KB });
 
 console.log("[1] 잔액 읽기");
 check("잔액1,392,375", balanceOf("출금 30,000 잔액1,392,375"), 1392375);
@@ -51,7 +51,7 @@ check("거래 2건 다 기록", d.balanceEntries.filter((b) => !b.isAdjustment).
 
 console.log("\n[6] 시각이 없는 알림은 맞추지 않는다");
 d = base();
-r = autoRecordPayments(d, [{ text: `출금 30,000원 김*혁님 ${md} 카카오페이 잔액1,392,375`, pkg: KB }]);
+r = autoRecordPayments(d, [{ text: `출금 30,000원 홍*동님 ${md} 카카오페이 잔액1,392,375`, pkg: KB }]);
 check("출금만 기록", r.next.balanceEntries.length, 1);
 check("잔액 맞춤 없음", r.synced.length, 0);
 
@@ -64,7 +64,7 @@ r = autoRecordPayments(d, [kbIn(10000, "12:00", 1010000)]);
 d = r.next;
 check("앱 잔액이 은행 잔액으로", bal(d, "a1"), 1010000);
 const tm = new Date(now.getTime() + 864e5); const isoT = local(tm); const mdT = isoT.slice(5).replace("-", "/");
-r = autoRecordPayments(d, [{ text: `출금 500,000원 김*혁님 ${mdT} 09:00 현대카드 잔액510,000`, pkg: KB }]);
+r = autoRecordPayments(d, [{ text: `출금 500,000원 홍*동님 ${mdT} 09:00 현대카드 잔액510,000`, pkg: KB }]);
 d = r.next;
 check("실제 출금 날 잔액", bal(d, "a1"), 510000);
 check("그날 맞춤 기록은 없음(이미 맞음)", r.synced.length, 0);
@@ -84,7 +84,7 @@ check("넘김", r.skipped.length, 1);
 check("잔액", bal(r.next, "a1"), 93000);
 
 console.log("\n[10] 같은 거래 열쇠 — 문자 앱 알림과 문자함 본문");
-const body = `[Web발신]\n현대카드 현대 코스트코 승인\n김*혁\n8,800원 일시불\n${md} 11:02\n이마트24\n누적1,100,000원`;
+const body = `[Web발신]\n현대카드 현대 코스트코 승인\n홍*동\n8,800원 일시불\n${md} 11:02\n이마트24\n누적1,100,000원`;
 check("알림(보낸 사람+본문)과 문자함 본문이 같은 열쇠", dealKey(`현대카드 ${body}`), dealKey(body));
 check("취소는 다른 열쇠", dealKey(body.replace("승인", "승인취소")) === dealKey(body), false);
 check("시각 없으면 열쇠 없음", dealKey(`현대카드 승인 8,800원 ${md}`), null);

@@ -31,32 +31,32 @@ r = run(data([card()]), [sms(`[현대카드] ${prevMonth}월 버스+지하철 �
 check("카드값 1,048,600", r.next.cards[0].bill, 1048600);
 
 console.log("\n[3] 할부 결제 문자는 카드값에 안 더한다(할부는 고정지출로 센다)");
-r = run(data([card()]), [sms(`현대 코스트코 승인 김*혁 1,200,000원 12개월 할부 ${md(now)} 12:00 하이마트 누적1,700,000원`)]);
+r = run(data([card()]), [sms(`현대 코스트코 승인 홍*동 1,200,000원 12개월 할부 ${md(now)} 12:00 하이마트 누적1,700,000원`)]);
 check("카드값 그대로", r.next.cards[0].bill, 1000000);
 check("할부 고정지출로", (r.next.fixedExpenses || []).length, 1);
 
 console.log("\n[4] 같은 결제가 문자와 카드 앱 푸시로 두 번 와도 한 번만");
-const one = `현대 코스트코 승인 김*혁 30,000원 일시불 ${md(now)} 12:00 가맹점 누적1,700,000원`;
+const one = `현대 코스트코 승인 홍*동 30,000원 일시불 ${md(now)} 12:00 가맹점 누적1,700,000원`;
 r = run(data([card()]), [sms(one), { text: one, at: now, pkg: "com.hyundaicard.appcard" }]);
 check("한 건만 기록", r.next.expenses.length, 1);
 check("카드값 1,030,000", r.next.cards[0].bill, 1030000);
 
 console.log("\n[5] 카드값 결제 확인 뒤 같은 금액 출금 알림이 와도 두 번 안 뺀다");
 r = run(data([card({ bill: 500000 })], { expenses: [] }), [
-  sms(`[현대 코스트코] 김*혁님 ${md(now)} 500,000원이 입금되었습니다`),
-  { text: `출금 500,000원 김*혁님 ${md(now)} 19:15 616702-**-***238 코스트코현대 오픈뱅킹출금 500,000`, at: now, pkg: "com.kbstar.kbbank" },
+  sms(`[현대 코스트코] 홍*동님 ${md(now)} 500,000원이 입금되었습니다`),
+  { text: `출금 500,000원 홍*동님 ${md(now)} 19:15 111111-**-***222 코스트코현대 오픈뱅킹출금 500,000`, at: now, pkg: "com.kbstar.kbbank" },
 ]);
 check("카드값 0(한 번만 반영)", r.next.cards[0].bill, 0);
 
 console.log("\n[6] 결제 취소가 오면 그만큼 되돌린다(두 번 빼지 않게 이번 달·자동만)");
-r = run(data([card()]), [sms(`현대 코스트코 승인 김*혁 20,000원 일시불 ${md(now)} 12:00 가맹점 누적1,700,000원`)]);
-const after = autoRecordPayments(r.next, [sms(`현대 코스트코 승인취소 김*혁 20,000원 ${md(now)} 12:30 가맹점`)], []);
+r = run(data([card()]), [sms(`현대 코스트코 승인 홍*동 20,000원 일시불 ${md(now)} 12:00 가맹점 누적1,700,000원`)]);
+const after = autoRecordPayments(r.next, [sms(`현대 코스트코 승인취소 홍*동 20,000원 ${md(now)} 12:30 가맹점`)], []);
 check("기록이 빠짐", after.next.expenses.length, 0);
 check("카드값 되돌아옴", after.next.cards[0].bill, 1000000);
 
 console.log("\n[7] 지난달 날짜의 결제 확인 문자는 카드값을 되돌리지 않는다");
 const lastMonthDay = `${String(prevMonth).padStart(2, "0")}/28`;
-r = run(data([card({ bill: 700000 })]), [sms(`[현대 코스트코] 김*혁님 ${lastMonthDay} 700,000원이 입금되었습니다`)]);
+r = run(data([card({ bill: 700000 })]), [sms(`[현대 코스트코] 홍*동님 ${lastMonthDay} 700,000원이 입금되었습니다`)]);
 check("카드값 그대로", r.next.cards[0].bill, 700000);
 
 console.log(fail === 0 ? "\n전부 통과" : `\n${fail}건 실패`);

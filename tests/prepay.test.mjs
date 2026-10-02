@@ -16,7 +16,7 @@ const base = (paidThis) => ({
   fixedExpenses: [{ id: "f1", name: "가족모임", baseAmount: 100000, totalMonths: 0, startInstallment: 1, setupMonthKey: mk, overrides: {},
     paymentMethod: "cash", accountId: "a1", paidMonths: paidThis ? { [mk]: "b0" } : {} }],
 });
-const alert = (day) => ({ text: `출금 100,000원 김*혁님 ${day} 19:15 616702-**-***238 가족모임 잔액900,000`, at: Date.now(), pkg: "com.kbstar.kbbank" });
+const alert = (day) => ({ text: `출금 100,000원 홍*동님 ${day} 19:15 111111-**-***222 가족모임 잔액900,000`, at: Date.now(), pkg: "com.kbstar.kbbank" });
 
 console.log("[1] 이번 달 것을 이미 냈는데 월말에 또 나가면 → 다음 달 몫");
 let r = autoRecordPayments(base(true), [alert(md)], []);

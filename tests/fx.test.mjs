@@ -4,7 +4,7 @@ let fail = 0;
 const check = (n, got, want) => { const ok = String(got) === String(want); if (!ok) fail++; console.log(`  ${ok ? "PASS" : "FAIL"}  ${n}${ok ? "" : `  (기대 ${want} / 실제 ${got})`}`); };
 setFxRates({ USD: 1356, JPY: 8.62 });
 console.log("[1] 외화 금액 읽기(해외승인 문자)");
-const T = "[현대카드] 해외승인 김*혁님 10/01 03:15 USD 25.00 GoogleDigitalInc.";
+const T = "[현대카드] 해외승인 홍*동님 10/01 03:15 USD 25.00 GoogleDigitalInc.";
 const r = parsePaymentText(T);
 check("원화 짐작 = 25 × 1356 × 1.012", r.amount, Math.round(25 * 1356 * 1.012));
 check("가맹점 옆에 외화 표시", /GoogleDigitalInc\. \(USD 25 · 환율 짐작\)/.test(r.merchant), true);
