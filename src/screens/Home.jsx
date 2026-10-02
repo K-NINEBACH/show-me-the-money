@@ -684,9 +684,13 @@ function reconcileCard(ctx, card, actualTotal) {
   if (Number.isNaN(actual) || actual < 0) { showToast("올바른 금액을 입력해주세요"); return; }
   const fixedPortion = Number(card.fixedPortion || 0);
   const newBill = Math.max(0, actual - fixedPortion);
-  const next = data.cards.map((c) => (c.id === card.id ? { ...c, bill: newBill } : c));
+  // 맞춘 시각도 남긴다 — 안 남기면 홈이 계속 "카드 앱과 N일 전 맞춤"·"맞춰 보세요"를 띄운다(2026-10-02 점검)
+  const next = data.cards.map((c) => (c.id === card.id ? { ...c, bill: newBill, syncedAtMs: Date.now() } : c));
   persist({ ...data, cards: next });
-  showToast(`${card.name} 카드값을 ${fmtWon(actual)}로 맞췄어요`);
+  // 할부 몫이 입력한 금액보다 크면 일시불은 0원으로 눌러 둘 수밖에 없다 — 그땐 합이 입력값과 다르다고 솔직히 알린다(2026-10-02 점검)
+  showToast(actual < fixedPortion
+    ? `${card.name} 일시불을 0원으로 맞췄어요 — 할부 몫 ${fmtWon(fixedPortion)}이 입력한 금액보다 커서 합은 ${fmtWon(fixedPortion)}이에요`
+    : `${card.name} 카드값을 ${fmtWon(actual)}로 맞췄어요`);
 }
 
 /*
@@ -1074,7 +1078,10 @@ function BalanceCard({ ctx, accountBalance, compact }) {
   const [pasteText, setPasteText] = useState("");
   const [reconcileId, setReconcileId] = useState(null);
   const [reconcileInput, setReconcileInput] = useState("");
-  const [toAccountId, setToAccountId] = useState("");
+  const [toAccountIdRaw, setToAccountId] = useState("");
+  // 통장이 둘뿐이면 받는 통장은 정해져 있다 — 매번 고르게 하지 않는다(2026-10-02 점검)
+  const toAccountId = toAccountIdRaw && toAccountIdRaw !== accountId ? toAccountIdRaw
+    : (data.accounts || []).length === 2 ? ((data.accounts || []).find((a) => a.id !== accountId)?.id || "") : "";
   const lastSync = accountTotals.map((a) => a.bankSync?.at).filter(Boolean).sort().slice(-1)[0];
 
   const submit = () => {

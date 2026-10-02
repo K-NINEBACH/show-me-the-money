@@ -593,6 +593,7 @@ export function LedgerView({ ctx }) {
   if (category === "card") totalsLine = (
     <div style={{ marginBottom: 6 }}>
       <div style={{ color: T.goldSoft, fontSize: 14.5, fontWeight: 700 }}>카드값에 반영된 지출 합계 {fmtWon(cardListTotal)} · {cardListCount}건</div>
+      {categoryInstalls.length > 0 && <div style={{ color: T.inkMuted, fontSize: 12, marginTop: 2 }}>할부 {categoryInstalls.length}건은 월 몫만 카드값·고정지출로 잡혀서 합계에서 뺐어요</div>}
       {reimbursedInView > 0 && <div style={{ color: T.good, fontSize: 12.5, fontWeight: 700, marginTop: 2 }}>정산받은 {fmtWon(reimbursedInView)}은 뺐어요</div>}
     </div>
   );
@@ -611,6 +612,7 @@ export function LedgerView({ ctx }) {
     <div style={{ marginBottom: 6 }}>
       <div style={{ color: T.ink, fontSize: 16, fontWeight: 800 }}>총 지출 <span style={{ fontFamily: F.mono }}>{fmtWon(totalSpent)}</span> · {categoryExpenses.length}건</div>
       {reimbursedInView > 0 && <div style={{ color: T.good, fontSize: 12.5, fontWeight: 700, marginTop: 2 }}>정산받은 {fmtWon(reimbursedInView)}은 뺐어요</div>}
+      {categoryInstalls.length > 0 && <div style={{ color: T.inkMuted, fontSize: 12, marginTop: 2 }}>할부 {categoryInstalls.length}건은 월 몫만 카드값·고정지출로 잡혀서 합계에서 뺐어요</div>}
     </div>
   );
 
