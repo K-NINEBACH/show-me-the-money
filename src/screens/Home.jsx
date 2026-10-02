@@ -173,6 +173,8 @@ function SyncNudge({ T, ctx, cardTotals, onOpen }) {
       const due = nextDayOfMonth(c.payDay);
       const old = !c.syncedAtMs || Date.now() - c.syncedAtMs > week;
       if (Number(c.total || 0) <= 0) return null;          // 낼 게 없으면 맞출 것도 없다
+      // 롯데카드처럼 한 달 일찍 내는 카드는 매달 13~15일에야 결제 금액이 나온다(사용자 2026-10-02) — 그 전엔 맞출 숫자가 없다
+      if (c.earlyPay && new Date().getDate() < 13) return null;
       if (due && due.days <= 3) return { c, why: `${due.label} 결제까지 ${due.days === 0 ? "오늘" : `${due.days}일`}`, soon: true };
       if (old) return { c, why: c.syncedAtMs ? `카드 앱과 맞춘 지 ${Math.round((Date.now() - c.syncedAtMs) / 86400000)}일` : "카드 앱과 맞춘 적 없음" };
       return null;
