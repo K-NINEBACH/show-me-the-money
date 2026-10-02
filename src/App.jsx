@@ -633,7 +633,8 @@ function AppInner() {
   const dayIntoCycle = today.getDate();
 
   const cycleExpenses = data.expenses.filter((e) => e.date.slice(0, 7) === curKey && !e.isReceivable);
-  const todaySpent = cycleExpenses.filter((e) => e.date === todayISO()).reduce((s, e) => s + netAmount(e), 0);
+  // 정기결제 "카드반영"은 하루 몫에서 이미 뺀 고정지출이라 오늘 쓴 돈이 아니다 — 누르는 날이 "오늘"을 부풀리지 않게(2026-10-02 점검)
+  const todaySpent = cycleExpenses.filter((e) => e.date === todayISO() && !e.isCardAdjustment).reduce((s, e) => s + netAmount(e), 0);
   const normalSpent = cycleExpenses.filter((e) => (e.paymentMethod || "cash") !== "card").reduce((s, e) => s + netAmount(e), 0);
   // isCardAdjustment 항목(정기결제 "카드반영")은 제외 — fixedSumAll이 이 금액을 매달
   // 이미 반영 여부와 무관하게 미리 포함하고 있어서, 여기서도 더하면 이중 계산됨.
