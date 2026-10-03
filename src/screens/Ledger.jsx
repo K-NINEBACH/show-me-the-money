@@ -432,7 +432,7 @@ export function LedgerView({ ctx }) {
   const startEdit = (e) => {
     setEditingId(e.id);
     setEditAmount(String(e.amount));
-    setEditCategoryId(e.categoryId);
+    setEditCategoryId(e.categoryId || "");   // 자동으로 들어온 기록은 카테고리가 없다("" = 미분류)
     setEditDate(e.date);
     setEditMemo(e.memo || "");
     setEditPaymentMethod(e.paymentMethod || "cash");
@@ -451,7 +451,7 @@ export function LedgerView({ ctx }) {
   const saveEdit = (exp) => {
     const n = Number(editAmount);
     if (!n || n <= 0) return showToast("금액을 입력해주세요");
-    if (!editCategoryId) return showToast("카테고리를 선택해주세요");
+    // 카테고리는 비워 둬도 된다 — 자동으로 들어온 기록은 원래 미분류다(2026-10-03: 식비로 보이는데 저장이 안 되던 것)
     if (editPaymentMethod === "card" && !editCardId) return showToast("카드를 선택해주세요");
     if (editPaymentMethod === "cash" && !editAccountId) return showToast("통장을 선택해주세요");
 
@@ -485,7 +485,7 @@ export function LedgerView({ ctx }) {
 
     next.expenses = data.expenses.map((e) =>
       e.id === exp.id
-        ? { ...e, amount: n, categoryId: editCategoryId, date: editDate, memo: editMemo.trim(), paymentMethod: editPaymentMethod, cardId: editPaymentMethod === "card" ? editCardId : null, linkedBalanceId: editPaymentMethod === "cash" ? newLinkedBalanceId : null }
+        ? { ...e, amount: n, categoryId: editCategoryId || null, date: editDate, memo: editMemo.trim(), paymentMethod: editPaymentMethod, cardId: editPaymentMethod === "card" ? editCardId : null, linkedBalanceId: editPaymentMethod === "cash" ? newLinkedBalanceId : null }
         : e
     );
     persist(next);
@@ -547,6 +547,7 @@ export function LedgerView({ ctx }) {
       )}
       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
         <select value={editCategoryId} onChange={(ev) => setEditCategoryId(ev.target.value)} style={editSelectSty}>
+          <option value="">미분류 (자동 입력)</option>
           {data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         {editPaymentMethod === "card" ? (
