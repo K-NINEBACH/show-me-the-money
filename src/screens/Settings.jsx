@@ -81,6 +81,8 @@ export function SettingsView({ ctx }) {
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountBalance, setNewAccountBalance] = useState("");
   const [payInput, setPayInput] = useState(String(data.monthlyPay || ""));
+  const [incName, setIncName] = useState("");
+  const [incAmount, setIncAmount] = useState("");
   const [code] = useState(() => dropCode());
   // 설정을 열 때마다(그리고 '지금 받기' 뒤에) 새로 읽는다 — 앱이 방금 적용한 것이 바로 보이게
   const [, setTick] = useState(0);
@@ -221,6 +223,14 @@ export function SettingsView({ ctx }) {
       )),
     });
   };
+  const addIncome = () => {
+    const n = Number(incAmount); const nm = incName.trim();
+    if (!nm) return showToast("이름을 적어 주세요");
+    if (!(n > 0)) return showToast("올바른 금액을 입력해주세요");
+    persist({ ...data, fixedIncomes: [...(data.fixedIncomes || []), { id: "i" + Date.now(), name: nm, amount: n, receivedMonths: {} }] });
+    setIncName(""); setIncAmount(""); showToast(`${nm} +${fmtWon(n)}을 매달 들어오는 돈으로 적었어요`);
+  };
+  const removeIncome = (id) => persist({ ...data, fixedIncomes: (data.fixedIncomes || []).filter((i) => i.id !== id) });
   const savePay = () => { const n = Number(payInput); if (Number.isNaN(n) || n < 0) return showToast("올바른 금액을 입력해주세요"); persist({ ...data, monthlyPay: n }); showToast("월급을 저장했어요"); };
   const setTheme = (mode) => persist({ ...data, theme: mode });
   const removeCategory = (id) => {
@@ -270,6 +280,25 @@ export function SettingsView({ ctx }) {
         <div style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.55, marginTop: 6 }}>
           홈의 '카드로 더 써도 되는 돈'은 통장 잔액 + 이 월급에서 안 낸 카드값과 남은·다음 달 고정지출을 뺀 값이에요.
           말일~다음 달 5일 사이에 월급 입금 알림이 오면 그 달은 실제 들어온 금액으로 계산해요.
+        </div>
+      </Field>
+
+      <Field label="매달 들어오는 돈 (월급 말고)">
+        {(data.fixedIncomes || []).map((i) => (
+          <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", color: T.cream, fontSize: 15 }}>
+            <span style={{ flex: 1, minWidth: 0 }}>{i.name}</span>
+            <span style={{ fontFamily: F.mono, color: T.good }}>+{fmtWon(i.amount)}</span>
+            <button onClick={() => removeIncome(i.id)} aria-label={`${i.name} 지우기`} style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", width: 32, height: 32 }}><X size={16} /></button>
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <input value={incName} onChange={(e) => setIncName(e.target.value)} placeholder="이름 (예: 엄마 지원)" aria-label="들어오는 돈 이름" style={{ ...inputSty(T), flex: 1, minWidth: 0 }} />
+          <MoneyInput value={incAmount} onChange={setIncAmount} placeholder="금액" />
+          <button onClick={addIncome} style={{ ...primaryBtn(T), width: 64 }}>추가</button>
+        </div>
+        <div style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.55, marginTop: 6 }}>
+          예를 들어 청년도약계좌로 70만 원이 빠지는데 가족이 20만 원을 넣어 준다면, 고정지출은 70만 원으로 두고 여기에 20만 원을 적어요.
+          같은 금액이 은행 알림으로 들어오면 그 달은 저절로 '들어옴'이 되고, 아직이면 홈에서 '곧 들어올 돈'으로 계산해요.
         </div>
       </Field>
 

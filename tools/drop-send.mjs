@@ -34,15 +34,18 @@ const pkgArg = flag("--pkg");
 const atArg = flag("--at");
 // 통장에 계좌 끝자리 적기: --account <끝자리>[:<잔액>[:<뺄 종류 in|out>:<금액>:<HH:MM>[:<YYYY-MM-DD>]]]  (카드 자리엔 통장 이름 조각)
 const accountArg = flag("--account");
+// 매달 들어오는 돈 적기: --income <이름>:<금액>   고정지출 월 금액 고치기: --fixedit <이름조각>:<금액>  (카드 자리엔 -)
+const incomeArg = flag("--income");
+const fixeditArg = flag("--fixedit");
 // 값을 가진 옵션과 그 값은 자리 인자에서 뺀다
 const skip = new Set();
 for (let i = 0; i < argv.length; i++) {
-  if (["--bill", "--install", "--row", "--payday", "--fixdate", "--inbox", "--alert", "--pkg", "--at", "--account"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
+  if (["--bill", "--install", "--row", "--payday", "--fixdate", "--inbox", "--alert", "--pkg", "--at", "--account", "--income", "--fixedit"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
 }
 const pos = argv.filter((a, i) => !skip.has(i) && a !== "--prepaid");
 const [rawCode, card, third, fourth] = pos;
 
-if (!rawCode || !card || (!billArg && !payDayArg && !fixArg && !inboxArg && !alertArg && !accountArg && !third)) {
+if (!rawCode || !card || (!billArg && !payDayArg && !fixArg && !inboxArg && !alertArg && !accountArg && !incomeArg && !fixeditArg && !third)) {
   console.error("사용: node drop-send.mjs <받기코드> <카드이름조각> <명세서.txt> [메모] [--prepaid]");
   console.error("      node drop-send.mjs <받기코드> <카드이름조각> --bill <금액> [메모] [--install 이름:YYYY-MM:금액]");
   process.exit(1);
@@ -62,7 +65,14 @@ const key = await subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, h
 
 const id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 let msg;
-if (accountArg) {
+if (incomeArg || fixeditArg) {
+  const raw = incomeArg || fixeditArg; const i = raw.lastIndexOf(":");
+  const name = raw.slice(0, i); const amount = Number(raw.slice(i + 1).replace(/[^\d]/g, ""));
+  if (!name || !(amount > 0)) { console.error("--income/--fixedit 은 이름:금액 모양이어야 해요:", raw); process.exit(1); }
+  msg = incomeArg ? { id, at: new Date().toISOString(), kind: "income", card, name, amount }
+                  : { id, at: new Date().toISOString(), kind: "fixedit", card: name, amount };
+  console.log(incomeArg ? `매달 들어오는 돈: ${name} +${amount.toLocaleString("ko-KR")}원` : `고정지출 금액 고치기: '${name}' → ${amount.toLocaleString("ko-KR")}원`);
+} else if (accountArg) {
   const [tail, balance, dType, dAmount, dTime, dDate] =
     String(accountArg).match(/^(\d{2,4})(?::(-?\d+))?(?::(in|out):(\d+):(\d{2}:\d{2})(?::(\d{4}-\d{2}-\d{2}))?)?$/)?.slice(1) || [];
   if (!tail) { console.error("--account 는 끝자리[:잔액[:in|out:금액:HH:MM[:YYYY-MM-DD]]] 모양이어야 해요:", accountArg); process.exit(1); }

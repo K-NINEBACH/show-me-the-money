@@ -18,6 +18,7 @@ export const defaultData = () => ({
   ],
   expenses: [],
   fixedExpenses: [],
+  fixedIncomes: [],   // 매달 들어오는 고정 수입(월급 말고 — 예: 가족이 매달 넣어 주는 돈, 2026-10-03)
   balanceEntries: [],
 });
 
@@ -70,6 +71,10 @@ export function migrate(raw) {
   // 화면이 통째로 죽는 걸 막을 수 있음.
   d.categories = Array.isArray(raw.categories) && raw.categories.length ? raw.categories : defaultData().categories;
   d.expenses = Array.isArray(raw.expenses) ? raw.expenses : [];
+  // fixedIncomes: [{ id, name, amount, receivedMonths: {"2026-10": 입금 기록 id} }] — 없던 백업은 빈 목록
+  d.fixedIncomes = (Array.isArray(raw.fixedIncomes) ? raw.fixedIncomes : [])
+    .filter((i) => i && i.name && Number(i.amount) > 0)
+    .map((i) => ({ receivedMonths: {}, ...i }));
   d.balanceEntries = (Array.isArray(raw.balanceEntries) ? raw.balanceEntries : []).map((b) => ({ accountId: d.accounts[0]?.id || "acc1", ...b }));
   d.spendingGoal = Number(raw.spendingGoal ?? raw.salary) || 0;
   /*

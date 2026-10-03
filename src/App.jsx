@@ -352,7 +352,7 @@ function AppInner() {
             옛 판을 띄운 채로 먼저 받아서 모르는 메시지로 보고 적용함으로 적어 버렸다 — 새 판이 와도 '이미
             넣음'으로 건너뛰어 영영 안 들어갔다(9/16 롯데와 같은 병). 남겨 두면 새 판이 받아서 넣는다.
           */
-          if (!["statement", "cardbill", "fixdate", "inbox", "alert", "account"].includes(m.kind)) {
+          if (!["statement", "cardbill", "fixdate", "inbox", "alert", "account", "income", "fixedit"].includes(m.kind)) {
             logs.push({ at: Date.now(), id: m.id, text: `이 판이 모르는 메시지(${m.kind}) — 새 판에서 넣을게요` });
             continue;
           }
@@ -400,6 +400,36 @@ function AppInner() {
             setInbox((prev) => prev.filter((i) => !handled.some((h) => h.text === i.text && h.at === i.at)));
             logs.push({ at: Date.now(), id: m.id, text: `알림함의 '${m.match}' ${picked.length}건 다시 판단 — ${r.registered.length}건 넣음${stillHeld.size ? `, ${stillHeld.size}건은 여전히 못 넣음` : ""}` });
             if (r.registered.length) notes.push(`알림함에 있던 ${r.registered.length}건을 넣었어요`);
+            done.push(m.id);
+            continue;
+          }
+          /*
+            **매달 들어오는 돈 적기 · 고정지출 금액 고치기**(`kind: "income"` · `"fixedit"`, 2026-10-03, 사용자: 청년도약계좌는
+            70만 원이 빠지는데 엄마가 20만 원을 넣어 준다). 앱에서 손으로 해도 되지만 "너가 해"라서 Claude가 넣는다.
+            income — 이름이 같은 게 있으면 금액만 바꾸고, 없으면 새로 적는다. fixedit — 이름 조각이 든 고정지출이 **딱 하나**일 때만 월 금액을 바꾼다.
+          */
+          if (m.kind === "income") {
+            const nm = String(m.name || "").trim(); const amount = Number(m.amount);
+            if (!nm || !(amount > 0)) { logs.push({ at: Date.now(), id: m.id, text: "매달 들어오는 돈 — 이름이나 금액을 못 읽어 안 넣었어요" }); done.push(m.id); continue; }
+            const list = d.fixedIncomes || [];
+            const same = list.find((i) => i.name === nm);
+            d = { ...d, fixedIncomes: same ? list.map((i) => (i === same ? { ...i, amount } : i)) : [...list, { id: "i" + Date.now(), name: nm, amount, receivedMonths: {} }] };
+            logs.push({ at: Date.now(), id: m.id, text: `매달 들어오는 돈 '${nm}' +${amount.toLocaleString("ko-KR")}원을 ${same ? "고쳤어요" : "적었어요"}` });
+            notes.push(`매달 들어오는 돈 ${nm}을 적었어요`);
+            done.push(m.id);
+            continue;
+          }
+          if (m.kind === "fixedit") {
+            const amount = Number(m.amount);
+            const fh = (d.fixedExpenses || []).filter((f) => String(f.name).includes(String(m.card || "")));
+            if (fh.length !== 1 || !(amount > 0)) {
+              logs.push({ at: Date.now(), id: m.id, text: `고정지출 '${m.card}' — 하나로 못 찾아(${fh.length}건) 금액을 안 고쳤어요` });
+              continue;
+            }
+            const f = fh[0];
+            d = { ...d, fixedExpenses: d.fixedExpenses.map((x) => (x.id === f.id ? { ...x, baseAmount: amount } : x)) };
+            logs.push({ at: Date.now(), id: m.id, text: `${f.name} 월 금액을 ${Number(f.baseAmount).toLocaleString("ko-KR")}원 → ${amount.toLocaleString("ko-KR")}원으로 고쳤어요` });
+            notes.push(`${f.name} 금액을 고쳤어요`);
             done.push(m.id);
             continue;
           }
@@ -843,8 +873,18 @@ function AppInner() {
     .sort((a, b) => a.at.days - b.at.days);
   const due = dueList[0] ? { name: dueList[0].name, amount: dueList[0].amount, label: dueList[0].at.label, days: dueList[0].at.days } : null;
 
-  const bankLeft = accountBalance + payPending - cardBillTotal - unpaidFixedSum;
-  const canSpend = bankLeft + (payIn ? 0 : nextPay) - nextFixedCash - nextFixedCard;
+  /*
+    **월급 말고 매달 들어오는 돈**(2026-10-03, 사용자: 청년도약계좌는 70만 원이 빠지는데 엄마가 20만 원을 매달 넣어 준다).
+    고정지출은 통장에서 실제로 나가는 70만 원으로 두고(은행 알림과 짝이 맞아야 자동으로 처리된다), 그 돈이 들어오는 것은
+    여기서 따로 센다. 이번 달 몫이 아직 안 들어왔으면 '통장으로 다 내면'에 더하고(곧 들어올 돈), 다음 달 몫은 다음 달
+    월급처럼 더한다. 들어오면 그 입금이 통장 잔액에 있으니(은행 알림으로 자동 표시) 더하지 않는다.
+  */
+  const incomes = data.fixedIncomes || [];
+  const incomePending = incomes.filter((i) => !(i.receivedMonths && i.receivedMonths[curKey]));
+  const incomePendingSum = incomePending.reduce((s, i) => s + Number(i.amount), 0);
+  const incomeNextSum = incomes.reduce((s, i) => s + Number(i.amount), 0);
+  const bankLeft = accountBalance + payPending + incomePendingSum - cardBillTotal - unpaidFixedSum;
+  const canSpend = bankLeft + (payIn ? 0 : nextPay) + incomeNextSum - nextFixedCash - nextFixedCard;
   const daysLeft = Math.max(1, cycleLen - dayIntoCycle + 1);
   const perDay = Math.floor(Math.max(0, canSpend) / daysLeft);
   const bankKnown = accountBalance !== 0 || accountTotals.some((a) => a.bankSync);
@@ -858,7 +898,7 @@ function AppInner() {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSkipped, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, recordedSpent, fixedPaidSum, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
     nextKey, monthlyPay, payIn, nextPay, nextFixedCash, nextFixedCard, cardSpentThisCycle, cardInstallThisMonth, cardRecurThisMonth, cardThisMonth, payLeft, payPending,
-    bankLeft, canSpend, daysLeft, perDay, bankKnown, hasPay,
+    bankLeft, canSpend, daysLeft, perDay, bankKnown, hasPay, incomes, incomePending, incomePendingSum, incomeNextSum,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,
     pendingText, clearPendingText: () => setPendingText(null),
     // 번호가 아니라 알림 자체(문구+받은 시각)로 지운다 — 목록은 15초마다 늘고 자동 처리로

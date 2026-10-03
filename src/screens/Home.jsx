@@ -401,11 +401,16 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
             <Sub key={a.id} label={`+ ${a.name}`} amount={a.balance} tag={a.bankSync ? `${agoAt(a.bankSync.at)} 맞춤` : null} />
           ))}
           {pending > 0 && <Sub label={`+ 아직 안 들어온 ${top.curMonth} 월급`} amount={pending} />}
+          {/* 월급 말고 매달 들어오는 돈(예: 가족이 넣어 주는 돈) — 이번 달 몫이 아직이면 곧 들어올 돈으로 더한다 */}
+          {(ctx.incomePending || []).map((i) => <Sub key={i.id} label={`+ 아직 안 들어온 ${i.name}`} amount={Number(i.amount)} />)}
         </Group>
 
-        {hasPay && (
+        {(hasPay || (ctx.incomes || []).length > 0) && (
           <Group>
-            <Head icon={<Plus size={15} strokeWidth={2.6} />} sign="더하기" label={`${top.month} 월급`} tag={top.tag} amount={top.pay} />
+            {hasPay
+              ? <Head icon={<Plus size={15} strokeWidth={2.6} />} sign="더하기" label={`${top.month} 월급`} tag={top.tag} amount={top.pay} />
+              : <Head icon={<Plus size={15} strokeWidth={2.6} />} sign="더하기" label={`${top.month} 고정 수입`} amount={ctx.incomeNextSum || 0} />}
+            {hasPay && (ctx.incomes || []).map((i) => <Sub key={i.id} label={`+ ${i.name}`} amount={Number(i.amount)} tag="매달" />)}
           </Group>
         )}
 
@@ -531,6 +536,15 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
       ? { ...x, skipMonths: { ...(x.skipMonths || {}), [curKey]: on || undefined } } : x)) });
     showToast(on ? `${f.name}은 이번 달 건너뛰어요` : `${f.name}을 다시 셀게요`);
   };
+  /*
+    매달 들어오는 돈(월급 말고) — 은행 알림으로 같은 금액이 들어오면 저절로 '들어옴'이 되고(auto-record), 알림이 없으면 여기서 누른다.
+    누르는 건 '이번 달 몫이 이미 통장에 들어왔다'는 표시일 뿐이다 — 통장 잔액은 은행 알림이나 입금 기록으로 따로 맞춘다.
+  */
+  const setIncomeIn = (inc, on) => {
+    persist({ ...data, fixedIncomes: (data.fixedIncomes || []).map((x) => (x.id === inc.id
+      ? { ...x, receivedMonths: { ...(x.receivedMonths || {}), [curKey]: on ? "manual" : undefined } } : x)) });
+    showToast(on ? `${inc.name} 이번 달 몫은 들어온 걸로 볼게요` : `${inc.name}을 다시 '아직'으로 돌렸어요`);
+  };
   const combined = [...fixedActive, ...fixedCardActive];
   const sorted = sortFixedList(combined, "amountDesc");
   return (
@@ -621,6 +635,31 @@ function FixedDetailCard({ ctx, fixedActive, fixedCardActive }) {
           </div>
         );
       })}
+      {(ctx.incomes || []).length > 0 && (
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${T.border}` }}>
+          <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 4 }}>매달 들어오는 돈</div>
+          {ctx.incomes.map((inc) => {
+            const got = inc.receivedMonths && inc.receivedMonths[curKey];
+            return (
+              <div key={inc.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, padding: "3px 0", fontSize: 14, color: T.cream }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inc.name}</span>
+                <span style={{ fontFamily: F.mono, color: T.muted }}>+{fmtWon(inc.amount)}</span>
+                {got ? (
+                  <button onClick={() => setIncomeIn(inc, false)} aria-label={`${inc.name} 들어옴 · 누르면 취소`}
+                    style={{ display: "flex", alignItems: "center", gap: 3, background: "none", border: `1px solid ${T.good}`, borderRadius: 8, padding: "0 10px", minHeight: 32, cursor: "pointer", color: T.good, fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    <Check size={13} strokeWidth={2.5} aria-hidden="true" />들어옴
+                  </button>
+                ) : (
+                  <button onClick={() => setIncomeIn(inc, true)}
+                    style={{ background: T.good, border: "none", borderRadius: 8, padding: "0 10px", minHeight: 32, cursor: "pointer", color: T.mode === "dark" ? "#000000" : "#FFFFFF", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    들어옴
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

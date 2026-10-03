@@ -620,6 +620,19 @@ export function autoRecordPayments(data, items, held = []) {
   let fixedExpenses = data.fixedExpenses || [];
   const balanceEntries0 = balanceEntries;
   const fixedExpenses0 = fixedExpenses;
+  /*
+    **매달 들어오는 돈(fixedIncomes)과 짝**(2026-10-03). 같은 금액의 입금이 오면 그 달 몫을 '들어옴'으로 적는다 — 홈이
+    '곧 들어올 돈'으로 더하던 걸 멈춘다(통장 잔액에 이미 들어 있으니). 같은 금액의 아직 안 들어온 항목이 **딱 하나**일 때만
+    — 둘이면 어느 것인지 모르니 건드리지 않는다. 짝이 되는 입금을 손으로 먼저 적어 둔 경우에도 똑같이 표시한다.
+  */
+  let fixedIncomes = data.fixedIncomes || [];
+  const fixedIncomes0 = fixedIncomes;
+  const markIncome = (amount, key, mark) => {
+    const hit = fixedIncomes.filter((i) => Number(i.amount) === Number(amount) && !(i.receivedMonths && i.receivedMonths[key]));
+    if (hit.length !== 1) return null;
+    fixedIncomes = fixedIncomes.map((i) => (i.id === hit[0].id ? { ...i, receivedMonths: { ...(i.receivedMonths || {}), [key]: mark } } : i));
+    return hit[0];
+  };
   let accounts = data.accounts || [];
   const accounts0 = accounts;
   const synced = [];
@@ -1050,6 +1063,7 @@ export function autoRecordPayments(data, items, held = []) {
       const fixedUp = prepay ? null : reconcileBalance(balanceEntries, { amount, dir, bDate, bKey, accountId: acc.id, firstAccountId: data.accounts?.[0]?.id });
       if (fixedUp) {
         balanceEntries = fixedUp;
+        if (dir === "in") markIncome(amount, bKey, "bank");
         skipped.push(item);
         syncBank(item, acc.id, text, bDate, time, null);
         continue;
@@ -1064,6 +1078,7 @@ export function autoRecordPayments(data, items, held = []) {
         // 이미 처리한 고정지출과 같은 금액이면 보통 같은 건이라 넘기는데, '다음 달 몫 미리'는 진짜 또 나간 돈이다
         || (dir === "out" && !prepay && paidFixedHit(fixedExpenses, { amount, isCard: false, accountId: acc.id, text }, bKey))) {
         skipped.push(item);
+        if (dir === "in") markIncome(amount, bKey, "bank");
         syncBank(item, acc.id, text, bDate, time, null);
         if (paidCard) settleCard(paidCard, bDate, amount, item);
         continue;
@@ -1082,6 +1097,7 @@ export function autoRecordPayments(data, items, held = []) {
       if (!hitOut && prepay) { hitOut = prepay.cand; hitKey = prepay.nk; }   // 위에서 가려 둔 '다음 달 몫 미리'
 
       const entryId = "b" + (Date.now() + registered.length);
+      const incHit = dir === "in" ? markIncome(amount, bKey, entryId) : null;
       const entry = {
         id: entryId,
         type: dir,
@@ -1089,7 +1105,7 @@ export function autoRecordPayments(data, items, held = []) {
         date: bDate,
         memo: hitOut
           ? `${hitOut.fixed.name} 자동이체${hitKey !== bKey ? `(${Number(hitKey.slice(5, 7))}월 몫 미리)` : ""}`
-          : r.merchant || (dir === "in" ? "입금" : "출금"),
+          : incHit ? `${incHit.name} 입금` : r.merchant || (dir === "in" ? "입금" : "출금"),
         accountId: acc.id,
         auto: true,
         ...(time ? { autoTime: time } : {}),
@@ -1245,12 +1261,12 @@ export function autoRecordPayments(data, items, held = []) {
 
   const changed = expenses !== data.expenses || cards !== data.cards
     || balanceEntries !== (data.balanceEntries || balanceEntries0) || fixedExpenses !== (data.fixedExpenses || fixedExpenses0)
-    || accounts !== (data.accounts || accounts0);
+    || accounts !== (data.accounts || accounts0) || fixedIncomes !== fixedIncomes0;
   if (!changed) {
     return { next: data, registered, leftover, dropped, undone, skipped, synced, settled, transits, ignored, dupPaid, alreadyBilled, otherAcct };
   }
   return {
-    next: { ...data, expenses, cards, balanceEntries, fixedExpenses, ...(accounts !== accounts0 ? { accounts } : {}) },
+    next: { ...data, expenses, cards, balanceEntries, fixedExpenses, ...(accounts !== accounts0 ? { accounts } : {}), ...(fixedIncomes !== fixedIncomes0 ? { fixedIncomes } : {}) },
     registered,
     leftover,
     dropped,
