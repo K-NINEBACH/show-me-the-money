@@ -777,7 +777,9 @@ function markFixedPaid(ctx, f, info, mKey) {
       (b) => b.type === "out" && !b.linkedFixedId && !b.transferId && (b.accountId || data.accounts[0]?.id) === aidOk);
     if (hit) {
       next.balanceEntries = data.balanceEntries.map((b) => (b.id === hit.id ? { ...b, linkedFixedId: f.id, linkedFixedMonth: curKey, memoBefore: b.memo, memo: `${f.name} 자동이체` } : b));
-      next.fixedExpenses = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, paidMonths: { ...(x.paidMonths || {}), [curKey]: hit.id } } : x));
+      // 이 출금의 받는 곳(원래 적요)을 항목에 적어 둔다 — 다음 달 같은 금액 항목이 여럿이어도 자동으로 고른다(auto-record matchFixed)
+      const payee = hit.memo && String(hit.memo).length >= 2 && !/자동이체$/.test(hit.memo) ? hit.memo : null;
+      next.fixedExpenses = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, paidMonths: { ...(x.paidMonths || {}), [curKey]: hit.id }, ...(payee ? { payeeHint: payee } : {}) } : x));
       persist(next);
       showToast(`은행 알림으로 이미 들어온 ${fmtWon(info.amount)} 출금에 연결했어요`);
       return;

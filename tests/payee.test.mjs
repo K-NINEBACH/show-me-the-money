@@ -1,0 +1,23 @@
+import { autoRecordPayments } from "../src/lib/auto-record.js";
+let fail = 0;
+const check = (n, got, want) => { const ok = String(got) === String(want); if (!ok) fail++; console.log(`  ${ok ? "PASS" : "FAIL"}  ${n}${ok ? "" : `  (기대 ${want} / 실제 ${got})`}`); };
+const KB = "com.kbstar.kbbank";
+const fx = (id, name, extra = {}) => ({ id, name, baseAmount: 100000, totalMonths: 0, startInstallment: 1, setupMonthKey: "2026-08", overrides: {}, paymentMethod: "cash", accountId: "a1", paidMonths: {}, ...extra });
+const base = (hint) => ({ accounts: [{ id: "a1", name: "국민은행", initialBalance: 1000000 }], cards: [], categories: [], expenses: [], balanceEntries: [],
+  fixedExpenses: [fx("f1", "데이트(여행)", hint ? { payeeHint: "홍길동" } : {}), fx("f2", "가족모임"), fx("f3", "주택청약")] });
+const out = (who) => ({ text: `출금 100,000원 홍*동님 09/25 10:01 111111-**-***222 ${who} 스마트출금 100,000 잔액900,000`, pkg: KB, at: Date.now() });
+console.log("[1] 같은 10만 원 셋 — 처음엔 못 고른다(받는 곳을 모름)");
+let r = autoRecordPayments(base(false), [out("홍길동")], []);
+check("어느 것도 처리 안 됨", r.next.fixedExpenses.every((f) => !Object.keys(f.paidMonths).length), true);
+console.log("[2] 지난번에 받는 곳을 배웠으면 그 항목으로");
+r = autoRecordPayments(base(true), [out("홍길동")], []);
+check("여행만 처리됨", r.next.fixedExpenses.filter((f) => Object.keys(f.paidMonths).length).map((f) => f.name).join(","), "데이트(여행)");
+console.log("[3] 받는 곳이 다르면 건드리지 않는다");
+r = autoRecordPayments(base(true), [out("김철수")], []);
+check("처리 안 됨", r.next.fixedExpenses.every((f) => !Object.keys(f.paidMonths).length), true);
+console.log("[4] 이름이 문구에 있으면 그게 우선, 짝이 지어지면 받는 곳을 적는다");
+r = autoRecordPayments(base(false), [out("주택청약")], []);
+const f3 = r.next.fixedExpenses.find((f) => f.id === "f3");
+check("주택청약 처리", Object.keys(f3.paidMonths).length, 1);
+check("받는 곳 적힘", f3.payeeHint, "주택청약");
+console.log(fail ? `\n${fail}건 실패` : "\n전부 통과"); process.exit(fail ? 1 : 0);

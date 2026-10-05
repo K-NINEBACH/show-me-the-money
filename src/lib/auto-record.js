@@ -594,6 +594,14 @@ function matchFixed(data, { amount, isCard, cardId, accountId, text }, key) {
       if (key && hay.includes(key)) return c;
     }
   }
+  /*
+    **지난번 짝에서 배운 '받는 곳'(payeeHint)으로 가른다**(2026-10-06, 사용자: 데이트(여행) 10만 원을 이체했는데 출금처리가 안 됐다).
+    같은 10만 원이 셋(여행·가족모임·청약)이라 알림에 항목 이름이 없으면 못 골랐다 — 은행 알림엔 받는 곳('김진혁' 같은)만 찍힌다.
+    한 번 짝이 지어질 때 그 받는 곳을 항목에 적어 두고(payeeHint), 다음엔 그 이름이 든 알림이 오면 그 항목으로 본다.
+    딱 하나로 좁혀질 때만 — 둘 이상이면 예전처럼 고르지 않는다.
+  */
+  const byPayee = candidates.filter((c) => c.fixed.payeeHint && hay.includes(c.fixed.payeeHint));
+  if (byPayee.length === 1) return byPayee[0];
   return null;
 }
 
@@ -792,10 +800,10 @@ export function autoRecordPayments(data, items, held = []) {
     return hits.length === 1 ? hits[0] : null;
   };
 
-  const markPaid = (fixedId, markerId, key) => {
+  const markPaid = (fixedId, markerId, key, payee) => {
     fixedExpenses = fixedExpenses.map((x) =>
       x.id === fixedId
-        ? { ...x, paidMonths: { ...(x.paidMonths || {}), [key]: markerId } }
+        ? { ...x, paidMonths: { ...(x.paidMonths || {}), [key]: markerId }, ...(payee ? { payeeHint: payee } : {}) }
         : x,
     );
   };
@@ -1112,7 +1120,9 @@ export function autoRecordPayments(data, items, held = []) {
         ...(hitOut ? { linkedFixedId: hitOut.fixed.id, linkedFixedMonth: hitKey } : {}),
       };
       balanceEntries = [...balanceEntries, entry];
-      if (hitOut) markPaid(hitOut.fixed.id, entryId, hitKey);
+      // 받는 곳으로 쓸 만한 이름만 배운다 — '출금'·'입금' 같은 일반 낱말이나 한 글자는 안 적는다
+      const payee = r.merchant && r.merchant.length >= 2 && !/^(출금|입금|이체|스마트출금|스마트폰출금|전자금융)$/.test(r.merchant) ? r.merchant : null;
+      if (hitOut) markPaid(hitOut.fixed.id, entryId, hitKey, payee);
       registered.push(entry);
       syncBank(item, acc.id, text, bDate, time, entry);
       if (paidCard) settleCard(paidCard, bDate, amount, item);

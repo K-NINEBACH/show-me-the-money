@@ -352,7 +352,7 @@ function AppInner() {
             옛 판을 띄운 채로 먼저 받아서 모르는 메시지로 보고 적용함으로 적어 버렸다 — 새 판이 와도 '이미
             넣음'으로 건너뛰어 영영 안 들어갔다(9/16 롯데와 같은 병). 남겨 두면 새 판이 받아서 넣는다.
           */
-          if (!["statement", "cardbill", "fixdate", "inbox", "alert", "account", "income", "fixedit"].includes(m.kind)) {
+          if (!["statement", "cardbill", "fixdate", "inbox", "alert", "account", "income", "fixedit", "fixpay"].includes(m.kind)) {
             logs.push({ at: Date.now(), id: m.id, text: `이 판이 모르는 메시지(${m.kind}) — 새 판에서 넣을게요` });
             continue;
           }
@@ -408,6 +408,30 @@ function AppInner() {
             70만 원이 빠지는데 엄마가 20만 원을 넣어 준다). 앱에서 손으로 해도 되지만 "너가 해"라서 Claude가 넣는다.
             income — 이름이 같은 게 있으면 금액만 바꾸고, 없으면 새로 적는다. fixedit — 이름 조각이 든 고정지출이 **딱 하나**일 때만 월 금액을 바꾼다.
           */
+          /*
+            **이미 들어온 출금을 고정지출에 짝지어 주기**(`kind: "fixpay"`, 2026-10-06). 같은 금액 항목이 여럿이라 자동으로 못 골라 그냥
+            출금으로만 적힌 것을, 사람이 '출금처리'를 눌렀을 때와 똑같이 잇는다(받는 곳도 항목에 적어 다음 달부터는 자동).
+            이름 조각이 든 고정지출이 하나이고, 그 달 안에 아직 안 이어진 같은 금액의 출금이 **하나**일 때만 한다.
+          */
+          if (m.kind === "fixpay") {
+            const key = /^\d{4}-\d{2}$/.test(String(m.month || "")) ? m.month : monthKey(new Date());
+            const fh = (d.fixedExpenses || []).filter((f) => String(f.name).includes(String(m.name || "")) && !(f.paidMonths && f.paidMonths[key]));
+            if (fh.length !== 1) { logs.push({ at: Date.now(), id: m.id, text: `고정지출 '${m.name}' — 처리 안 된 것 중 하나로 못 찾았어요(${fh.length}건)` }); continue; }
+            const f = fh[0];
+            const amt = Number(fixedInfo(f, key).amount);
+            const ents = (d.balanceEntries || []).filter((b) => b.type === "out" && !b.isAdjustment && !b.linkedFixedId && !b.transferId
+              && String(b.date).slice(0, 7) === key && Number(b.amount) === amt);
+            if (ents.length !== 1) { logs.push({ at: Date.now(), id: m.id, text: `${f.name} ${amt.toLocaleString("ko-KR")}원 — 이어 줄 출금 기록을 하나로 못 찾았어요(${ents.length}건)` }); continue; }
+            const e = ents[0];
+            const payee = e.memo && String(e.memo).length >= 2 ? e.memo : null;
+            d = { ...d,
+              balanceEntries: d.balanceEntries.map((b) => (b.id === e.id ? { ...b, linkedFixedId: f.id, linkedFixedMonth: key, memoBefore: b.memo, memo: `${f.name} 자동이체` } : b)),
+              fixedExpenses: d.fixedExpenses.map((x) => (x.id === f.id ? { ...x, paidMonths: { ...(x.paidMonths || {}), [key]: e.id }, ...(payee ? { payeeHint: payee } : {}) } : x)) };
+            logs.push({ at: Date.now(), id: m.id, text: `${f.name} ${amt.toLocaleString("ko-KR")}원 — ${e.date} 출금('${e.memo}')에 이어 처리 완료로 표시했어요` });
+            notes.push(`${f.name}을 출금처리로 이었어요`);
+            done.push(m.id);
+            continue;
+          }
           if (m.kind === "income") {
             const nm = String(m.name || "").trim(); const amount = Number(m.amount);
             if (!nm || !(amount > 0)) { logs.push({ at: Date.now(), id: m.id, text: "매달 들어오는 돈 — 이름이나 금액을 못 읽어 안 넣었어요" }); done.push(m.id); continue; }

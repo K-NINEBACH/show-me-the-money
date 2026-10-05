@@ -37,15 +37,17 @@ const accountArg = flag("--account");
 // 매달 들어오는 돈 적기: --income <이름>:<금액>   고정지출 월 금액 고치기: --fixedit <이름조각>:<금액>  (카드 자리엔 -)
 const incomeArg = flag("--income");
 const fixeditArg = flag("--fixedit");
+// 이미 들어온 출금을 고정지출에 이어 주기: --fixpay <이름조각>[:YYYY-MM]  (카드 자리엔 -)
+const fixpayArg = flag("--fixpay");
 // 값을 가진 옵션과 그 값은 자리 인자에서 뺀다
 const skip = new Set();
 for (let i = 0; i < argv.length; i++) {
-  if (["--bill", "--install", "--row", "--payday", "--fixdate", "--inbox", "--alert", "--pkg", "--at", "--account", "--income", "--fixedit"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
+  if (["--bill", "--install", "--row", "--payday", "--fixdate", "--inbox", "--alert", "--pkg", "--at", "--account", "--income", "--fixedit", "--fixpay"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
 }
 const pos = argv.filter((a, i) => !skip.has(i) && a !== "--prepaid");
 const [rawCode, card, third, fourth] = pos;
 
-if (!rawCode || !card || (!billArg && !payDayArg && !fixArg && !inboxArg && !alertArg && !accountArg && !incomeArg && !fixeditArg && !third)) {
+if (!rawCode || !card || (!billArg && !payDayArg && !fixArg && !inboxArg && !alertArg && !accountArg && !incomeArg && !fixeditArg && !fixpayArg && !third)) {
   console.error("사용: node drop-send.mjs <받기코드> <카드이름조각> <명세서.txt> [메모] [--prepaid]");
   console.error("      node drop-send.mjs <받기코드> <카드이름조각> --bill <금액> [메모] [--install 이름:YYYY-MM:금액]");
   process.exit(1);
@@ -65,7 +67,11 @@ const key = await subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, h
 
 const id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 let msg;
-if (incomeArg || fixeditArg) {
+if (fixpayArg) {
+  const [name, month] = String(fixpayArg).split(":");
+  msg = { id, at: new Date().toISOString(), kind: "fixpay", card, name, month: month || null };
+  console.log(`출금 이어 주기: '${name}'${month ? " " + month : ""}`);
+} else if (incomeArg || fixeditArg) {
   const raw = incomeArg || fixeditArg; const i = raw.lastIndexOf(":");
   const name = raw.slice(0, i); const amount = Number(raw.slice(i + 1).replace(/[^\d]/g, ""));
   if (!name || !(amount > 0)) { console.error("--income/--fixedit 은 이름:금액 모양이어야 해요:", raw); process.exit(1); }
