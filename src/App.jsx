@@ -892,7 +892,8 @@ function AppInner() {
     낼 게 있는 카드 중 가장 가까운 것 하나. 결제일을 안 적은 카드는 알 수 없어서 뺀다.
   */
   const dueList = cardTotals
-    .map((c) => ({ name: c.name, amount: c.total, at: nextDayOfMonth(c.payDay) }))
+    // 그날 **실제로 나가는 돈**(dueNow)만 — 안 낸 카드값 전체(total)를 쓰면 이번 달 쓴 것까지 결제일에 나가는 것처럼 알린다(2026-10-11: 9월분을 미리 냈는데 아침 알림이 "10/12 428,245원 나가요")
+    .map((c) => ({ name: c.name, amount: c.dueNow, at: nextDayOfMonth(c.payDay) }))
     .filter((x) => x.at && x.amount > 0)
     .sort((a, b) => a.at.days - b.at.days);
   const due = dueList[0] ? { name: dueList[0].name, amount: dueList[0].amount, label: dueList[0].at.label, days: dueList[0].at.days } : null;
