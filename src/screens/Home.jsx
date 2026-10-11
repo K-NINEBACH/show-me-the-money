@@ -297,7 +297,7 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
           )}
         </>
       )}
-      {/* 비교 한 칸(2026-10-11: '월급만으로'는 뺐다 — 사용자: 굳이 있을 필요가 없다). payLeft는 ctx에 남겨 둔다 */}}
+      {/* 비교 한 칸(2026-10-11: '월급만으로'는 뺐다 — 사용자: 굳이 있을 필요가 없다). payLeft는 ctx에 남겨 둔다 */}
       <div style={{ display: "flex", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
         <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
           <div style={{ color: T.muted, fontSize: 11.5 }}>지금 통장으로 다 내면</div>
