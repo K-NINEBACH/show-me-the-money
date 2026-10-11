@@ -297,12 +297,16 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
           )}
         </>
       )}
-      {/* 비교 한 칸(2026-10-11: '월급만으로'는 뺐다 — 사용자: 굳이 있을 필요가 없다). payLeft는 ctx에 남겨 둔다 */}
-      <div style={{ display: "flex", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
-        <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-          <div style={{ color: T.muted, fontSize: 11.5 }}>지금 통장으로 다 내면</div>
-          <div style={{ ...num, color: left < 0 ? T.danger : T.good, fontSize: 18, fontWeight: 700, marginTop: 2 }}>{signed(left)}</div>
-        </div>
+      {/* 지금 통장 기준(2026-10-11) — '월급만으로'를 빼고 남은 한 칸을 안쪽 판으로 정리: 아이콘 + 이름·식 한 줄 + 오른쪽 큰 숫자 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, padding: "11px 14px", borderRadius: 14, background: T.bg2, border: `1px solid ${T.border}` }}>
+        <span aria-hidden="true" style={{ flexShrink: 0, width: 32, height: 32, borderRadius: "50%", background: left < 0 ? tone(T, "danger").tint : tone(T, "good").tint, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Landmark size={16} color={left < 0 ? tone(T, "danger").text : tone(T, "good").text} strokeWidth={2.2} />
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", color: T.cream, fontSize: 13.5, fontWeight: 700 }}>지금 통장으로 다 내면</span>
+          <span style={{ display: "block", color: T.muted, fontSize: 11.5, marginTop: 1 }}>통장 − 안 낸 카드값 − 남은 고정지출</span>
+        </span>
+        <span style={{ ...num, color: left < 0 ? tone(T, "danger").text : tone(T, "good").text, fontSize: 18, fontWeight: 700, whiteSpace: "nowrap" }}>{signed(left)}</span>
       </div>
     </section>
   );
