@@ -304,7 +304,7 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
         </span>
         <span style={{ flex: 1, minWidth: 0 }}>
           <span style={{ display: "block", color: T.cream, fontSize: 13.5, fontWeight: 700 }}>지금 통장으로 다 내면</span>
-          <span style={{ display: "block", color: T.muted, fontSize: 11.5, marginTop: 1 }}>통장 − 안 낸 카드값 − 남은 고정지출</span>
+          <span style={{ display: "block", color: T.muted, fontSize: 11.5, marginTop: 1 }}>통장 − 카드값 − 고정지출</span>
         </span>
         <span style={{ ...num, color: left < 0 ? tone(T, "danger").text : tone(T, "good").text, fontSize: 18, fontWeight: 700, whiteSpace: "nowrap" }}>{signed(left)}</span>
       </div>
