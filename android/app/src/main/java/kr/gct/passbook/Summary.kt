@@ -77,7 +77,9 @@ object Summary {
     */
     private fun dueLine(ctx: Context): String? {
         val d = read(ctx)?.optJSONObject("due") ?: return null
-        val days = d.optInt("days", -1)
+        // 며칠 전에 넘겨받은 값이면 'N일 뒤'가 낡는다 — 결제일 시각(whenMs, 1.7)으로 지금 기준 남은 날을 다시 센다
+        val whenMs = d.optLong("whenMs", 0L)
+        val days = if (whenMs > 0) Math.ceil((whenMs - System.currentTimeMillis()) / 86_400_000.0).toInt() else d.optInt("days", -1)
         if (days < 0 || days > 7) return null
         val when0 = if (days == 0) "오늘" else if (days == 1) "내일" else "${days}일 뒤"
         return "${d.optString("label")}($when0) ${d.optString("name")} ${won(d.optLong("amount", 0L))} 나가요"
@@ -130,7 +132,8 @@ object Summary {
         val (title, text) = line(ctx) ?: return
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit().putLong(DAILY, System.currentTimeMillis()).apply()
         val d = read(ctx)?.optJSONObject("due")
-        val days = d?.optInt("days", -1) ?: -1
+        val whenMs = d?.optLong("whenMs", 0L) ?: 0L
+        val days = if (whenMs > 0) Math.ceil((whenMs - System.currentTimeMillis()) / 86_400_000.0).toInt() else (d?.optInt("days", -1) ?: -1)
         if (d != null && days in 0..3) {
             notify(
                 ctx, CH_DAILY, ID_DAILY,

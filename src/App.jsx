@@ -896,7 +896,7 @@ function AppInner() {
     .map((c) => ({ name: c.name, amount: c.dueNow, at: nextDayOfMonth(c.payDay) }))
     .filter((x) => x.at && x.amount > 0)
     .sort((a, b) => a.at.days - b.at.days);
-  const due = dueList[0] ? { name: dueList[0].name, amount: dueList[0].amount, label: dueList[0].at.label, days: dueList[0].at.days } : null;
+  const due = dueList[0] ? { name: dueList[0].name, amount: dueList[0].amount, label: dueList[0].at.label, days: dueList[0].at.days, whenMs: dueList[0].at.when.getTime() } : null;
 
   /*
     **월급 말고 매달 들어오는 돈**(2026-10-03, 사용자: 청년도약계좌는 70만 원이 빠지는데 엄마가 20만 원을 매달 넣어 준다).
