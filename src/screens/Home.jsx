@@ -297,15 +297,9 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
           )}
         </>
       )}
-      {/* 비교 두 칸 — 선으로 위 숫자와 나눈다. 한 줄에 이으면 말 중간에서 끊겼다 */}
+      {/* 비교 한 칸(2026-10-11: '월급만으로'는 뺐다 — 사용자: 굳이 있을 필요가 없다). payLeft는 ctx에 남겨 둔다 */}}
       <div style={{ display: "flex", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
-        {hasPay && (
-          <div style={{ flex: 1, minWidth: 0, paddingRight: 10, borderRight: `1px solid ${T.border}` }}>
-            <div style={{ color: T.muted, fontSize: 11.5 }}>통장 없이 {top.month} 월급만으로</div>
-            <div style={{ ...num, color: ctx.payLeft < 0 ? T.danger : T.good, fontSize: 18, fontWeight: 700, marginTop: 2 }}>{signed(ctx.payLeft)}</div>
-          </div>
-        )}
-        <div style={{ flex: 1, minWidth: 0, paddingLeft: hasPay ? 12 : 0, textAlign: hasPay ? "right" : "left" }}>
+        <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
           <div style={{ color: T.muted, fontSize: 11.5 }}>지금 통장으로 다 내면</div>
           <div style={{ ...num, color: left < 0 ? T.danger : T.good, fontSize: 18, fontWeight: 700, marginTop: 2 }}>{signed(left)}</div>
         </div>
