@@ -3,6 +3,11 @@
     <string name="app_name">내돈챙겨줘</string>
     <string name="listener_label">결제 알림 읽기</string>
     <string name="widget_label">내 돈 챙겨줘</string>
+    <string name="widget_desc_22">카드로 더 써도 되는 돈 · 작은 정사각</string>
+    <string name="widget_desc_51">5칸 · 한 줄 (큰 숫자 + 하루 몫)</string>
+    <string name="widget_desc_52">5칸 · 기본 (큰 숫자 + 오늘 막대 + 상태)</string>
+    <string name="widget_desc_53">5칸 · 식 보기 (통장 + 월급 − 카드값 − 고정지출)</string>
+    <string name="widget_desc_54">5칸 · 전부 (막대 + 상태 + 식)</string>
     <string name="widget_desc">오늘 쓸 수 있는 돈을 홈 화면에서 바로 봐요</string>
 
     <!--

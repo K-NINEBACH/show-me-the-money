@@ -70,6 +70,28 @@
                 android:resource="@xml/widget_summary_info" />
         </receiver>
 
+        <!-- 크기별 위젯(1.8) — 그리는 건 SizedWidget이 다 한다 -->
+        <receiver android:name=".WidgetS22" android:exported="false" android:label="내 돈 · 2×2">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_w22_info" />
+        </receiver>
+        <receiver android:name=".WidgetW51" android:exported="false" android:label="내 돈 · 5칸 한 줄">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_w51_info" />
+        </receiver>
+        <receiver android:name=".WidgetW52" android:exported="false" android:label="내 돈 · 5칸 기본">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_w52_info" />
+        </receiver>
+        <receiver android:name=".WidgetW53" android:exported="false" android:label="내 돈 · 5칸 식 보기">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_w53_info" />
+        </receiver>
+        <receiver android:name=".WidgetW54" android:exported="false" android:label="내 돈 · 5칸 전부">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_w54_info" />
+        </receiver>
+
         <!-- 아침 알림 알람과, 폰을 켰을 때 그 알람을 다시 거는 자리 -->
         <receiver android:name=".Daily" android:exported="false">
             <intent-filter>

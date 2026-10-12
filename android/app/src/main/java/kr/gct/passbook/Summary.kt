@@ -75,6 +75,15 @@ object Summary {
       **다음 카드 결제일**(1.4) — "10/12에 1,067,874원 나가요". 알림이 안 오는 결제가 있어서
       결제일 전에 카드 앱 금액과 맞춰야 하는데, 사람이 그걸 기억할 필요가 없게 여기서 알린다.
     */
+    /** 크기별 위젯(1.8)도 같은 문구를 쓴다 */
+    fun dueLineOrNull(ctx: Context): String? = dueLine(ctx)
+
+    /** 낡은 숫자는 낡았다고 적는다 — 며칠 앱을 안 열었으면 " · N일 전 기준" */
+    fun staleTag(ctx: Context): String {
+        val old = days(savedAt(ctx))
+        return if (old >= 1) " · ${old}일 전 기준" else ""
+    }
+
     private fun dueLine(ctx: Context): String? {
         val d = read(ctx)?.optJSONObject("due") ?: return null
         // 며칠 전에 넘겨받은 값이면 'N일 뒤'가 낡는다 — 결제일 시각(whenMs, 1.7)으로 지금 기준 남은 날을 다시 센다

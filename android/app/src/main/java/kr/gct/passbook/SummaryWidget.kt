@@ -31,11 +31,12 @@ class SummaryWidget : AppWidgetProvider() {
                 manager.getAppWidgetIds(ComponentName(ctx, SummaryWidget::class.java))
             } catch (e: Exception) { return }
             for (id in ids) draw(ctx, manager, id)
+            SizedWidget.refresh(ctx)   // 크기별 위젯(1.8)
         }
 
         fun count(ctx: Context): Int = try {
             AppWidgetManager.getInstance(ctx)
-                .getAppWidgetIds(ComponentName(ctx, SummaryWidget::class.java)).size
+                .getAppWidgetIds(ComponentName(ctx, SummaryWidget::class.java)).size + SizedWidget.count(ctx)
         } catch (e: Exception) { 0 }
 
         private fun draw(ctx: Context, manager: AppWidgetManager, id: Int) {

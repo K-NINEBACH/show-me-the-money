@@ -913,6 +913,25 @@ function AppInner() {
   const daysLeft = Math.max(1, cycleLen - dayIntoCycle + 1);
   const perDay = Math.floor(Math.max(0, canSpend) / daysLeft);
   const bankKnown = accountBalance !== 0 || accountTotals.some((a) => a.bankSync);
+  /*
+    **크기별 위젯(껍데기 1.8)이 보여 줄 식과 상태** — 홈 맨 위(Hero)·'한눈에' 목록과 같은 값이다.
+    상태 문구도 여기서 정해 넘긴다(위젯이 따로 판단하면 홈은 '빠듯'인데 위젯은 '여유'가 된다).
+      통장 + 월급 − 안 낸 카드값 − 남은 고정지출 − 다음 달 고정지출 = 카드로 더 써도 되는 돈
+  */
+  const widgetAvgDay = dayIntoCycle >= 3 ? Math.round((normalSpent + cardSpentThisCycle) / dayIntoCycle) : 0;
+  const widgetShort = !!(monthlyPay || payIn) && canSpend < 0;
+  const widgetTight = !widgetShort && widgetAvgDay > 0 && perDay < widgetAvgDay * 0.6;
+  const widgetState = widgetShort ? "danger" : widgetTight || !bankKnown ? "warn" : "good";
+  const widgetHead = !bankKnown ? "통장 잔액을 먼저 맞춰 주세요"
+    : widgetShort ? "이번 달은 월급으로도 모자라요"
+      : widgetTight ? "이번 달은 빠듯해요"
+        : widgetAvgDay > 0 ? "이번 달은 여유 있어요!" : "";
+  const widgetEq = {
+    today: todaySpent, state: widgetState, head: widgetHead,
+    bank: accountBalance + payPending + incomePendingSum,
+    pay: (payIn ? 0 : nextPay) + incomeNextSum,
+    card: cardBillTotal, fixedLeft: unpaidFixedSum, fixedNext: nextFixedCash + nextFixedCard,
+  };
   const hasPay = !!(monthlyPay || payIn);
 
   const processedSpent = spent - unpaidFixedSum;
@@ -941,7 +960,7 @@ function AppInner() {
   return (
     <ThemeContext.Provider value={T}>
       <div style={S.appShell}>
-        <NativeSummary s={{ canSpend, perDay, daysLeft, payLeft, bankLeft, hasPay, bankKnown, month: Number(nextKey.slice(5, 7)), due }} />
+        <NativeSummary s={{ canSpend, perDay, daysLeft, payLeft, bankLeft, hasPay, bankKnown, month: Number(nextKey.slice(5, 7)), due, ...widgetEq }} />
         <main style={S.screen}>
           {tab === "home" && <HomeView ctx={ctx} />}
           {tab === "add" && <AddView ctx={ctx} />}
