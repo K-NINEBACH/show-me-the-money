@@ -304,7 +304,7 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
         </span>
         <span style={{ flex: 1, minWidth: 0 }}>
           <span style={{ display: "block", color: T.cream, fontSize: 13.5, fontWeight: 700 }}>지금 통장으로 다 내면</span>
-          <span style={{ display: "block", color: T.muted, fontSize: 11.5, marginTop: 1 }}>통장 − 카드값 − 고정지출</span>
+          <span style={{ display: "block", color: T.muted, fontSize: 11.5, marginTop: 1 }}>{Number(ctx.payPending || 0) + Number(ctx.incomePendingSum || 0) > 0 ? "통장 + 곧 들어올 돈 − 카드값 − 고정지출" : "통장 − 카드값 − 고정지출"}</span>
         </span>
         <span style={{ ...num, color: left < 0 ? tone(T, "danger").text : tone(T, "good").text, fontSize: 18, fontWeight: 700, whiteSpace: "nowrap" }}>{signed(left)}</span>
       </div>
@@ -388,14 +388,22 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
   const nextRest = nextAll.slice(3);
   const receivable = (ctx.receivables || []).reduce((a, r) => a + Number(r.amount || 0), 0);
   const resultBad = top.value < 0;
+  // 통장 줄에 함께 더하는 '곧 들어올 돈' — ctx.bankLeft·widgetEq.bank와 같은 기준
+  const bankExtra = Number(pending || 0) + Number(ctx.incomePendingSum || 0);
 
   return (
     <>
       <h2 style={{ margin: "20px 2px 8px", color: T.cream, fontSize: 16, fontWeight: 800 }}>한눈에</h2>
       <section aria-label="한눈에" style={{ ...card(T), padding: "8px 16px 6px" }}>
+        {/*
+          **큰 줄(Head)끼리 더하면 맨 아래 결과가 나와야 한다**(2026-10-21, 사용자: "금액이 좀 안 맞는 느낌").
+          예전엔 통장 줄이 잔액만, 월급 줄이 월급만 적고 '아직 안 들어온 이번 달 몫'·'매달 들어오는 돈'은 아래 작은
+          줄에만 있어서, 큰 줄을 더하면 그만큼(엄마 지원 20만 원 × 최대 두 번) 결과와 어긋났다. 위젯(widgetEq)은
+          이미 이렇게 합쳐 넘기고 있었다.
+        */}
         <Group first>
-          <Head icon={<Landmark size={15} strokeWidth={2.2} />} label="통장" amount={balance} />
-          {accounts.length > 1 && accounts.map((a) => (
+          <Head icon={<Landmark size={15} strokeWidth={2.2} />} label={bankExtra > 0 ? "통장 + 곧 들어올 돈" : "통장"} amount={balance + bankExtra} />
+          {(accounts.length > 1 || (bankExtra > 0 && accounts.length === 1)) && accounts.map((a) => (
             <Sub key={a.id} label={`+ ${a.name}`} amount={a.balance} tag={a.bankSync ? `${agoAt(a.bankSync.at)} 맞춤` : null} />
           ))}
           {pending > 0 && <Sub label={`+ 아직 안 들어온 ${top.curMonth} 월급`} amount={pending} />}
@@ -405,10 +413,15 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
 
         {(hasPay || (ctx.incomes || []).length > 0) && (
           <Group>
-            {hasPay
+            {hasPay && (ctx.incomes || []).length > 0 ? (
+              <>
+                <Head icon={<Plus size={15} strokeWidth={2.6} />} sign="더하기" label={`${top.month} 들어올 돈`} amount={top.pay + (ctx.incomeNextSum || 0)} />
+                <Sub label={`${top.month} 월급`} tag={top.tag} amount={top.pay} />
+                {ctx.incomes.map((i) => <Sub key={i.id} label={`+ ${i.name}`} amount={Number(i.amount)} tag="매달" />)}
+              </>
+            ) : hasPay
               ? <Head icon={<Plus size={15} strokeWidth={2.6} />} sign="더하기" label={`${top.month} 월급`} tag={top.tag} amount={top.pay} />
               : <Head icon={<Plus size={15} strokeWidth={2.6} />} sign="더하기" label={`${top.month} 고정 수입`} amount={ctx.incomeNextSum || 0} />}
-            {hasPay && (ctx.incomes || []).map((i) => <Sub key={i.id} label={`+ ${i.name}`} amount={Number(i.amount)} tag="매달" />)}
           </Group>
         )}
 
