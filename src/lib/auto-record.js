@@ -378,6 +378,30 @@ function dateOfItem(item) {
   return d.toISOString().slice(0, 10);
 }
 
+/*
+  날짜 없는 자동납부의 이번 달 결제일 짐작 — 같은 카드에서 20~45일 전에 나간 같은 결제(같은 금액이거나 가맹점 앞 세 글자가
+  같은 것, 예: 'SKT')의 날짜(일)를 이번 달에 댄다. 알림이 온 날보다 뒤일 수는 없으니 그날로 자른다. 못 찾으면 null.
+*/
+function guessAutoPayDate(expenses, { cardId, amount, names, date, payDay }) {
+  const head = (s) => String(s || "").replace(/[^가-힣A-Za-z0-9]/g, "").slice(0, 3).toLowerCase();
+  const heads = (names || []).map(head).filter((h) => h.length === 3);
+  const t = new Date(`${date}T00:00:00`).getTime();
+  const [y, m] = date.slice(0, 7).split("-").map(Number);
+  let src = Number(payDay) >= 1 && Number(payDay) <= 31 ? Number(payDay) : 0;
+  if (!src) {
+    const prev = (expenses || [])
+      .filter((e) => e.cardId === cardId && (e.paymentMethod || "cash") === "card" && e.date && e.date < date)
+      .filter((e) => { const gap = (t - new Date(`${e.date}T00:00:00`).getTime()) / 86400000; return gap >= 20 && gap <= 45; })
+      .filter((e) => Number(e.amount) === Number(amount) || heads.includes(head(e.memo)))
+      .sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    if (!prev) return null;
+    src = Number(prev.date.slice(8, 10));
+  }
+  const day = Math.min(src, new Date(y, m, 0).getDate());
+  const guess = `${date.slice(0, 7)}-${String(day).padStart(2, "0")}`;
+  return guess > date ? date : guess;
+}
+
 function timeOf(text) {
   const m = String(text || "").match(/(?:^|[^\d])(\d{1,2}):(\d{2})(?!\d)/);
   return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
@@ -1252,11 +1276,22 @@ export function autoRecordPayments(data, items, held = []) {
           그 안에 들어 있을 가능성이 크다. 다음에 카드 앱과 맞출 때 어차피 정확해진다.
       내역·카테고리·고정지출 처리는 그대로 된다. 카드값만 안 건드린다.
     */
+    /*
+      **날짜 없는 자동납부는 지난달에 나간 날로 이번 달 결제일을 짐작한다**(2026-10-26, 사용자: "일단 규칙은 제대로
+      바꿔놔"). 예전엔 '맞춘 지 7일 안이면 기록만'이라, 10/11에 맞추고 10/14에 **새로** 나간 SKT 58,220원이
+      카드값에 안 붙었다(카드 앱과 128,437원 차이 중 하나). 9월처럼 맞추기 전에 나간 것이 늦게 온 경우와 가르려면
+      언제 나갔는지를 알아야 하는데, 자동납부는 매달 같은 날 나간다 → 지난달 같은 결제의 날짜(일)를 이번 달에 대 본다.
+      그 날이 맞춘 날보다 앞이면 그 숫자에 들어 있고, 같거나 뒤면 새 결제다. 지난달 것을 못 찾으면 예전 7일 규칙.
+    */
     const syncedAt = Number(card.syncedAtMs || 0);
     const syncedDay = syncedAt ? dateOfItem({ at: syncedAt }) : null;
+    // 고정지출(카드 정기결제)과 짝이 맞았으면 그 자동이체일이 곧 결제일이고, 지난달 기록도 그 이름으로 찾는다
+    const autoPayGuess = !r.date
+      ? guessAutoPayDate(expenses, { cardId: card.id, amount, names: [r.merchant, hitCard?.fixed?.name], date, payDay: hitCard?.fixed?.autoPayDay })
+      : null;
     const inSynced = !!syncedDay && (
       date < syncedDay
-      || (!r.date && Date.now() - syncedAt < 7 * 86400000)
+      || (!r.date && (autoPayGuess ? autoPayGuess < syncedDay : Date.now() - syncedAt < 7 * 86400000))
     );
     expenses = [...expenses, expense];
     if (!inSynced) {
