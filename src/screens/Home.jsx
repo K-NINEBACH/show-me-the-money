@@ -445,6 +445,8 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
                     {c.syncedAtMs && <span style={{ color: old7 ? T.warn : T.muted }}>카드 앱과 {agoAt(c.syncedAtMs)} 맞춤</span>}
                   </Note>
                 )}
+                {/* 카드값 칸이 이번 달 기록 합보다 적었다 — 어딘가 샜다는 뜻이라 숨기지 않고 적는다(App.jsx cardTotals.billGap) */}
+                {c.billGap > 0 && <Note color={T.warn}>카드값이 이번 달 기록보다 {fmtWon(c.billGap)} 적어서 기록 기준으로 셌어요 — 카드 앱과 맞추면 사라져요</Note>}
                 {c.dueLater > 0 && due && <Note>그다음 결제 {fmtWon(c.dueLater)} — 이번 달에 쓴 것·새 할부 첫 회차</Note>}
               </div>
             );
@@ -885,14 +887,16 @@ function unmarkFixedPaid(ctx, f, mKey) {
 
 function payCard(ctx, card) {
   const { data, persist, showToast } = ctx;
-  const billOnly = Number(card.bill || 0);
+  // 기록 합으로 바닥을 깐 값(billEff, App.jsx cardTotals)까지 낸다 — 화면에 보인 그 금액
+  const billOnly = Number(card.billEff ?? card.bill ?? 0);
   const fixedPortion = Number(card.fixedPortion || 0);
   const total = billOnly + fixedPortion;
   if (!total || total <= 0) return showToast("결제할 금액이 없어요");
   const { curKey } = ctx;
   // 이번 달 할부 몫을 냈다고 적는다 — 안 적으면 내자마자 카드값에 다시 뜬다(App.jsx cardTotals)
   const nextCards = data.cards.map((c) => (c.id === card.id
-    ? { ...c, bill: 0, paidAtMs: Date.now(), ...(fixedPortion > 0 ? { installPaid: {
+    // paidAllMs — 이번 달 쓴 것까지 다 냈다는 표시. 이게 있으면 카드값에 기록 합 바닥을 안 깐다(App.jsx cardTotals)
+    ? { ...c, bill: 0, paidAtMs: Date.now(), paidAllMs: Date.now(), ...(fixedPortion > 0 ? { installPaid: {
         ...(c.installPaid || {}),
         [curKey]: Number(c.installPaid?.[curKey] || 0) + Number(card.curPortion ?? fixedPortion),
         // 지난달 몫(제때 내는 카드의 이번 결제일 몫)도 같이 냈다 — App.jsx cardTotals의 prevPortion

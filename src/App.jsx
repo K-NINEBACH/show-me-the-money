@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react"
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
 import { STORAGE_KEY, INBOX_KEY, SEEN_KEY, SEEN_DEAL_KEY, ALERT_LOG_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
-import { defaultData, migrate, autoProcessFixed, repairMisdatedAuto, findPayDeposit, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount, nextDayOfMonth } from "./lib/data";
+import { defaultData, migrate, autoProcessFixed, repairMisdatedAuto, findPayDeposit, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount, nextDayOfMonth, effectiveBill } from "./lib/data";
 import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup, inNativeApp, pushSummary } from "./lib/native";
 import { autoRecordPayments, isCancelText, dealKey, ledgerBalance, syncMoment } from "./lib/auto-record";
@@ -778,7 +778,22 @@ function AppInner() {
     const prevPortion = Math.max(0, prevInstall - Number(c.installPaid?.[prevMonth] || 0));
     // fixedPortion = 카드값에 든 할부 전부(지난달 몫 + 이번 달 몫). '할부 N원 포함'·결제하기·맞추기가 이걸 쓴다
     const fixedPortion = curPortion + prevPortion;
-    const total = Number(c.bill || 0) + fixedPortion;
+    /*
+      **카드값은 이번 달 그 카드 기록 합보다 작을 수 없다**(2026-10-26, 사용자: "갑자기 13만원씩 차이 나는게 맞아?
+      그럼 내가 목표로 하던 돈 관리 프로그램이 의미가 없잖아").
+      카드값(bill)은 더하고·빼고·덮어쓰는 길이 여럿인 누적 한 칸이라 하나만 새도 조용히 어긋난다. 10월엔 기록은 카드 앱과
+      103원 차이였는데 bill만 128,437원 적었다(휴대폰요금 58,220이 '처리 완료'로 넘어가며 bill엔 안 붙음 등).
+      안 낸 카드값엔 적어도 이번 달 그 카드로 쓴 돈이 다 들어 있어야 하므로, 기록 합(monthUse)보다 작으면 기록 합으로 센다.
+      예외 — 이번 달 쓴 것을 이미 낸 경우엔 작은 게 맞다: 홈 '결제하기'로 다 냈거나(paidAllMs), 결제일 이틀 뒤부터
+      결제 확인이 왔으면(paidLog — 이번 달 쓴 것을 미리 일부 낸 것) 바닥을 안 깐다.
+    */
+    const monthUse = cycleExpenses
+      .filter((e) => (e.paymentMethod || "cash") === "card" && e.cardId === c.id)
+      .reduce((s, e) => s + Number(e.amount), 0);
+    const billRaw = Number(c.bill || 0);
+    const billEff = effectiveBill(c, monthUse, curKey);
+    const billGap = billEff - billRaw;
+    const total = billEff + fixedPortion;
     /*
       **다음 결제일에 실제로 나가는 돈과 그 뒤에 나갈 돈을 가른다**(2026-10-01, 사용자: "면세점 할부 다음달부터 결제인데").
       안 낸 카드값은 '지금 통장으로 다 내면'이라 전부 합치지만, 카드는 1일~말일 사용분이 다음 달 결제일에 청구된다.
@@ -786,12 +801,9 @@ function AppInner() {
       새로 산 할부의 첫 회차는 그다음 달 결제일에 나간다. 합(total)은 안 바뀐다 — 보여 주기만 나눈다.
       한 달 일찍 내는 카드(롯데)나 결제일을 모르면 안 가른다. 결제일이 지났으면 이번 달 사용분이 곧 다음 결제다.
     */
-    const monthUse = cycleExpenses
-      .filter((e) => (e.paymentMethod || "cash") === "card" && e.cardId === c.id)
-      .reduce((s, e) => s + Number(e.amount), 0);
     const canSplit = !c.earlyPay && Number(c.payDay) >= 1 && dayIntoCycle <= Number(c.payDay);
-    const dueNow = canSplit ? Math.min(total, Math.max(0, Number(c.bill || 0) - monthUse) + prevPortion) : total;
-    return { ...c, curPortion, prevPortion, fixedPortion, total, dueNow, dueLater: total - dueNow };
+    const dueNow = canSplit ? Math.min(total, Math.max(0, billEff - monthUse) + prevPortion) : total;
+    return { ...c, billEff, billGap, curPortion, prevPortion, fixedPortion, total, dueNow, dueLater: total - dueNow };
   });
   const cardBillTotal = cardTotals.reduce((s, c) => s + c.total, 0);
 

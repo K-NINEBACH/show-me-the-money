@@ -38,6 +38,7 @@ export function migrate(raw) {
     // installPaid({"2026-09": 낸 할부 몫} — 결제하기로 낸 이번 달 할부)와 paidAtMs(마지막으로 카드값을
     // 낸 시각 — 그 전 지출을 지우거나 고쳐도 지금 카드값을 안 흔든다), 둘 다 2026-09-13, 선택 칸이라 그대로 넘긴다.
     // earlyPay(할부를 한 달 일찍 내는 카드 — 롯데, 2026-09-15)도 선택 칸
+    // paidAllMs(홈 '결제하기'로 이번 달 쓴 것까지 다 낸 시각 — 그 달엔 카드값에 기록 합 바닥을 안 깐다, 2026-10-26)도 선택 칸
     d.cards = raw.cards.map((c) => ({ bill: 0, ...c }));
   } else {
     let legacyBill = 0;
@@ -410,4 +411,20 @@ export function sortFixedList(list, sortKey) {
   else if (sortKey === "card") arr.sort((a, b) => (((a.paymentMethod || "cash") === "card" ? 0 : 1) - ((b.paymentMethod || "cash") === "card" ? 0 : 1)) || byAmountDesc(a, b));
   else if (sortKey === "cash") arr.sort((a, b) => (((a.paymentMethod || "cash") === "cash" ? 0 : 1) - ((b.paymentMethod || "cash") === "cash" ? 0 : 1)) || byAmountDesc(a, b));
   return arr;
+}
+
+/*
+  **안 낸 카드값의 바닥 — 이번 달 그 카드 기록 합**(2026-10-26, App.jsx cardTotals에서 쓴다).
+  bill은 길이 여럿인 누적 칸이라 새도 조용하다(10월: 기록은 카드 앱과 103원 차이, bill은 128,437원 적었다).
+  안 낸 카드값엔 적어도 이번 달 그 카드로 쓴 돈이 다 들어 있어야 하므로 기록 합(monthUse)보다 작으면 기록 합으로 센다.
+  예외 — 이번 달 쓴 것을 이미 낸 경우: 홈 '결제하기'로 다 냈거나(paidAllMs가 이번 달), 결제일 이틀 뒤부터 결제 확인이
+  왔으면(paidLog — 이번 달 쓴 것을 미리 일부 낸 것; 결제일을 모르면 이번 달 아무 결제든) 바닥을 안 깐다.
+*/
+export function effectiveBill(card, monthUse, curKey) {
+  const inThisMonth = (ms) => { const t = Number(ms || 0); if (!t) return null; const d = new Date(t); return monthKey(d) === curKey ? d.getDate() : null; };
+  const lateCut = Number(card.payDay) >= 1 ? Number(card.payDay) + 2 : 0;
+  const paidThisMonth = inThisMonth(card.paidAllMs) != null
+    || (card.paidLog || []).some((p) => { const day = inThisMonth(p.at); return day != null && day > lateCut; });
+  const billRaw = Number(card.bill || 0);
+  return paidThisMonth ? billRaw : Math.max(billRaw, Number(monthUse || 0));
 }
