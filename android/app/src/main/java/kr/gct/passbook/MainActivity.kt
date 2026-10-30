@@ -42,6 +42,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val REQ_SMS = 71
         private const val REQ_NOTIFY = 72
+        /* 지금 화면에 떠 있나 — 업데이트의 '업데이트할까요?' 창은 이때만 띄운다 */
+        @Volatile var visible = false
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -100,6 +102,8 @@ class MainActivity : ComponentActivity() {
     */
     override fun onPause() {
         super.onPause()
+        visible = false
+        Updater.onBackground(this)   // 묻지 않고 깔 수 있는 업데이트는 벗어날 때(쓰는 중에 안 꺼지게)
         web.evaluateJavascript(
             "window.dispatchEvent(new Event('passbook-native-pause'))",
             null,
@@ -108,6 +112,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        visible = true
+        Updater.onForeground(this)   // 껍데기 새 버전을 찾아 받아 둔다(1.9)
         /*
           **리스너가 끊겨 있으면 다시 잇는다**(2026-09-12).
 

@@ -19,6 +19,8 @@
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 스스로 업데이트(1.9). 처음 한 번은 '이 출처 허용'을 사람이 켜야 한다 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="false"
@@ -91,6 +93,9 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_w54_info" />
         </receiver>
+
+        <!-- 스스로 업데이트의 설치 결과를 받는 자리(1.9) -->
+        <receiver android:name=".Updater$UpdateReceiver" android:exported="false" />
 
         <!-- 아침 알림 알람과, 폰을 켰을 때 그 알람을 다시 거는 자리 -->
         <receiver android:name=".Daily" android:exported="false">
