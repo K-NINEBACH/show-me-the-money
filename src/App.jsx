@@ -568,17 +568,33 @@ function AppInner() {
               }
               rowNames.push(`${memo} ${amount.toLocaleString("ko-KR")}원`);
             }
+            /*
+              **결제일 전에 미리 낸 지난달 할부 몫**(`prevPaid`, 2026-11-03 — 현대카드 11/12분을 11/1~2에 즉시결제).
+              카드 앱 숫자(bill)엔 할부를 빼고 넣으므로, 지난달 할부 몫을 냈다는 건 따로 적어야 한다. 안 적으면
+              결제일까지 prevPortion으로 한 번 더 잡힌다(결제 확인 문자가 없으면 앱이 알 길이 없다).
+            */
+            let prevNote = "";
+            let installPaid = card.installPaid || {};
+            if (m.prevPaid) {
+              const pm = monthKeyOffset(monthKey(new Date()), -1);
+              const sum = fixes
+                .filter((f) => (f.paymentMethod || "cash") === "card" && f.totalMonths > 0 && f.cardId === card.id && fixedInfo(f, pm).active)
+                .reduce((s, f) => s + Number(fixedInfo(f, pm).amount), 0);
+              installPaid = { ...installPaid, [pm]: sum };
+              prevNote = ` · ${Number(pm.slice(5))}월 할부 몫 ${sum.toLocaleString("ko-KR")}원은 낸 것으로`;
+            }
             const was = Number(card.bill || 0);
             // syncedAtMs — '카드 앱 숫자와 맞춘 때'. 홈이 "카드 앱과 2시간 전 맞춤"으로 보여 준다(오래되면 경고)
             const payDay = Number(m.payDay) >= 1 && Number(m.payDay) <= 31 ? Number(m.payDay) : undefined;
             d = { ...d, expenses: exps, fixedExpenses: fixes,
               cards: d.cards.map((c) => (c.id === card.id
-                ? { ...c, ...(hasBill ? { bill, paidAtMs: Date.now(), syncedAtMs: Date.now() } : {}), ...(payDay ? { payDay } : {}) }
+                ? { ...c, ...(hasBill ? { bill, paidAtMs: Date.now(), syncedAtMs: Date.now() } : {}), ...(payDay ? { payDay } : {}),
+                    ...(m.prevPaid ? { installPaid } : {}) }
                 : c)) };
             const what = hasBill
               ? `카드값을 ${was.toLocaleString("ko-KR")}원 → ${bill.toLocaleString("ko-KR")}원으로 맞췄어요`
               : `결제일을 매달 ${payDay}일로 적었어요`;
-            logs.push({ at: Date.now(), id: m.id, text: `${card.name} ${what}${m.memo ? ` (${m.memo})` : ""}${fixedNote}${rowNames.length ? ` · ${rowNames.join(", ")} 기록(카드값은 그대로)` : ""}` });
+            logs.push({ at: Date.now(), id: m.id, text: `${card.name} ${what}${m.memo ? ` (${m.memo})` : ""}${fixedNote}${prevNote}${rowNames.length ? ` · ${rowNames.join(", ")} 기록(카드값은 그대로)` : ""}` });
             notes.push(`${card.name} ${hasBill ? `카드값을 ${bill.toLocaleString("ko-KR")}원으로 맞췄어요` : `결제일 ${payDay}일`}`);
             done.push(m.id);
             continue;

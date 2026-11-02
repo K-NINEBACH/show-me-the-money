@@ -6,6 +6,7 @@
 //   node tools/drop-send.mjs <받기코드> <카드이름조각> --bill <금액> [메모] [--install <할부이름>:<YYYY-MM>:<금액>]
 //   결제일만 넣기(금액은 그대로): node tools/drop-send.mjs <받기코드> <카드이름조각> --payday 12
 //                                                      [--row <이름>:<YYYY-MM>:<금액>[:<카테고리>]] (여러 번 가능)
+//   --prevpaid : 지난달 할부 몫을 결제일 전에 이미 냈다(즉시결제). 안 붙이면 결제일까지 그 몫이 또 잡힌다.
 //   --row : 알림이 안 오는 것을 '그 달 한 줄'로 적는다(하이패스·대중교통). 같은 달 줄이 있으면 금액만 갱신.
 //           **카드값은 안 건드린다** — 카드값은 --bill로 이미 맞춘 값이라 여기서 더하면 두 번 잡힌다.
 //   카드 앱의 '결제 예정 금액'을 그대로 넣는 자리다. 일부 결제·리볼빙처럼 앱 계산이 못 따라갈 때 쓴다.
@@ -20,6 +21,7 @@ const flag = (name) => {
   return i >= 0 ? argv[i + 1] : null;
 };
 const prepaid = argv.includes("--prepaid");
+const prevPaid = argv.includes("--prevpaid");
 const billArg = flag("--bill");
 const installArg = flag("--install");
 const rowArgs = argv.map((a, i) => (a === "--row" ? argv[i + 1] : null)).filter(Boolean);
@@ -44,7 +46,7 @@ const skip = new Set();
 for (let i = 0; i < argv.length; i++) {
   if (["--bill", "--install", "--row", "--payday", "--fixdate", "--inbox", "--alert", "--pkg", "--at", "--account", "--income", "--fixedit", "--fixpay"].includes(argv[i])) { skip.add(i); skip.add(i + 1); }
 }
-const pos = argv.filter((a, i) => !skip.has(i) && a !== "--prepaid");
+const pos = argv.filter((a, i) => !skip.has(i) && a !== "--prepaid" && a !== "--prevpaid");
 const [rawCode, card, third, fourth] = pos;
 
 if (!rawCode || !card || (!billArg && !payDayArg && !fixArg && !inboxArg && !alertArg && !accountArg && !incomeArg && !fixeditArg && !fixpayArg && !third)) {
@@ -119,7 +121,7 @@ if (fixpayArg) {
     }
     return { name, month, amount: Number(String(amount).replace(/[^\d]/g, "")), category: category || "교통" };
   });
-  msg = { id, at: new Date().toISOString(), kind: "cardbill", card, bill, install, rows, payDay: payDayArg ? Number(payDayArg) : null, memo: third || "" };
+  msg = { id, at: new Date().toISOString(), kind: "cardbill", card, bill, install, rows, payDay: payDayArg ? Number(payDayArg) : null, prevPaid, memo: third || "" };
   console.log(`카드값 맞추기: ${card} → ${bill == null ? "(금액 그대로)" : `${bill.toLocaleString("ko-KR")}원`}${install ? ` · ${install.name} ${install.month} ${install.amount.toLocaleString("ko-KR")}원` : ""}${rows.length ? ` · 한 줄 기록 ${rows.map((r) => `${r.name} ${r.month} ${r.amount.toLocaleString("ko-KR")}원`).join(", ")}` : ""}`);
 } else {
   const text = fs.readFileSync(third, "utf8");
