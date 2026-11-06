@@ -1,7 +1,7 @@
 // Settings tab: theme, monthly goal, accounts/cards, categories, backup/restore.
 import { useState } from "react";
-import { X } from "lucide-react";
-import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn } from "../lib/theme";
+import { X, ChevronDown } from "lucide-react";
+import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn, card, tone } from "../lib/theme";
 import { fmtWon, migrate, todayISO } from "../lib/data";
 import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings, diagnostics, openBatterySettings, requestSmsAccess, widgetState } from "../lib/native";
 import { ALERT_LOG_KEY } from "../lib/constants";
@@ -64,6 +64,39 @@ function recentAlerts(diag, data, pending) {
     .map((w) => ({ text: w.text, at: w.at, result: w.outcome }));
 }
 
+/*
+  **설정은 접어 둔다**(2026-11-06, 사용자: "설정이 난잡하게 되어 있어서 들어가기 싫다").
+  예전엔 일곱 묶음이 전부 펼쳐져 긴 설명과 함께 이어졌다. 이제 묶음마다 제목 + 한 줄 요약만 보이고
+  누르면 편다. 요약에 문제가 있으면(알림 끊김, 월급 안 적음 등) 색으로 알려서, 열어 보지 않아도 갈린다.
+  어느 묶음을 펴 뒀는지는 이 휴대폰에만 기억한다(못 읽으면 다 접힌 채로).
+*/
+const OPEN_KEY = "passbook-settings-open";
+function readOpen() {
+  try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "[]")); } catch { return new Set(); }
+}
+function Group({ id, title, summary, kind, open, onToggle, children }) {
+  const T = useTheme();
+  const col = kind ? tone(T, kind).text : T.muted;
+  return (
+    <div style={{ ...card(T), marginBottom: 10, overflow: "hidden" }}>
+      <button onClick={() => onToggle(id)} aria-expanded={open} aria-controls={`set-${id}`}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", minHeight: 56,
+          background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", color: T.cream, fontSize: 16, fontWeight: 700 }}>{title}</span>
+          {summary && (
+            <span style={{ display: "block", color: col, fontSize: 13, marginTop: 2, fontWeight: kind ? 700 : 400,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summary}</span>
+          )}
+        </span>
+        <ChevronDown size={20} aria-hidden="true"
+          style={{ color: T.muted, flexShrink: 0, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+      </button>
+      {open && <div id={`set-${id}`} style={{ padding: "0 16px 6px", borderTop: `1px solid ${T.border}`, paddingTop: 12 }}>{children}</div>}
+    </div>
+  );
+}
+
 /** "가계부-백업-2026-09-09.json" → "2026-09-09". 못 읽으면 파일 이름 그대로. */
 function backupDay(name) {
   const m = String(name || "").match(/(\d{4}-\d{2}-\d{2})/);
@@ -92,6 +125,7 @@ export function SettingsView({ ctx }) {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [showBackups, setShowBackups] = useState(false);
+  const [showRecent, setShowRecent] = useState(false);
   const [backups, setBackups] = useState([]);
   /*
     결제 알림이 어디까지 왔는지 보여주는 값.
@@ -243,185 +277,46 @@ export function SettingsView({ ctx }) {
     persist({ ...data, categories: data.categories.filter((c) => c.id !== id) });
   };
 
+  const [openSet, setOpenSet] = useState(readOpen);
+  const isOpen = (id) => openSet.has(id);
+  const toggle = (id) => setOpenSet((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify([...next])); } catch { /* 기억 못 해도 화면은 된다 */ }
+    return next;
+  });
+
+  // 접힌 채로 보이는 한 줄 요약 — 문제가 있을 때만 색을 입힌다
+  const notiSummary = (() => {
+    if (!data.autoRecord) return { text: "자동 기록 꺼짐 — 알림함에 모으기만 해요", kind: "warn" };
+    if (noti.access === false) return { text: "알림 읽기 권한이 꺼져 있어요", kind: "danger" };
+    if (noti.diag && !noti.diag.connected) return { text: "알림 받기가 끊겼어요", kind: "danger" };
+    if (noti.diag?.batteryOptimized) return { text: "배터리 최적화가 켜져 있어 알림을 놓칠 수 있어요", kind: "warn" };
+    if (noti.diag?.sms && !noti.diag.sms.granted) return { text: "문자 읽기가 꺼져 있어요", kind: "warn" };
+    const last = noti.diag?.last?.at;
+    return { text: `잘 받는 중${last ? ` · 마지막 알림 ${ago(last)}` : ""}${noti.pending ? ` · 대기 ${noti.pending}건` : ""}`, kind: "good" };
+  })();
+  const incomes = data.fixedIncomes || [];
+  const paySummary = Number(data.monthlyPay) > 0
+    ? { text: `월급 ${fmtWon(Number(data.monthlyPay))}${incomes.length ? ` · 매달 들어오는 돈 ${incomes.length}건` : ""}` }
+    : { text: "월급을 아직 안 적었어요 — 홈 계산이 안 돼요", kind: "warn" };
+  const noPayDay = (data.cards || []).filter((c) => !(Number(c.payDay) >= 1)).length;
+  const acctSummary = {
+    text: `통장 ${(data.accounts || []).length}개 · 카드 ${(data.cards || []).length}장${noPayDay ? ` · 결제일 안 적은 카드 ${noPayDay}장` : ""}`,
+    kind: noPayDay ? "warn" : undefined,
+  };
+  const lastDrop = drops.length ? drops[drops.length - 1] : null;
+  const claudeSummary = lastDrop ? `마지막으로 넣은 것 ${ago(lastDrop.at)}` : "받기 코드 · 아직 넣은 것 없음";
+
   return (
     <div>
-      <div style={{ color: T.cream, fontFamily: F.display, fontSize: 20.5, fontWeight: 700, marginBottom: 16 }}>설정</div>
-
-      <SectionLabel>화면</SectionLabel>
-      <Field label="화면 테마">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", rowGap: 16, columnGap: 4 }}>
-          {THEME_ORDER.map((id) => {
-            const th = THEMES[id];
-            const active = data.theme === id;
-            return (
-              <button key={id} onClick={() => setTheme(id)}
-                style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                <span style={{
-                  width: 34, height: 34, borderRadius: "50%", background: th.swatch,
-                  border: active ? `3px solid ${T.gold}` : `1px solid ${T.border}`,
-                  boxShadow: active ? `0 0 0 2px ${T.bg2}` : "none",
-                  display: "block",
-                }} />
-                <span style={{ color: active ? T.gold : T.muted, fontSize: 12, fontWeight: active ? 700 : 500 }}>{th.label}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ color: T.muted, fontSize: 13.5, marginTop: 10 }}>현재 테마: {THEMES[data.theme]?.label || "검정"}</div>
-      </Field>
-
-      <SectionLabel>월급</SectionLabel>
-      <Field label="월급(실수령)" htmlFor="set-pay">
-        <div style={{ display: "flex", gap: 8 }}>
-          <MoneyInput id="set-pay" value={payInput} onChange={setPayInput} />
-          <button onClick={savePay} style={{ ...primaryBtn(T), width: 72 }}>저장</button>
-        </div>
-        <QuickAmountButtons amount={payInput} setAmount={setPayInput} />
-        <div style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.55, marginTop: 6 }}>
-          홈의 '카드로 더 써도 되는 돈'은 통장 잔액 + 이 월급에서 안 낸 카드값과 남은·다음 달 고정지출을 뺀 값이에요.
-          말일~다음 달 5일 사이에 월급 입금 알림이 오면 그 달은 실제 들어온 금액으로 계산해요.
-        </div>
-      </Field>
-
-      <Field label="매달 들어오는 돈 (월급 말고)">
-        {(data.fixedIncomes || []).map((i) => (
-          <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", color: T.cream, fontSize: 15 }}>
-            <span style={{ flex: 1, minWidth: 0 }}>{i.name}</span>
-            <span style={{ fontFamily: F.mono, color: T.good }}>+{fmtWon(i.amount)}</span>
-            <button onClick={() => removeIncome(i.id)} aria-label={`${i.name} 지우기`} style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", width: 32, height: 32 }}><X size={16} /></button>
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-          <input value={incName} onChange={(e) => setIncName(e.target.value)} placeholder="이름 (예: 엄마 지원)" aria-label="들어오는 돈 이름" style={{ ...inputSty(T), flex: 1, minWidth: 0 }} />
-          <MoneyInput value={incAmount} onChange={setIncAmount} placeholder="금액" />
-          <button onClick={addIncome} style={{ ...primaryBtn(T), width: 64 }}>추가</button>
-        </div>
-        <div style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.55, marginTop: 6 }}>
-          예를 들어 청년도약계좌로 70만 원이 빠지는데 가족이 20만 원을 넣어 준다면, 고정지출은 70만 원으로 두고 여기에 20만 원을 적어요.
-          같은 금액이 은행 알림으로 들어오면 그 달은 저절로 '들어옴'이 되고, 아직이면 홈에서 '곧 들어올 돈'으로 계산해요.
-        </div>
-      </Field>
-
-      <SectionLabel>계좌 · 카드</SectionLabel>
-      <Field label="통장 관리">
-        <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
-          {(data.accounts || []).map((a) => (
-            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
-              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{a.name}</span>
-              <button onClick={() => removeAccount(a.id)} aria-label={`${a.name} 통장 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <input value={newAccountName} onChange={(e) => setNewAccountName(e.target.value)} placeholder="통장 이름 — 예: 국민은행" aria-label="새 통장 이름" style={inputSty(T)} />
-          <MoneyInput value={newAccountBalance} onChange={setNewAccountBalance} placeholder="지금 잔액 (몰라도 돼요)" ariaLabel="새 통장 지금 잔액" />
-          <button onClick={addAccount} style={primaryBtn(T)}>통장 추가</button>
-        </div>
-        <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
-          이름에 은행 이름이 들어가야 은행 알림을 알아서 이 통장에 붙여요. 잔액은 은행 알림이 오면 저절로 맞춰져요.
-        </div>
-      </Field>
-
-      <Field label="카드 관리">
-        <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
-          {/*
-            이름만 둔다(2026-09-14). 예전엔 여기에 카드값(일시불만)과 '조정'(수동 추가·초기화)이 있었는데,
-            홈은 할부 포함 합계를 보여 줘서 같은 카드가 두 화면에서 다른 금액이었다(현대 1,314,856 vs
-            1,411,274). 카드값은 홈에서 보고, 맞추는 건 홈의 맞추기·명세서·결제 확인 알림이 한다.
-          */}
-          {/*
-            **결제일만 예외로 여기 둔다**(2026-09-17). 금액이 아니라 설정값이고, 홈이 "10/12 결제 · 23일 뒤"를
-            보여 주려면 어딘가에서 한 번은 적어야 한다. 알림 문구로는 알 수 없는 값이다.
-          */}
-          {(data.cards || []).map((c) => (
-            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
-              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
-              <label style={{ display: "flex", alignItems: "center", gap: 4, color: T.muted, fontSize: 13 }}>
-                <span>결제일</span>
-                <input type="number" min="1" max="31" inputMode="numeric" value={c.payDay || ""} aria-label={`${c.name} 결제일`}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    persist({ ...data, cards: data.cards.map((x) => (x.id === c.id ? { ...x, payDay: v >= 1 && v <= 31 ? v : null } : x)) });
-                  }}
-                  style={{ ...inputSty(T), width: 56, padding: "6px 8px", fontSize: 15, textAlign: "center" }} />
-              </label>
-              <button onClick={() => removeCard(c.id)} aria-label={`${c.name} 카드 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input value={newCardName} onChange={(e) => setNewCardName(e.target.value)} placeholder="카드 이름 — 예: 현대카드" aria-label="새 카드 이름" style={inputSty(T)} />
-          <button onClick={addCard} style={{ ...primaryBtn(T), width: 72 }}>추가</button>
-        </div>
-        <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
-          이름에 카드사 이름이 들어가야 결제 알림을 알아서 이 카드에 붙여요. 카드값은 홈에서 봐요.
-          결제일을 적어 두면 홈에 "10/12 결제 · 23일 뒤"로 보여요.
-        </div>
-      </Field>
-
-      {/*
-        Claude가 대신 넣기(lib/drop.js). 카드 명세서 캡처를 Claude에게 보여 주면 Claude가 옮겨 적어 이 코드로
-        잠가 올리고, 앱이 켤 때 받아서 알아서 맞춘다. 코드는 이 휴대폰에만 있다 — 처음 한 번 Claude에게 알려 준다.
-      */}
-      <SectionLabel>Claude가 대신 넣기</SectionLabel>
-      <Field label="받기 코드">
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ flex: 1, minWidth: 0, color: T.cream, fontFamily: F.mono, fontSize: 17, fontWeight: 700, letterSpacing: "0.04em", wordBreak: "break-all" }}>{showCode(code)}</span>
-          <button onClick={() => { navigator.clipboard?.writeText(showCode(code)).then(() => showToast("받기 코드를 복사했어요")).catch(() => {}); }}
-            style={{ ...primaryBtn(T), width: 72 }}>복사</button>
-        </div>
-        <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
-          처음 한 번 이 코드를 Claude에게 알려 주세요. 그다음부턴 카드 앱 명세서 캡처만 보여 주면 Claude가 옮겨 적어
-          이 코드로 잠가 올리고, 앱을 열 때 알아서 맞춰요(빠진 결제 넣기·카드값·할부 금액). 코드 없이는 아무도 못 열어요.
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-          <span style={{ flex: 1, minWidth: 0, color: T.muted, fontSize: 12.5, lineHeight: 1.5 }}>
-            {state
-              ? `받은편지함 · ${state.step}${state.total != null ? ` (올라온 것 ${state.total}건, 새로 ${state.fresh}건, 이미 넣음 ${state.already}건${state.locked ? `, 다른 코드 ${state.locked}건` : ""})` : ""} · ${ago(state.at)}`
-              : "받은편지함 · 아직 확인한 적 없음"}
-          </span>
-          <button onClick={() => { window.dispatchEvent(new Event("passbook-native-resume")); setTimeout(() => setTick((n) => n + 1), 1500); showToast("지금 받아 봤어요"); }}
-            style={{ minHeight: 40, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13.5, cursor: "pointer" }}>
-            지금 받기
-          </button>
-          {/* 옛 화면이 못 읽고 '적용함'으로 적어 버린 것을 되살리는 자리 — 맞추기는 두 번 해도 같다 */}
-          <button onClick={() => { resetApplied(); window.dispatchEvent(new Event("passbook-native-resume")); setTimeout(() => setTick((n) => n + 1), 1500); showToast("올라온 것을 처음부터 다시 넣어 봐요"); }}
-            style={{ minHeight: 40, padding: "0 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, fontSize: 12.5, cursor: "pointer" }}>
-            다시
-          </button>
-        </div>
-        {drops.length > 0 && (
-          <div style={{ marginTop: 8 }}>
-            {[...drops].reverse().slice(0, 5).map((r, i) => (
-              <div key={`${r.id}-${i}`} style={{ color: T.cream, fontSize: 12.5, lineHeight: 1.5, padding: "5px 0", borderTop: `1px dashed ${T.border}` }}>
-                <span style={{ color: T.muted }}>{ago(r.at)} · </span>{r.text}
-              </div>
-            ))}
-          </div>
-        )}
-      </Field>
-
-      <SectionLabel>카테고리</SectionLabel>
-      <Field label="카테고리 관리">
-        <div style={{ background: T.bg2, borderRadius: 10, padding: 6 }}>
-          {data.categories.map((c) => (
-            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
-              <span style={{ width: 10, height: 10, borderRadius: "50%", background: c.color }} />
-              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
-              <button onClick={() => removeCategory(c.id)} aria-label={`${c.name} 카테고리 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
-            </div>
-          ))}
-          {data.categories.length === 0 && <div style={{ color: T.muted, fontSize: 15, textAlign: "center", padding: "10px 0" }}>카테고리가 없어요. &lsquo;기록&rsquo; 탭에서 추가할 수 있어요.</div>}
-        </div>
-      </Field>
-
+      <div style={{ color: T.cream, fontFamily: F.display, fontSize: 20.5, fontWeight: 700, marginBottom: 12 }}>설정</div>
       {/*
         껍데기 앱 안에서만 보인다. 크롬에는 알림을 읽을 방법이 없어서,
         여기 스위치가 있어 봐야 눌러도 아무 일이 안 일어난다.
       */}
       {inNativeApp() && (
-        <>
-          <SectionLabel>결제 알림</SectionLabel>
+        <Group id="noti" title="결제 알림" summary={notiSummary.text} kind={notiSummary.kind} open={isOpen("noti")} onToggle={toggle}>
           {/*
             제목이 예전엔 '카드 결제를 자동으로 기록'이었는데, 이 스위치 하나가 은행
             입출금·결제 취소·할부 등록까지 전부 켜고 끈다. 라벨이 말하는 것보다 하는
@@ -446,20 +341,13 @@ export function SettingsView({ ctx }) {
               </button>
               <span style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.5 }}>
                 {data.autoRecord
-                  ? "카드·은행 알림이 오면 확인 없이 바로 기록해요. 자동으로 들어간 줄에는 내역에서 '자동' 표시가 붙어요."
-                  : "알림을 모아만 두고, 기록 탭에서 확인하고 등록해요."}
+                  ? "카드·은행 알림이 오면 바로 기록해요. 모를 때만 알림함에 남아요."
+                  : "알림을 모아만 두고 기록 탭에서 등록해요."}
               </span>
             </div>
           </Field>
-          {data.autoRecord && (
-            <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.6, marginTop: -4, marginBottom: 10 }}>
-              결제를 취소하면 기록에서 빼고, 할부는 할부(고정지출)로 등록해요. 이미 적어 둔 거래와 겹치면
-              새로 넣지 않고 그 기록을 은행이 알려 준 날짜·통장으로 바로잡아요. 은행 알림에 잔액이 찍혀 있으면 통장 잔액도
-              그 값에 맞춰요. 어느 카드·통장인지 모를 때만 기록 탭 알림함에 남아요.
-            </div>
-          )}
 
-          <Field label="알림이 잘 들어오고 있나">
+          <Field label="상태">
             <div style={{ color: T.cream, fontSize: 14.5, lineHeight: 1.9, fontFamily: F.mono }}>
               <div>
                 알림 읽기 권한 ·{" "}
@@ -562,7 +450,11 @@ export function SettingsView({ ctx }) {
           </Field>
 
           {/* 결제가 안 들어왔을 때 어디서 끊겼는지 — 이 목록 한 장이면 갈린다 */}
-          <Field label="최근 결제 알림">
+          <button onClick={() => setShowRecent((v) => !v)} aria-expanded={showRecent}
+            style={{ width: "100%", minHeight: 44, marginBottom: 8, borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 14.5, cursor: "pointer" }}>
+            최근 결제 알림 {showRecent ? "닫기" : "보기 — 결제가 안 들어왔을 때"}
+          </button>
+          {showRecent && <div style={{ marginBottom: 12 }}>
             {(() => {
               const rows = recentAlerts(noti.diag, data, noti.pending);
               if (!rows.length) {
@@ -582,12 +474,175 @@ export function SettingsView({ ctx }) {
                 );
               });
             })()}
-          </Field>
-        </>
+          </div>}
+        </Group>
       )}
+      <Group id="pay" title="월급 · 들어오는 돈" summary={paySummary.text} kind={paySummary.kind} open={isOpen("pay")} onToggle={toggle}>
+      <Field label="월급(실수령)" htmlFor="set-pay">
+        <div style={{ display: "flex", gap: 8 }}>
+          <MoneyInput id="set-pay" value={payInput} onChange={setPayInput} />
+          <button onClick={savePay} style={{ ...primaryBtn(T), width: 72 }}>저장</button>
+        </div>
+        <QuickAmountButtons amount={payInput} setAmount={setPayInput} />
+        <div style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.55, marginTop: 6 }}>
+          월급 입금 알림이 오면 그 달은 실제 들어온 금액으로 계산해요.
+        </div>
+      </Field>
 
-      <SectionLabel>데이터</SectionLabel>
-      <Field label="데이터 백업">
+      <Field label="매달 들어오는 돈 (월급 말고)">
+        {(data.fixedIncomes || []).map((i) => (
+          <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", color: T.cream, fontSize: 15 }}>
+            <span style={{ flex: 1, minWidth: 0 }}>{i.name}</span>
+            <span style={{ fontFamily: F.mono, color: T.good }}>+{fmtWon(i.amount)}</span>
+            <button onClick={() => removeIncome(i.id)} aria-label={`${i.name} 지우기`} style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", width: 32, height: 32 }}><X size={16} /></button>
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <input value={incName} onChange={(e) => setIncName(e.target.value)} placeholder="이름 (예: 엄마 지원)" aria-label="들어오는 돈 이름" style={{ ...inputSty(T), flex: 1, minWidth: 0 }} />
+          <MoneyInput value={incAmount} onChange={setIncAmount} placeholder="금액" />
+          <button onClick={addIncome} style={{ ...primaryBtn(T), width: 64 }}>추가</button>
+        </div>
+        <div style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.55, marginTop: 6 }}>
+          같은 금액 입금 알림이 오면 그 달은 저절로 '들어옴'이 돼요.
+        </div>
+      </Field>
+      </Group>
+      <Group id="acct" title="통장 · 카드" summary={acctSummary.text} kind={acctSummary.kind} open={isOpen("acct")} onToggle={toggle}>
+      <Field label="통장 관리">
+        <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
+          {(data.accounts || []).map((a) => (
+            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
+              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{a.name}</span>
+              <button onClick={() => removeAccount(a.id)} aria-label={`${a.name} 통장 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input value={newAccountName} onChange={(e) => setNewAccountName(e.target.value)} placeholder="통장 이름 — 예: 국민은행" aria-label="새 통장 이름" style={inputSty(T)} />
+          <MoneyInput value={newAccountBalance} onChange={setNewAccountBalance} placeholder="지금 잔액 (몰라도 돼요)" ariaLabel="새 통장 지금 잔액" />
+          <button onClick={addAccount} style={primaryBtn(T)}>통장 추가</button>
+        </div>
+        <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
+          이름에 은행 이름이 들어가야 은행 알림을 알아서 이 통장에 붙여요. 잔액은 은행 알림이 오면 저절로 맞춰져요.
+        </div>
+      </Field>
+
+      <Field label="카드 관리">
+        <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
+          {/*
+            이름만 둔다(2026-09-14). 예전엔 여기에 카드값(일시불만)과 '조정'(수동 추가·초기화)이 있었는데,
+            홈은 할부 포함 합계를 보여 줘서 같은 카드가 두 화면에서 다른 금액이었다(현대 1,314,856 vs
+            1,411,274). 카드값은 홈에서 보고, 맞추는 건 홈의 맞추기·명세서·결제 확인 알림이 한다.
+          */}
+          {/*
+            **결제일만 예외로 여기 둔다**(2026-09-17). 금액이 아니라 설정값이고, 홈이 "10/12 결제 · 23일 뒤"를
+            보여 주려면 어딘가에서 한 번은 적어야 한다. 알림 문구로는 알 수 없는 값이다.
+          */}
+          {(data.cards || []).map((c) => (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
+              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, color: T.muted, fontSize: 13 }}>
+                <span>결제일</span>
+                <input type="number" min="1" max="31" inputMode="numeric" value={c.payDay || ""} aria-label={`${c.name} 결제일`}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    persist({ ...data, cards: data.cards.map((x) => (x.id === c.id ? { ...x, payDay: v >= 1 && v <= 31 ? v : null } : x)) });
+                  }}
+                  style={{ ...inputSty(T), width: 56, padding: "6px 8px", fontSize: 15, textAlign: "center" }} />
+              </label>
+              <button onClick={() => removeCard(c.id)} aria-label={`${c.name} 카드 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input value={newCardName} onChange={(e) => setNewCardName(e.target.value)} placeholder="카드 이름 — 예: 현대카드" aria-label="새 카드 이름" style={inputSty(T)} />
+          <button onClick={addCard} style={{ ...primaryBtn(T), width: 72 }}>추가</button>
+        </div>
+        <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
+          이름에 카드사 이름이 들어가야 결제 알림을 알아서 이 카드에 붙여요. 카드값은 홈에서 봐요.
+          결제일을 적어 두면 홈에 "10/12 결제 · 23일 뒤"로 보여요.
+        </div>
+      </Field>
+      </Group>
+      <Group id="claude" title="Claude가 대신 넣기" summary={claudeSummary} open={isOpen("claude")} onToggle={toggle}>
+      {/*
+        Claude가 대신 넣기(lib/drop.js). 카드 명세서 캡처를 Claude에게 보여 주면 Claude가 옮겨 적어 이 코드로
+        잠가 올리고, 앱이 켤 때 받아서 알아서 맞춘다. 코드는 이 휴대폰에만 있다 — 처음 한 번 Claude에게 알려 준다.
+      */}
+      <Field label="받기 코드">
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ flex: 1, minWidth: 0, color: T.cream, fontFamily: F.mono, fontSize: 17, fontWeight: 700, letterSpacing: "0.04em", wordBreak: "break-all" }}>{showCode(code)}</span>
+          <button onClick={() => { navigator.clipboard?.writeText(showCode(code)).then(() => showToast("받기 코드를 복사했어요")).catch(() => {}); }}
+            style={{ ...primaryBtn(T), width: 72 }}>복사</button>
+        </div>
+        <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
+          처음 한 번 Claude에게 알려 주면, 그다음부턴 캡처만 보여 줘도 앱을 열 때 알아서 맞춰요.
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+          <span style={{ flex: 1, minWidth: 0, color: T.muted, fontSize: 12.5, lineHeight: 1.5 }}>
+            {state
+              ? `받은편지함 · ${state.step}${state.total != null ? ` (올라온 것 ${state.total}건, 새로 ${state.fresh}건, 이미 넣음 ${state.already}건${state.locked ? `, 다른 코드 ${state.locked}건` : ""})` : ""} · ${ago(state.at)}`
+              : "받은편지함 · 아직 확인한 적 없음"}
+          </span>
+          <button onClick={() => { window.dispatchEvent(new Event("passbook-native-resume")); setTimeout(() => setTick((n) => n + 1), 1500); showToast("지금 받아 봤어요"); }}
+            style={{ minHeight: 40, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 13.5, cursor: "pointer" }}>
+            지금 받기
+          </button>
+          {/* 옛 화면이 못 읽고 '적용함'으로 적어 버린 것을 되살리는 자리 — 맞추기는 두 번 해도 같다 */}
+          <button onClick={() => { resetApplied(); window.dispatchEvent(new Event("passbook-native-resume")); setTimeout(() => setTick((n) => n + 1), 1500); showToast("올라온 것을 처음부터 다시 넣어 봐요"); }}
+            style={{ minHeight: 40, padding: "0 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, fontSize: 12.5, cursor: "pointer" }}>
+            다시
+          </button>
+        </div>
+        {drops.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            {[...drops].reverse().slice(0, 5).map((r, i) => (
+              <div key={`${r.id}-${i}`} style={{ color: T.cream, fontSize: 12.5, lineHeight: 1.5, padding: "5px 0", borderTop: `1px dashed ${T.border}` }}>
+                <span style={{ color: T.muted }}>{ago(r.at)} · </span>{r.text}
+              </div>
+            ))}
+          </div>
+        )}
+      </Field>
+      </Group>
+      <Group id="theme" title="화면 테마" summary={THEMES[data.theme]?.label || "검정"} open={isOpen("theme")} onToggle={toggle}>
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", rowGap: 16, columnGap: 4 }}>
+          {THEME_ORDER.map((id) => {
+            const th = THEMES[id];
+            const active = data.theme === id;
+            return (
+              <button key={id} onClick={() => setTheme(id)}
+                style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <span style={{
+                  width: 34, height: 34, borderRadius: "50%", background: th.swatch,
+                  border: active ? `3px solid ${T.gold}` : `1px solid ${T.border}`,
+                  boxShadow: active ? `0 0 0 2px ${T.bg2}` : "none",
+                  display: "block",
+                }} />
+                <span style={{ color: active ? T.gold : T.muted, fontSize: 12, fontWeight: active ? 700 : 500 }}>{th.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      </Group>
+      <Group id="cat" title="카테고리" summary={`${data.categories.length}개`} open={isOpen("cat")} onToggle={toggle}>
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ background: T.bg2, borderRadius: 10, padding: 6 }}>
+          {data.categories.map((c) => (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
+              <span style={{ width: 10, height: 10, borderRadius: "50%", background: c.color }} />
+              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
+              <button onClick={() => removeCategory(c.id)} aria-label={`${c.name} 카테고리 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
+            </div>
+          ))}
+          {data.categories.length === 0 && <div style={{ color: T.muted, fontSize: 15, textAlign: "center", padding: "10px 0" }}>카테고리가 없어요. &lsquo;기록&rsquo; 탭에서 추가할 수 있어요.</div>}
+        </div>
+      </div>
+      </Group>
+      <Group id="data" title="데이터 백업" summary={inNativeApp() ? "매일 휴대폰에 자동 저장 · 되돌리기" : "내보내기 · 가져오기"} open={isOpen("data")} onToggle={toggle}>
+      <div style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
           <button onClick={doExport} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 15.5, cursor: "pointer" }}>내보내기</button>
           <button onClick={() => { setShowImport(!showImport); setShowExport(false); }} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 15.5, cursor: "pointer" }}>가져오기</button>
@@ -644,7 +699,8 @@ export function SettingsView({ ctx }) {
             )}
           </>
         )}
-      </Field>
+      </div>
+      </Group>
     </div>
   );
 }
