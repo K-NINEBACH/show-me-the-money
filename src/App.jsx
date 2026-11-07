@@ -948,15 +948,46 @@ function AppInner() {
     한 달 일찍 내는 카드(롯데)도 전부로 본다(모자라게 보는 쪽이 안전하다). 카드 고정지출(정기결제)은 카드값으로 나가므로 뺀다.
     현금으로 쓴 돈도 전체 한도를 깎으므로, 전체(canSpend)보다 클 수 없다.
   */
-  const cardDueBeforePay = cardTotals.reduce((s, c) => {
+  const cardDueOf = (c) => {
     const pd = Number(c.payDay);
-    if (c.earlyPay || !(pd >= 1)) return s + c.total;
-    if (dayIntoCycle <= pd) return s + c.dueNow;
-    return s + (pd <= 5 ? c.total : 0);
-  }, 0);
-  const unpaidFixedCashSum = unpaidFixed.filter((f) => (f.paymentMethod || "cash") !== "card").reduce((s, f) => s + Number(f.info.amount), 0);
+    if (c.earlyPay || !(pd >= 1)) return c.total;
+    if (dayIntoCycle <= pd) return c.dueNow;
+    return pd <= 5 ? c.total : 0;
+  };
+  const cardDueBeforePay = cardTotals.reduce((s, c) => s + cardDueOf(c), 0);
+  const unpaidFixedCash = unpaidFixed.filter((f) => (f.paymentMethod || "cash") !== "card");
+  const unpaidFixedCashSum = unpaidFixedCash.reduce((s, f) => s + Number(f.info.amount), 0);
   const cashNow = accountBalance + payPending + incomePendingSum - cardDueBeforePay - unpaidFixedCashSum;
   const cashCan = Math.min(cashNow, canSpend);
+  /*
+    **현금 한도를 통장별로**(2026-11-07, 사용자: 국민은행엔 41만 원인데 이체 예정이 27만 원 — "기업은행 잔여금액 포함인가?").
+    합친 숫자만 보이면 한 통장에서 다 쓸 수 있는 줄 안다. 통장마다 = 그 통장 잔액 − 그 통장에서 나갈 고정지출 − 그 통장에서 낼 카드값.
+    고정지출은 적어 둔 통장(accountId, 없으면 첫 통장). 카드값은 그 카드의 결제 통장 — 통장 출금 알림 '○○카드'로 배운 값(payAccountId),
+    없으면 통장 기록 적요에 그 카드 이름이 찍힌 가장 최근 출금의 통장. 그것도 없으면 '결제 통장 모름'으로 따로 적는다(아무 통장에서나 빼면 틀린다).
+    곧 들어올 월급·들어오는 돈은 어느 통장으로 올지 몰라 따로 적는다. 통장별 합 + 모름 + 곧 들어올 돈 = cashNow.
+  */
+  const firstAccId = accountTotals[0]?.id;
+  const cardWords = (name) => {
+    const base = String(name).split(/[(（]/)[0].trim();
+    const words = String(name).split(/[^가-힣A-Za-z0-9]+/).map((w) => w.replace(/카드$/, "")).filter((w) => w.length >= 2);
+    return { base, words };
+  };
+  const payAccountOf = (c) => {
+    if (c.payAccountId && accountTotals.some((a) => a.id === c.payAccountId)) return c.payAccountId;
+    const { base, words } = cardWords(c.name);
+    const hit = (data.balanceEntries || [])
+      .filter((b) => b.type === "out" && !b.isAdjustment && b.memo && (b.memo.includes(base) || (words.length >= 2 && words.filter((w) => b.memo.includes(w)).length >= 2)))
+      .sort((x, y) => String(y.date).localeCompare(String(x.date)))[0];
+    return hit ? (hit.accountId || firstAccId) : null;
+  };
+  const cashByAccount = accountTotals.map((a) => {
+    const fixedOut = unpaidFixedCash.filter((f) => (f.accountId && accountTotals.some((x) => x.id === f.accountId) ? f.accountId : firstAccId) === a.id)
+      .reduce((s, f) => s + Number(f.info.amount), 0);
+    const cardOut = cardTotals.filter((c) => payAccountOf(c) === a.id).reduce((s, c) => s + cardDueOf(c), 0);
+    return { id: a.id, name: a.name, balance: a.balance, fixedOut, cardOut, left: a.balance - fixedOut - cardOut };
+  });
+  const cashCardUnknown = cardTotals.filter((c) => !payAccountOf(c) && cardDueOf(c) > 0).map((c) => ({ name: c.name, amount: cardDueOf(c) }));
+  const cashIncoming = payPending + incomePendingSum;
   const daysLeft = Math.max(1, cycleLen - dayIntoCycle + 1);
   const perDay = Math.floor(Math.max(0, canSpend) / daysLeft);
   const bankKnown = accountBalance !== 0 || accountTotals.some((a) => a.bankSync);
@@ -989,7 +1020,7 @@ function AppInner() {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSkipped, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, recordedSpent, fixedPaidSum, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
     nextKey, monthlyPay, payIn, nextPay, nextFixedCash, nextFixedCard, cardSpentThisCycle, cardInstallThisMonth, cardRecurThisMonth, cardThisMonth, payLeft, payPending,
-    bankLeft, canSpend, cashNow, cashCan, cardDueBeforePay, unpaidFixedCashSum, daysLeft, perDay, bankKnown, hasPay, incomes, incomePending, incomePendingSum, incomeNextSum,
+    bankLeft, canSpend, cashNow, cashCan, cardDueBeforePay, unpaidFixedCashSum, cashByAccount, cashCardUnknown, cashIncoming, daysLeft, perDay, bankKnown, hasPay, incomes, incomePending, incomePendingSum, incomeNextSum,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,
     pendingText, clearPendingText: () => setPendingText(null),
     // 번호가 아니라 알림 자체(문구+받은 시각)로 지운다 — 목록은 15초마다 늘고 자동 처리로

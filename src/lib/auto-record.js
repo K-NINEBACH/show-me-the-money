@@ -824,6 +824,14 @@ export function autoRecordPayments(data, items, held = []) {
     return hits.length === 1 ? hits[0] : null;
   };
 
+  /*
+    **카드값이 어느 통장에서 나가는지 배운다**(2026-11-07). 통장 출금 알림에 '○○카드'가 찍히면 그 통장이 그 카드의 결제 통장이다.
+    홈의 '그중 현금·계좌이체로는'을 통장별로 나눌 때 그 카드값을 어느 통장에서 뺄지 정하는 데 쓴다(App.jsx cashByAccount).
+  */
+  const learnPayAccount = (cardId, accId) => {
+    cards = cards.map((c) => (c.id === cardId && c.payAccountId !== accId ? { ...c, payAccountId: accId } : c));
+  };
+
   const markPaid = (fixedId, markerId, key, payee) => {
     fixedExpenses = fixedExpenses.map((x) =>
       x.id === fixedId
@@ -1112,7 +1120,7 @@ export function autoRecordPayments(data, items, held = []) {
         skipped.push(item);
         if (dir === "in") markIncome(amount, bKey, "bank");
         syncBank(item, acc.id, text, bDate, time, null);
-        if (paidCard) settleCard(paidCard, bDate, amount, item);
+        if (paidCard) { settleCard(paidCard, bDate, amount, item); learnPayAccount(paidCard.id, acc.id); }
         continue;
       }
 
@@ -1149,7 +1157,7 @@ export function autoRecordPayments(data, items, held = []) {
       if (hitOut) markPaid(hitOut.fixed.id, entryId, hitKey, payee);
       registered.push(entry);
       syncBank(item, acc.id, text, bDate, time, entry);
-      if (paidCard) settleCard(paidCard, bDate, amount, item);
+      if (paidCard) { settleCard(paidCard, bDate, amount, item); learnPayAccount(paidCard.id, acc.id); }
       continue;
     }
 

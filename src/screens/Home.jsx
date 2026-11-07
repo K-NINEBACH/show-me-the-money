@@ -273,7 +273,8 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
             카드는 다음 달 월급이 내지만 현금·이체는 지금 통장에서 나가므로, 월급 전에 통장에서 나갈 돈을 빼고 본다(App.jsx cashCan).
           */}
           {!short && bankKnown && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10, padding: "9px 12px", borderRadius: 12, background: T.bg2, border: `1px solid ${T.border}` }}>
+            <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 12, background: T.bg2, border: `1px solid ${T.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <span style={{ minWidth: 0 }}>
                 <span style={{ display: "block", color: T.cream, fontSize: 13.5, fontWeight: 700 }}>그중 현금 · 계좌이체로는</span>
                 <span style={{ display: "block", color: T.muted, fontSize: 11.5, marginTop: 1 }}>
@@ -283,6 +284,41 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
               <span style={{ ...num, color: ctx.cashCan < 0 ? tone(T, "danger").text : T.cream, fontSize: 18, fontWeight: 700, whiteSpace: "nowrap" }}>
                 {ctx.cashCan < 0 ? `${signed(ctx.cashCan)}` : `${fmtWon(ctx.cashCan)}까지`}
               </span>
+              </div>
+              {/*
+                통장별(2026-11-07, 사용자: "기업은행 잔여금액 포함인가?" → "통장별로 나눠서 보이게"). 합친 숫자만 있으면 한 통장에서
+                다 쓸 수 있는 줄 안다. 통장마다 이름 왼쪽 · 금액 오른쪽, 그 아래 흐린 글자로 잔액 − 나갈 돈.
+              */}
+              {(ctx.cashByAccount.length > 1 || ctx.cashCardUnknown.length > 0 || ctx.cashIncoming > 0) && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {ctx.cashByAccount.map((a) => (
+                    <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: "block", color: T.cream, fontSize: 13, fontWeight: 600 }}>{a.name}</span>
+                        <span style={{ display: "block", color: T.muted, fontSize: 11, marginTop: 1 }}>
+                          잔액 {fmtWon(a.balance)}{a.fixedOut + a.cardOut > 0 ? ` − 나갈 돈 ${fmtWon(a.fixedOut + a.cardOut)}` : ""}
+                        </span>
+                      </span>
+                      <span style={{ ...num, color: a.left < 0 ? tone(T, "danger").text : T.cream, fontSize: 15, fontWeight: 700, whiteSpace: "nowrap" }}>{signed(a.left)}</span>
+                    </div>
+                  ))}
+                  {ctx.cashCardUnknown.map((c) => (
+                    <div key={c.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: "block", color: tone(T, "warn").text, fontSize: 13, fontWeight: 600 }}>{c.name}</span>
+                        <span style={{ display: "block", color: T.muted, fontSize: 11, marginTop: 1 }}>결제 통장을 몰라서 따로 뺐어요</span>
+                      </span>
+                      <span style={{ ...num, color: tone(T, "warn").text, fontSize: 15, fontWeight: 700, whiteSpace: "nowrap" }}>−{fmtWon(c.amount)}</span>
+                    </div>
+                  ))}
+                  {ctx.cashIncoming > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span style={{ color: T.muted, fontSize: 12.5 }}>곧 들어올 돈</span>
+                      <span style={{ ...num, color: T.cream, fontSize: 15, fontWeight: 700, whiteSpace: "nowrap" }}>+{fmtWon(ctx.cashIncoming)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
