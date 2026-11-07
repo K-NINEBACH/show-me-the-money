@@ -938,6 +938,25 @@ function AppInner() {
   const incomeNextSum = incomes.reduce((s, i) => s + Number(i.amount), 0);
   const bankLeft = accountBalance + payPending + incomePendingSum - cardBillTotal - unpaidFixedSum;
   const canSpend = bankLeft + (payIn ? 0 : nextPay) + incomeNextSum - nextFixedCash - nextFixedCard;
+  /*
+    **그중 현금·계좌이체로 쓸 수 있는 돈**(2026-11-07, 사용자: "지금 써도 되는 금액은 카드+현금 금액이라서 헷갈리더라고.
+    계좌이체나 현금을 써야 될 때도 있으니깐"). 카드로 쓰면 다음 달 월급이 내지만, 현금·이체는 **지금 통장에서** 바로 나간다.
+    그래서 월급이 들어오기 전에 통장에서 먼저 나갈 돈을 빼고 남는 만큼만 현금으로 쓸 수 있다.
+      현금 = 통장 (+ 곧 들어올 이번 달 몫 월급·들어오는 돈) − 월급 전에 나갈 카드값 − 이번 달 남은 통장 고정지출
+    월급 전에 나갈 카드값: 결제일이 이번 달 아직 안 온 카드는 그날 나가는 돈(dueNow). 결제일이 지났으면 다음 결제는
+    다음 달이라 월급이 낸다 — 단 결제일이 1~5일이면 월급보다 먼저일 수 있어 안 낸 카드값 전부로 본다. 결제일을 모르거나
+    한 달 일찍 내는 카드(롯데)도 전부로 본다(모자라게 보는 쪽이 안전하다). 카드 고정지출(정기결제)은 카드값으로 나가므로 뺀다.
+    현금으로 쓴 돈도 전체 한도를 깎으므로, 전체(canSpend)보다 클 수 없다.
+  */
+  const cardDueBeforePay = cardTotals.reduce((s, c) => {
+    const pd = Number(c.payDay);
+    if (c.earlyPay || !(pd >= 1)) return s + c.total;
+    if (dayIntoCycle <= pd) return s + c.dueNow;
+    return s + (pd <= 5 ? c.total : 0);
+  }, 0);
+  const unpaidFixedCashSum = unpaidFixed.filter((f) => (f.paymentMethod || "cash") !== "card").reduce((s, f) => s + Number(f.info.amount), 0);
+  const cashNow = accountBalance + payPending + incomePendingSum - cardDueBeforePay - unpaidFixedCashSum;
+  const cashCan = Math.min(cashNow, canSpend);
   const daysLeft = Math.max(1, cycleLen - dayIntoCycle + 1);
   const perDay = Math.floor(Math.max(0, canSpend) / daysLeft);
   const bankKnown = accountBalance !== 0 || accountTotals.some((a) => a.bankSync);
@@ -970,7 +989,7 @@ function AppInner() {
     data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSkipped, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, recordedSpent, fixedPaidSum, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
     nextKey, monthlyPay, payIn, nextPay, nextFixedCash, nextFixedCard, cardSpentThisCycle, cardInstallThisMonth, cardRecurThisMonth, cardThisMonth, payLeft, payPending,
-    bankLeft, canSpend, daysLeft, perDay, bankKnown, hasPay, incomes, incomePending, incomePendingSum, incomeNextSum,
+    bankLeft, canSpend, cashNow, cashCan, cardDueBeforePay, unpaidFixedCashSum, daysLeft, perDay, bankKnown, hasPay, incomes, incomePending, incomePendingSum, incomeNextSum,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,
     pendingText, clearPendingText: () => setPendingText(null),
     // 번호가 아니라 알림 자체(문구+받은 시각)로 지운다 — 목록은 15초마다 늘고 자동 처리로

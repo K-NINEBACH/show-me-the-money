@@ -207,7 +207,7 @@ const cardBox = (T, bad) => ({ background: T.bg2, border: `1.5px solid ${(bad ? 
 const cardTitle = (T) => ({ color: T.goldSoft, fontSize: 13.5, fontWeight: 700, marginBottom: 4 });
 
 /*
-  **맨 위 큰 카드** — 카드로 더 써도 되는 돈(통장 + 다음 달 월급 − 나갈 돈 전부). 계산은 App.jsx ctx.
+  **맨 위 큰 카드** — 이번 달 더 써도 되는 돈(카드·현금 합쳐서, 2026-11-07까지 이름은 '카드로 더 써도 되는 돈' — 통장 + 다음 달 월급 − 나갈 돈 전부). 계산은 App.jsx ctx.
 
   새 디자인(2026-09-26, 사용자가 보여 준 시안): 카드 전체가 **상태 색으로 옅게 물든다** —
   여유 초록 · 빠듯 주황 · 모자람 빨강. 한 카드 안의 순서가 곧 중요도다:
@@ -247,7 +247,7 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
           : null;
 
   return (
-    <section aria-label="카드로 더 써도 되는 돈"
+    <section aria-label="이번 달 더 써도 되는 돈"
       style={{ ...card(T), borderColor: `${t.fill}40`, borderRadius: 22, padding: "16px 18px 16px", background: `linear-gradient(165deg, ${t.tint} 0%, ${T.bg2} 72%)` }}>
       {!hasPay ? (
         <div style={{ color: T.warn, fontSize: 15, fontWeight: 700, padding: "6px 0" }}>설정에서 월급(실수령)을 적어 주세요</div>
@@ -255,7 +255,8 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
             <span style={{ color: short ? t.text : T.cream, fontSize: 14.5, fontWeight: 700 }}>
-              {short ? "월급 들어와도 모자라는 돈" : "카드로 더 써도 되는 돈"}
+              {short ? "월급 들어와도 모자라는 돈" : "이번 달 더 써도 되는 돈"}
+              {!short && <span style={{ display: "block", color: T.muted, fontSize: 11.5, fontWeight: 500, marginTop: 1 }}>카드 · 현금 합쳐서</span>}
             </span>
             {!short && bankKnown && (
               <span style={{ color: T.muted, fontSize: 12, textAlign: "right", lineHeight: 1.4 }}>
@@ -266,6 +267,24 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
           <div style={{ ...num, color: short ? t.text : T.cream, fontSize: 44, fontWeight: 700, letterSpacing: -1.5, lineHeight: 1.15, marginTop: 4 }}>
             {signed(v).replace(/원$/, "")}<span style={{ fontSize: 22, fontWeight: 700, marginLeft: 2, fontFamily: F.body }}>원</span>
           </div>
+
+          {/*
+            그중 현금·계좌이체로는(2026-11-07, 사용자: "지금 써도 되는 금액은 카드+현금 금액이라서 헷갈리더라고").
+            카드는 다음 달 월급이 내지만 현금·이체는 지금 통장에서 나가므로, 월급 전에 통장에서 나갈 돈을 빼고 본다(App.jsx cashCan).
+          */}
+          {!short && bankKnown && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10, padding: "9px 12px", borderRadius: 12, background: T.bg2, border: `1px solid ${T.border}` }}>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", color: T.cream, fontSize: 13.5, fontWeight: 700 }}>그중 현금 · 계좌이체로는</span>
+                <span style={{ display: "block", color: T.muted, fontSize: 11.5, marginTop: 1 }}>
+                  {ctx.cashCan < ctx.cashNow ? "전체 남은 돈까지만" : "통장 − 월급 전에 나갈 카드값 · 고정지출"}
+                </span>
+              </span>
+              <span style={{ ...num, color: ctx.cashCan < 0 ? tone(T, "danger").text : T.cream, fontSize: 18, fontWeight: 700, whiteSpace: "nowrap" }}>
+                {ctx.cashCan < 0 ? `${signed(ctx.cashCan)}` : `${fmtWon(ctx.cashCan)}까지`}
+              </span>
+            </div>
+          )}
 
           {bankKnown && (
             <div style={{ marginTop: 10 }}>
@@ -481,7 +500,7 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
             </Group>
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0 10px", borderTop: `1.5px solid ${T.border}` }}>
               <Badge kind={resultBad ? "danger" : "good"}><Equal size={15} strokeWidth={2.6} /></Badge>
-              <span style={{ flex: 1, color: T.cream, fontSize: 15, fontWeight: 800 }}>{resultBad ? "월급 들어와도 모자라는 돈" : "카드로 더 써도 되는 돈"}</span>
+              <span style={{ flex: 1, color: T.cream, fontSize: 15, fontWeight: 800 }}>{resultBad ? "월급 들어와도 모자라는 돈" : "이번 달 더 써도 되는 돈"}</span>
               <span style={{ ...num, color: resultBad ? T.danger : T.good, fontSize: 18, fontWeight: 700 }}>{fmtWon(top.value)}</span>
             </div>
           </>
