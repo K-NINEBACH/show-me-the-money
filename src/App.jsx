@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react"
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
 import { STORAGE_KEY, INBOX_KEY, SEEN_KEY, SEEN_DEAL_KEY, ALERT_LOG_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
-import { defaultData, migrate, autoProcessFixed, repairMisdatedAuto, findPayDeposit, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount, nextDayOfMonth, effectiveBill } from "./lib/data";
+import { defaultData, migrate, autoCategorize, autoProcessFixed, repairMisdatedAuto, findPayDeposit, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount, nextDayOfMonth, effectiveBill } from "./lib/data";
 import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup, inNativeApp, pushSummary } from "./lib/native";
 import { autoRecordPayments, isCancelText, dealKey, ledgerBalance, syncMoment } from "./lib/auto-record";
@@ -315,6 +315,7 @@ function AppInner() {
   }, []);
 
   const persist = useCallback(async (next) => {
+    next = autoCategorize(next);   // 정기결제·같은 가맹점은 카테고리를 알아서(2026-11-09, data.js)
     setData(next);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); }
     catch { showToast("저장에 실패했어요"); }

@@ -87,7 +87,40 @@ export function migrate(raw) {
   // Old backups may still carry pinLock/trash from a previous version of the app — drop them silently.
   delete d.pinLock;
   delete d.trash;
-  return d;
+  return autoCategorize(d);
+}
+
+/*
+  **카테고리를 알아서 붙인다**(2026-11-09, 사용자: "정기적으로 결제되는 애들은 자동으로 정기결제로 셋팅해 놔. 매번 들어가서
+  수정하기 힘들다"). 알림·명세서로 들어온 기록은 카테고리가 비어 있다(틀린 카테고리가 조용히 쌓이는 것보다 낫다고 비워 뒀다).
+    1) 정기결제 카드반영(isCardAdjustment, 적요 정기결제) → 정기결제 카테고리. 없으면 만든다.
+    2) 그 밖엔 **같은 적요(가맹점)를 예전에 무엇으로 정했는지** 따라간다 — 가장 최근에 정한 것.
+  한 기록에 한 번만 해 본다(catTried). 사람이 일부러 미분류로 되돌린 걸 다시 덮지 않기 위해서다.
+  바뀐 게 없으면 같은 객체를 돌려준다(저장할 때마다 부르므로). migrate와 App의 persist가 부른다.
+*/
+const memoKey = (m) => String(m || "").replace(/\s+/g, "").toLowerCase();
+export function autoCategorize(d) {
+  const exps = d.expenses || [];
+  if (!exps.some((e) => !e.catTried && !e.categoryId)) return d;
+  let cats = d.categories || [];
+  const has = (id) => cats.some((c) => c.id === id);
+  // 적요 → 가장 최근에 정한 카테고리
+  const learned = new Map();
+  [...exps].filter((e) => e.categoryId && has(e.categoryId) && e.memo)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    .forEach((e) => learned.set(memoKey(e.memo), e.categoryId));
+  let subId = cats.find((c) => /정기/.test(c.name))?.id || null;
+  const expenses = exps.map((e) => {
+    if (e.catTried || e.categoryId) return e;
+    const sub = e.isCardAdjustment || /정기결제/.test(e.memo || "");
+    if (sub && !subId) {
+      subId = "c" + Date.now();
+      cats = [...cats, { id: subId, name: "정기결제", color: PALETTE[cats.length % PALETTE.length] }];
+    }
+    const cat = sub ? subId : learned.get(memoKey(e.memo)) || null;
+    return { ...e, catTried: true, ...(cat ? { categoryId: cat } : {}) };
+  });
+  return { ...d, categories: cats, expenses };
 }
 
 export function autoProcessFixed(d) {

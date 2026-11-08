@@ -212,6 +212,22 @@ export function LedgerView({ ctx }) {
   const [rangeStart, setRangeStart] = useState(dateStrFor(monthKeyOffset(curKey, -2), 1));
   const [rangeEnd, setRangeEnd] = useState(todayISO());
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
+  /*
+    **미분류를 그 자리에서 정한다**(2026-11-09, 사용자: "미분류로 체크되어 있는 애들 기준으로 바로 카테고리 설정할 수 있게").
+    보기 → '미분류만'에서 줄 아래 단추를 누르면 끝. **같은 적요의 다른 미분류도 같이** 정한다 — 같은 가맹점을 여러 번 누를 일이 없게.
+    한 번 정해 두면 다음부터 같은 적요는 알아서 그 카테고리로 들어온다(data.js autoCategorize).
+  */
+  const setCat = (item, c) => {
+    const key = (m) => String(m || "").replace(/\s+/g, "").toLowerCase();
+    const k = key(item.memo);
+    let n = 0;
+    const expenses = data.expenses.map((e) => {
+      if (e.id === item.id || (k && !catMap[e.categoryId] && !e.isReceivable && key(e.memo) === k)) { n++; return { ...e, categoryId: c.id, catTried: true }; }
+      return e;
+    });
+    persist({ ...data, expenses });
+    showToast(n > 1 ? `같은 이름 ${n}건을 '${c.name}'(으)로 정했어요` : `'${c.name}'(으)로 정했어요`);
+  };
   const searchLower = search.trim().toLowerCase();
   const matchesSearch = (e) => {
     if (!searchLower) return true;
@@ -258,6 +274,9 @@ export function LedgerView({ ctx }) {
     categoryReceivables = scopedReceivables;
   } else if (category === "balance") {
     categoryBalance = scopedBalance;
+  } else if (category === "uncat") {
+    // 미분류만 — 지운 카테고리를 가리키는 것도 미분류다(2026-11-09, 줄마다 카테고리 단추)
+    categoryExpenses = scopedExpenses.filter((e) => !catMap[e.categoryId]);
   }
 
   const combined = useMemo(() => {
@@ -485,7 +504,7 @@ export function LedgerView({ ctx }) {
 
     next.expenses = data.expenses.map((e) =>
       e.id === exp.id
-        ? { ...e, amount: n, categoryId: editCategoryId || null, date: editDate, memo: editMemo.trim(), paymentMethod: editPaymentMethod, cardId: editPaymentMethod === "card" ? editCardId : null, linkedBalanceId: editPaymentMethod === "cash" ? newLinkedBalanceId : null }
+        ? { ...e, amount: n, categoryId: editCategoryId || null, catTried: true, date: editDate, memo: editMemo.trim(), paymentMethod: editPaymentMethod, cardId: editPaymentMethod === "card" ? editCardId : null, linkedBalanceId: editPaymentMethod === "cash" ? newLinkedBalanceId : null }
         : e
     );
     persist(next);
@@ -639,6 +658,7 @@ export function LedgerView({ ctx }) {
             <option value="card">카드</option>
             <option value="receivable">대리결제</option>
             <option value="balance">입출금</option>
+            <option value="uncat">미분류만</option>
           </select>
           <button onClick={() => { setSearchOpen(!searchOpen); if (searchOpen) setSearch(""); }}
             aria-label={searchOpen ? "검색 닫기" : "검색"} aria-expanded={searchOpen}
@@ -744,6 +764,16 @@ export function LedgerView({ ctx }) {
                   methodLabel={(item.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === (item.cardId || data.cards[0]?.id))?.name || "카드") : "현금"}
                   methodColor={(item.paymentMethod || "cash") === "card" ? T.gold : T.good}
                   onEdit={() => startEdit(item)} />
+                {category === "uncat" && !catMap[item.categoryId] && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "2px 0 12px 48px" }}>
+                    {data.categories.map((c) => (
+                      <button key={c.id} onClick={() => setCat(item, c)}
+                        style={{ minHeight: 34, padding: "0 12px", borderRadius: 999, border: `1px solid ${T.border}`, background: T.bg2, color: T.cream, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {editingId === item.id && renderEditForm(item)}
               </div>
             );
