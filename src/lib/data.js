@@ -99,25 +99,39 @@ export function migrate(raw) {
   바뀐 게 없으면 같은 객체를 돌려준다(저장할 때마다 부르므로). migrate와 App의 persist가 부른다.
 */
 const memoKey = (m) => String(m || "").replace(/\s+/g, "").toLowerCase();
+/*
+  **구글 결제는 이름만으로 못 가른다**(2026-11-09, 사용자: "구글 페이먼트코리아는 휴대폰에서 구글 쪽 결제한 건 대부분 이렇게 뜬다.
+  9,900원은 유튜브, 30,000원은 클로드 정기결제. 이 두 개는 이름+금액으로 정기결제로 묶어 놔. 나머지는 이름이 같아도 금액이 다르면 미분류로").
+  → 구글 결제는 **이름 + 금액**이 같아야 따라가고, 아래 두 금액은 늘 정기결제(사람이 바꿔도 되돌린다 — '고정'으로 묶어 달라고 했다).
+*/
+const isGoogle = (m) => /구글페이먼트|googlepayment/.test(memoKey(m));
+const GOOGLE_SUBS = { 9900: "유튜브", 30000: "클로드" };
+const googleSub = (e) => isGoogle(e.memo) && GOOGLE_SUBS[Number(e.amount)] != null;
+const learnKey = (e) => (isGoogle(e.memo) ? `${memoKey(e.memo)}|${Number(e.amount)}` : memoKey(e.memo));
 export function autoCategorize(d) {
   const exps = d.expenses || [];
-  if (!exps.some((e) => !e.catTried && !e.categoryId)) return d;
   let cats = d.categories || [];
+  let subId = cats.find((c) => /정기/.test(c.name))?.id || null;
+  const needs = (e) => (!e.catTried && !e.categoryId) || (googleSub(e) && (!subId || e.categoryId !== subId));
+  if (!exps.some(needs)) return d;
   const has = (id) => cats.some((c) => c.id === id);
-  // 적요 → 가장 최근에 정한 카테고리
+  // 적요(구글은 적요+금액) → 가장 최근에 정한 카테고리
   const learned = new Map();
   [...exps].filter((e) => e.categoryId && has(e.categoryId) && e.memo)
     .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-    .forEach((e) => learned.set(memoKey(e.memo), e.categoryId));
-  let subId = cats.find((c) => /정기/.test(c.name))?.id || null;
-  const expenses = exps.map((e) => {
-    if (e.catTried || e.categoryId) return e;
-    const sub = e.isCardAdjustment || /정기결제/.test(e.memo || "");
-    if (sub && !subId) {
+    .forEach((e) => learned.set(learnKey(e), e.categoryId));
+  const subCat = () => {
+    if (!subId) {
       subId = "c" + Date.now();
       cats = [...cats, { id: subId, name: "정기결제", color: PALETTE[cats.length % PALETTE.length] }];
     }
-    const cat = sub ? subId : learned.get(memoKey(e.memo)) || null;
+    return subId;
+  };
+  const expenses = exps.map((e) => {
+    if (googleSub(e)) return e.categoryId === subCat() ? e : { ...e, categoryId: subId, catTried: true };
+    if (e.catTried || e.categoryId) return e;
+    const sub = e.isCardAdjustment || /정기결제/.test(e.memo || "");
+    const cat = sub ? subCat() : learned.get(learnKey(e)) || null;
     return { ...e, catTried: true, ...(cat ? { categoryId: cat } : {}) };
   });
   return { ...d, categories: cats, expenses };
