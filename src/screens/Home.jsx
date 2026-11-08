@@ -325,10 +325,8 @@ function Hero({ T, ctx, top, hasPay, bankKnown, daysLeft }) {
                   {ctx.cashByAccount.map((a) => (
                     <div key={a.id} style={{ background: T.bg, borderRadius: 14, padding: "11px 12px", minWidth: 0 }}>
                       <div style={{ color: T.muted, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
-                      <div style={{ ...num, color: a.left < 0 ? bad.text : T.cream, fontSize: 17, fontWeight: 700, marginTop: 3 }}>{bare(a.left)}</div>
-                      <div style={{ ...num, color: T.muted, fontSize: 11, marginTop: 3 }}>
-                        {bare(a.balance)}{a.fixedOut + a.cardOut > 0 ? ` − ${bare(a.fixedOut + a.cardOut)}` : ""}
-                      </div>
+                      {/* 근거(잔액 − 나갈 돈)는 뺐다(2026-11-08, 사용자: "각 은행별로 얼마씩 현금으로 써도 되는지만, 근거는 없어도 돼") */}
+                      <div style={{ ...num, color: a.left < 0 ? bad.text : T.cream, fontSize: 18, fontWeight: 700, marginTop: 3 }}>{signed(a.left)}</div>
                     </div>
                   ))}
                 </div>
@@ -357,180 +355,45 @@ function Hero({ T, ctx, top, hasPay, bankKnown, daysLeft }) {
 }
 
 /*
-  **한눈에 목록** — 누르지 않아도 늘 보인다. 줄 순서와 부호가 곧 위 큰 숫자의 식이다:
-    통장 − 안 낸 카드값 − 이번 달 남은 고정지출 (= 지금 통장으로 다 내면)
-    + 다음 달 월급 − 다음 달 고정지출 = 이번 달 더 써도 되는 돈
+  **한눈에 목록** — 줄 순서와 부호가 곧 위 큰 숫자의 식이다:
+    통장 + 다음 달 월급 − 안 낸 카드값 − 이번 달 남은 고정지출 − 다음 달 고정지출 = 이번 달 더 써도 되는 돈
 
-  2026-11-08 새 모양(시안 P5): 상자·동그란 부호 표시를 걷어 내고 흰 바탕 위 **줄과 선**만. 큰 줄은 '+ / −'를
-  글자 앞에 붙이고, 빼는 금액은 빨강. 하위 줄은 들여 쓴 흐린 작은 글자. '지금 통장으로 다 내면'(bankLeft)은
-  따로 상자로 두지 않고 식 중간의 소계 줄로 — 위 세 줄을 더하면 그 숫자, 거기에 아래 두 줄을 더하면 맨 아래 결과.
-  (그 전 판의 교훈 — 이름을 쉼표로 줄줄이 잇지 말 것, 한 항목 한 줄, 큰 것 몇 개 + '그 밖에 N건'.)
+  2026-11-08 사용자: "밑에 잡다한 것들 사진처럼 단순화하는 게 아니었어? 지금 너무 복잡해." → **큰 줄 여섯 개만.**
+  통장별·카드별·고정지출 이름·결제일·맞춘 시각 같은 하위 줄은 다 뺐다. 그건 아래 버튼(입출금·맞추기 / 카드 결제 /
+  고정지출)을 누르면 나오는 칸에 있고, 카드 앱과 맞출 때가 되면 위의 SyncNudge가 따로 알린다.
+  '지금 통장으로 다 내면'(bankLeft) 소계 줄도 뺐다(같은 날, 시안 그대로).
+  큰 줄끼리 더하면 맨 아래 결과가 나와야 한다(2026-10-21) — 통장 줄은 곧 들어올 이번 달 몫까지, 월급 줄은 매달 들어오는 돈까지.
 */
-function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBill, unpaidFixed, unpaidFixedSum, pending }) {
+function AssetList({ T, ctx, top, hasPay, balance, cardBill, unpaidFixedSum, pending }) {
   const num = { fontFamily: F.mono, fontVariantNumeric: "tabular-nums" };
   const red = tone(T, "danger").text;
-  const Head = ({ sign, label, amount, tag, color }) => (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "2px 0" }}>
-      <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {sign && <span aria-hidden="true" style={{ color: sign === "−" ? red : T.muted, marginInlineEnd: 6 }}>{sign}</span>}
-        {label}
-        {tag && <span style={{ marginInlineStart: 6, fontSize: 11.5, color: T.muted, fontWeight: 500 }}>{tag}</span>}
+  const line = `1px solid ${T.paperLine || T.border}`;
+  const Row = ({ sign, label, amount, last }) => (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "13px 2px", borderBottom: last ? "none" : line }}>
+      <span style={{ flex: 1, minWidth: 0, color: T.muted, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {sign ? `${sign} ` : ""}{label}
       </span>
-      <span style={{ ...num, flexShrink: 0, color: color || (sign === "−" ? red : T.cream), fontSize: 15.5, fontWeight: 700 }}>{fmtWon(amount)}</span>
+      <span style={{ ...num, flexShrink: 0, color: sign === "−" ? red : T.cream, fontSize: 15.5 }}>{fmtWon(amount).replace(/원$/, "")}</span>
     </div>
   );
-  const Sub = ({ label, amount, tag, dim }) => (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "2px 0 2px 16px" }}>
-      <span style={{ flex: 1, minWidth: 0, color: dim || T.muted, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {label}{tag && <span style={{ marginInlineStart: 6, fontSize: 11.5, color: T.muted }}>{tag}</span>}
-      </span>
-      <span style={{ ...num, flexShrink: 0, color: dim || T.muted, fontSize: 13, fontWeight: 500 }}>{fmtWon(amount)}</span>
-    </div>
-  );
-  const Note = ({ children, color }) => (
-    <div style={{ color: color || T.muted, fontSize: 11.5, padding: "0 0 2px 16px", lineHeight: 1.5 }}>{children}</div>
-  );
-  const Group = ({ children }) => (
-    <div style={{ padding: "12px 2px", borderBottom: `1px solid ${T.paperLine || T.border}` }}>{children}</div>
-  );
-  const Total = ({ label, amount, big }) => (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: big ? "14px 2px 6px" : "12px 2px", borderBottom: big ? "none" : `1px solid ${T.paperLine || T.border}` }}>
-      <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: big ? 16 : 14.5, fontWeight: 800 }}>
-        <span aria-hidden="true" style={{ color: T.muted, marginInlineEnd: 6 }}>=</span>{label}
-      </span>
-      <span style={{ ...num, color: amount < 0 ? red : big ? tone(T, "good").text : T.cream, fontSize: big ? 18 : 15.5, fontWeight: 700 }}>{fmtWon(amount)}</span>
-    </div>
-  );
-
-  /*
-    고정지출 날짜 — 자동이체일(autoPayDay)이 있으면 그날, 없으면 **지난달에 며칠에 나갔는지**로 짐작.
-    자동이체일이 적힌 건 그날 앱이 알아서 처리해 여기 안 남으므로, 남는 건 대개 날짜를 모르는 것들이다.
-  */
-  const todayDay = new Date().getDate();
-  const dayOf = (f) => {
-    if (f.autoPayDay) return { day: f.autoPayDay, guess: false };
-    const id = f.paidMonths?.[ctx.prevKey];
-    if (!id) return null;
-    const e = (ctx.data.balanceEntries || []).find((b) => b.id === id) || (ctx.data.expenses || []).find((x) => x.id === id);
-    const d = e?.date ? Number(String(e.date).slice(8, 10)) : 0;
-    return d ? { day: d, guess: true } : null;
-  };
-  const days = new Map(unpaidFixed.map((f) => [f.id, dayOf(f)]));
-  const overdue = unpaidFixed.filter((f) => (days.get(f.id)?.day || 99) < todayDay);
-  // 날짜가 지난 것을 먼저, 그다음 큰 것부터 넷 — 홈은 한 화면에 들어와야 한다
-  const unpaidSorted = [...unpaidFixed].sort((a, b) => {
-    const la = (days.get(a.id)?.day || 99) < todayDay ? 0 : 1;
-    const lb = (days.get(b.id)?.day || 99) < todayDay ? 0 : 1;
-    return la - lb || Number(b.info.amount) - Number(a.info.amount);
-  });
-  const unpaidTop = unpaidSorted.slice(0, 4);
-  const unpaidRest = unpaidSorted.slice(4);
-  // 다음 달 고정지출 — 미리 냈거나 건너뛴 것은 빼고 큰 것부터(ctx.nextFixedCash/Card와 같은 기준)
-  const nextAll = (ctx.data.fixedExpenses || [])
-    .filter((f) => !(f.paidMonths && f.paidMonths[ctx.nextKey]) && !(f.skipMonths && f.skipMonths[ctx.nextKey]))
-    .map((f) => ({ id: f.id, name: f.name, amount: Number(fixedInfo(f, ctx.nextKey).amount), active: fixedInfo(f, ctx.nextKey).active }))
-    .filter((f) => f.active && f.amount > 0)
-    .sort((a, b) => b.amount - a.amount);
-  const nextTop = nextAll.slice(0, 3);
-  const nextRest = nextAll.slice(3);
-  const receivable = (ctx.receivables || []).reduce((a, r) => a + Number(r.amount || 0), 0);
-  const resultBad = top.value < 0;
-  // 통장 줄에 함께 더하는 '곧 들어올 돈' — ctx.bankLeft·widgetEq.bank와 같은 기준
   const bankExtra = Number(pending || 0) + Number(ctx.incomePendingSum || 0);
+  const income = (hasPay ? top.pay : 0) + Number(ctx.incomeNextSum || 0);
+  const resultBad = top.value < 0;
 
   return (
-    <>
-      <h2 style={{ margin: "26px 2px 2px", color: T.muted, fontSize: 13, fontWeight: 600 }}>한눈에 — 위 숫자가 나온 식</h2>
-      <section aria-label="한눈에">
-        {/*
-          **큰 줄(Head)끼리 더하면 맨 아래 결과가 나와야 한다**(2026-10-21, 사용자: "금액이 좀 안 맞는 느낌").
-          통장 줄은 '아직 안 들어온 이번 달 몫'·'매달 들어오는 돈'까지 합친다(위젯 widgetEq와 같은 기준).
-        */}
-        <Group>
-          <Head label={bankExtra > 0 ? "통장 + 곧 들어올 돈" : "통장"} amount={balance + bankExtra} />
-          {(accounts.length > 1 || (bankExtra > 0 && accounts.length === 1)) && accounts.map((a) => (
-            <Sub key={a.id} label={a.name} amount={a.balance} tag={a.bankSync ? `${agoAt(a.bankSync.at)} 맞춤` : null} />
-          ))}
-          {pending > 0 && <Sub label={`아직 안 들어온 ${top.curMonth} 월급`} amount={pending} />}
-          {/* 월급 말고 매달 들어오는 돈(예: 가족이 넣어 주는 돈) — 이번 달 몫이 아직이면 곧 들어올 돈으로 더한다 */}
-          {(ctx.incomePending || []).map((i) => <Sub key={i.id} label={`아직 안 들어온 ${i.name}`} amount={Number(i.amount)} />)}
-        </Group>
-
-        <Group>
-          <Head sign="−" label="안 낸 카드값" amount={cardBill} />
-          {cardTotals.map((c) => {
-            /*
-              언제 나가는지, 언제 맞춘 숫자인지(2026-09-17). 카드값은 결제 확인·명세서·맞추기가 같은 한 칸을
-              덮어써서 어긋나도 조용하다 — 통장의 '2시간 전 맞춤'처럼 기준 시각을 적고, 오래되면 색을 바꾼다.
-            */
-            const due = nextDayOfMonth(c.payDay);
-            const old7 = c.syncedAtMs && Date.now() - c.syncedAtMs > 7 * 86400000;
-            return (
-              <div key={c.id}>
-                <Sub label={c.name} amount={c.total}
-                  tag={c.earlyPay && c.installPaid?.[ctx.curKey] ? "이번 달 할부 미리 냄" : c.fixedPortion > 0 ? `할부 ${fmtWon(c.fixedPortion)} 포함` : null} />
-                {(due || c.syncedAtMs) && (
-                  <Note>
-                    {due && <span style={{ color: due.days <= 3 ? T.warn : T.muted }}>{due.label} 결제{c.dueLater > 0 ? ` ${fmtWon(c.dueNow)}` : ""} · {due.days === 0 ? "오늘" : `${due.days}일 뒤`}</span>}
-                    {due && c.syncedAtMs && " · "}
-                    {c.syncedAtMs && <span style={{ color: old7 ? T.warn : T.muted }}>카드 앱과 {agoAt(c.syncedAtMs)} 맞춤</span>}
-                  </Note>
-                )}
-                {/* 카드값 칸이 이번 달 기록 합보다 적었다 — 어딘가 샜다는 뜻이라 숨기지 않고 적는다(App.jsx cardTotals.billGap) */}
-                {c.billGap > 0 && <Note color={T.warn}>카드값이 이번 달 기록보다 {fmtWon(c.billGap)} 적어서 기록 기준으로 셌어요 — 카드 앱과 맞추면 사라져요</Note>}
-                {c.dueLater > 0 && due && <Note>그다음 결제 {fmtWon(c.dueLater)} — 이번 달에 쓴 것·새 할부 첫 회차</Note>}
-              </div>
-            );
-          })}
-          {/* 대리결제로 돌려받을 돈 — 카드값엔 들어 있지만 내 돈이 아니다. 식은 안 흔들고 설명 한 줄로 */}
-          {receivable > 0 && <Note>이 중 정산받을 돈 {fmtWon(receivable)} — 돌려받으면 통장으로 들어와요</Note>}
-        </Group>
-
-        <Group>
-          <Head sign="−" label={`${top.curMonth} 남은 고정지출`} amount={unpaidFixedSum} />
-          {unpaidTop.map((f) => {
-            const d = days.get(f.id);
-            const late = d && d.day < todayDay;
-            return <Sub key={f.id} label={`${f.name}${d ? ` · ${d.guess ? "지난달 " : ""}${d.day}일` : ""}`} amount={f.info.amount} dim={late ? T.warn : null} />;
-          })}
-          {unpaidRest.length > 0 && <Sub label={`그 밖에 ${unpaidRest.length}건`} amount={unpaidRest.reduce((a, f) => a + Number(f.info.amount), 0)} />}
-          {overdue.length > 0 && <Note color={T.warn}>날짜가 지난 것 {overdue.length}건 — 냈으면 아래 '고정지출 처리'에서 눌러 주세요</Note>}
-        </Group>
-
-        {/* 지금 통장 기준(2026-09-13 사용자 제안 "통장-(이번달 카드값+고정지출)=잔여금액") — 위 세 줄의 소계 */}
-        <Total label="지금 통장으로 다 내면" amount={ctx.bankLeft} />
-
-        {(hasPay || (ctx.incomes || []).length > 0) && (
-          <Group>
-            {hasPay && (ctx.incomes || []).length > 0 ? (
-              <>
-                <Head sign="+" label={`${top.month} 들어올 돈`} amount={top.pay + (ctx.incomeNextSum || 0)} />
-                <Sub label={`${top.month} 월급`} tag={top.tag} amount={top.pay} />
-                {ctx.incomes.map((i) => <Sub key={i.id} label={i.name} amount={Number(i.amount)} tag="매달" />)}
-              </>
-            ) : hasPay
-              ? <Head sign="+" label={`${top.month} 월급`} tag={top.tag} amount={top.pay} />
-              : <Head sign="+" label={`${top.month} 고정 수입`} amount={ctx.incomeNextSum || 0} />}
-          </Group>
-        )}
-
-        {hasPay && (
-          <>
-            <Group>
-              <Head sign="−" label={`${top.month} 고정지출`} amount={top.fixedCash + top.fixedCard} />
-              {/*
-                다음 달 것도 무엇이 들었는지(2026-09-21) — 300만 원이 덩어리로만 뜨면 왜 큰지 모른다.
-                큰 것 셋 + 그 밖에. 미리 냈거나 건너뛴 것은 금액에서 이미 빠졌으니 여기서도 뺀다.
-              */}
-              {nextTop.map((f) => <Sub key={f.id} label={f.name} amount={f.amount} />)}
-              {nextRest.length > 0 && <Sub label={`그 밖에 ${nextRest.length}건`} amount={nextRest.reduce((a, f) => a + f.amount, 0)} />}
-              <Note>통장 {fmtWon(top.fixedCash)} · 카드 할부·정기결제 {fmtWon(top.fixedCard)}</Note>
-            </Group>
-            <Total big label={resultBad ? "월급 들어와도 모자라는 돈" : "이번 달 더 써도 되는 돈"} amount={top.value} />
-          </>
-        )}
-      </section>
-    </>
+    <section aria-label="한눈에" style={{ marginTop: 18 }}>
+      <Row label={bankExtra > 0 ? "통장 잔액 + 곧 들어올 돈" : "통장 잔액"} amount={balance + bankExtra} />
+      {(hasPay || income > 0) && <Row sign="+" label={hasPay ? `${top.month} 월급${ctx.incomeNextSum ? " · 들어올 돈" : ""}` : `${top.month} 들어올 돈`} amount={income} />}
+      <Row sign="−" label="안 낸 카드값" amount={cardBill} />
+      <Row sign="−" label="이번 달 남은 고정지출" amount={unpaidFixedSum} />
+      {hasPay && <Row sign="−" label={`${top.month} 고정지출`} amount={top.fixedCash + top.fixedCard} />}
+      {hasPay && (
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "14px 2px 4px" }}>
+          <span style={{ flex: 1, color: T.cream, fontSize: 16, fontWeight: 800 }}>= {resultBad ? "모자라는 돈" : "더 써도 되는 돈"}</span>
+          <span style={{ ...num, color: resultBad ? red : T.cream, fontSize: 17, fontWeight: 700 }}>{fmtWon(top.value).replace(/원$/, "")}</span>
+        </div>
+      )}
+    </section>
   );
 }
 
