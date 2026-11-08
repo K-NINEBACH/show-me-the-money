@@ -507,9 +507,21 @@ export function LedgerView({ ctx }) {
         ? { ...e, amount: n, categoryId: editCategoryId || null, catTried: true, date: editDate, memo: editMemo.trim(), paymentMethod: editPaymentMethod, cardId: editPaymentMethod === "card" ? editCardId : null, linkedBalanceId: editPaymentMethod === "cash" ? newLinkedBalanceId : null }
         : e
     );
+    // 고치기에서 카테고리를 정해도 같은 이름의 다른 미분류를 같이 정한다(2026-11-09, 사용자: "한 번이라도 카테고리에 넣어 둔 게 있으면
+    // 같은 이름으로 결제된 건 자동으로 같은 카테고리에"). 앞으로 들어올 것은 data.js autoCategorize가 같은 기준으로 따라간다.
+    const sameKey = (m) => String(m || "").replace(/\s+/g, "").toLowerCase();
+    const k = sameKey(editMemo);
+    let also = 0;
+    if (editCategoryId && catMap[editCategoryId] && k) {
+      next.expenses = next.expenses.map((e) => {
+        if (e.id === exp.id || e.isReceivable || catMap[e.categoryId] || sameKey(e.memo) !== k) return e;
+        also++;
+        return { ...e, categoryId: editCategoryId, catTried: true };
+      });
+    }
     persist(next);
     setEditingId(null);
-    showToast("수정했어요 · 카드값/통장에 바로 반영됐어요");
+    showToast(also ? `수정했어요 · 같은 이름 미분류 ${also}건도 '${catMap[editCategoryId].name}'(으)로` : "수정했어요 · 카드값/통장에 바로 반영됐어요");
   };
 
   // 자동이체/출금처리로 생긴 balanceEntry는 linkedFixedId·linkedFixedMonth로 원래
