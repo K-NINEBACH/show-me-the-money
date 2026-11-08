@@ -38,16 +38,21 @@ export const THEMES = {
     채움(*Fill)에만 쓰고, 글자에는 대비(4.5:1)가 되는 진한 값을 쓴다 — 시안 그대로(#FFB02E 등)
     글자에 쓰면 흰 바탕에서 거의 안 읽힌다.
   */
+  /*
+    2026-11-08: 흰 바탕 + 베이지 상자로 바꿨다(사용자가 시안 P5 — "2번째 거가 그나마 낫네"). 글자는 검정 대신
+    짙은 갈색, 초록·빨강은 베이지 위에서 튀지 않게 톤을 낮춘 값. 상자(bg2)가 베이지라 상자 안 칸은 흰색(bg)이다.
+    대비: muted #6E655A는 베이지 위 5.2:1, danger #B83F37는 흰 위 5.3:1.
+  */
   white: {
-    id: "white", label: "흰색", swatch: "#6FAF2E", mode: "light",
-    bg: "#F6F8F3", bg2: "#FFFFFF", navBg: "rgba(255,255,255,0.97)",
-    paper: "#FFFFFF", paperLine: "#EEF0EA", ink: "#1B2614", cream: "#1B2614",
-    gold: "#4D8A1C", goldSoft: "#3D6E16", good: "#3F7A17", warn: "#B25E00",
-    danger: "#D2381C", muted: "#66756A", border: "#E5E7EB",
-    onGold: "#FFFFFF", field: "#A3AEA3", inkMuted: "#66756A",
-    goodFill: "#6FAF2E", warnFill: "#FFB02E", dangerFill: "#FF5A3C",
-    goodTint: "#EEF7E3", warnTint: "#FFF4E3", dangerTint: "#FFECE8",
-    shadow: "0 1px 2px rgba(27,38,20,0.04), 0 4px 16px rgba(27,38,20,0.05)",
+    id: "white", label: "흰색", swatch: "#E9DFCB", mode: "light",
+    bg: "#FFFFFF", bg2: "#F6F1E7", navBg: "rgba(255,255,255,0.97)",
+    paper: "#F6F1E7", paperLine: "#EAE1D0", ink: "#2B2620", cream: "#2B2620",
+    gold: "#2E7D52", goldSoft: "#246643", good: "#2E7D52", warn: "#A35A00",
+    danger: "#B83F37", muted: "#6E655A", border: "#ECE4D5",
+    onGold: "#FFFFFF", field: "#9A8F80", inkMuted: "#6E655A",
+    goodFill: "#2E7D52", warnFill: "#E0962B", dangerFill: "#D0564C",
+    goodTint: "#E8F1E3", warnTint: "#FAEFDC", dangerTint: "#FAE8E4",
+    shadow: "none",
   },
   teal: {
     id: "teal", label: "청록", swatch: "#2E7D6E", mode: "light",

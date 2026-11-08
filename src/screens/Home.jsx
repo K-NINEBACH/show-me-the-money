@@ -90,7 +90,7 @@ export function HomeView({ ctx }) {
   // 새 디자인(2026-09-26): 가장 자주 쓰는 '입출금·맞추기'만 채운 초록, 나머지는 흰 테두리 버튼
   const actBtn = (on, primary) => ({
     flex: 1, minWidth: 0, minHeight: 46, padding: "6px 4px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
-    border: primary ? "none" : `1px solid ${on ? T.gold : T.border}`,
+    border: primary ? "none" : `1px solid ${on ? T.gold : T.mode === "dark" ? T.border : "transparent"}`,
     background: primary ? T.gold : on ? tone(T, "good").tint : T.bg2,
     color: primary ? T.onGold : T.cream, fontSize: 13.5, fontWeight: 700, boxShadow: T.shadow || "none",
   });
@@ -98,13 +98,13 @@ export function HomeView({ ctx }) {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
-        <h1 style={{ margin: 0, color: T.cream, fontFamily: F.display, fontSize: 18, fontWeight: 800, letterSpacing: -0.3 }}>
+        <h1 style={{ margin: 0, color: T.muted, fontFamily: F.display, fontSize: 14, fontWeight: 600 }}>
           {monthLabel(curKey)} · {dayIntoCycle}일차
         </h1>
         {/* '오늘'은 아래 막대로 옮겼다(2026-09-21) — 같은 숫자가 두 군데 있으면 눈이 어디를 봐야 할지 모른다 */}
         <div style={{ textAlign: "right", lineHeight: 1.3 }}>
           <div style={{ color: T.muted, fontSize: 11.5 }}>이번 달 쓴 돈</div>
-          <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtWon(ctx.totalSpentThisMonth)}</div>
+          <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 14, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtWon(ctx.totalSpentThisMonth)}</div>
           {ctx.fixedPaidSum > 0 && <div style={{ color: T.muted, fontSize: 10.5 }}>기록 {fmtWon(ctx.recordedSpent)} + 나간 고정 {fmtWon(ctx.fixedPaidSum)}</div>}
         </div>
       </div>
@@ -116,7 +116,7 @@ export function HomeView({ ctx }) {
       <AssetList T={T} ctx={ctx} top={top} hasPay={hasPay} accounts={ctx.accountTotals || []} cardTotals={cardTotals}
         balance={accountBalance} cardBill={cardBillTotal} unpaidFixed={unpaidFixed} unpaidFixedSum={unpaidFixedSum} pending={ctx.payPending} />
 
-      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
         <button onClick={() => openPanel("bank")} aria-expanded={panel === "bank"} aria-controls="home-panel" style={actBtn(panel === "bank", true)}>입출금·맞추기</button>
         <button onClick={() => openPanel("card")} aria-expanded={panel === "card"} aria-controls="home-panel" style={actBtn(panel === "card")}>카드 결제·명세서</button>
         <button onClick={() => openPanel("fixed")} aria-expanded={panel === "fixed"} aria-controls="home-panel" style={actBtn(panel === "fixed")}>
@@ -214,11 +214,12 @@ const cardTitle = (T) => ({ color: T.goldSoft, fontSize: 13.5, fontWeight: 700, 
     ① 제목 + 하루 몫(오른쪽 작게) ② 아주 큰 숫자 ③ 오늘 쓴 돈 / 하루 몫 + 막대
     ④ 상태 한 줄(아이콘 동그라미) ⑤ 선 아래 비교 두 칸(월급만으로 · 지금 통장으로 다 내면)
 */
-function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
+function Hero({ T, ctx, top, hasPay, bankKnown, daysLeft }) {
   const v = top.value;
   const short = hasPay && v < 0;
   const perDay = ctx.perDay;
   const signed = (n) => `${n < 0 ? "-" : ""}${fmtWon(Math.abs(n))}`;
+  const bare = (n) => signed(n).replace(/원$/, "");
   /*
     하루 몫이 빠듯한지 — 남의 평균이 아니라 **내가 이번 달 실제로 쓴 하루 평균**과 견준다.
     그보다 한참(60% 아래) 적으면 지금 속도로는 못 버틴다. 3일 전엔 평균이 안 믿을 만해서 안 본다.
@@ -233,181 +234,172 @@ function Hero({ T, ctx, top, hasPay, bankKnown, left, daysLeft }) {
 
   const state = short ? "danger" : tight || !bankKnown ? "warn" : "good";
   const t = tone(T, state);
-  const bar = over || perDay === 0 ? tone(T, "danger") : t;
+  const good = tone(T, "good");
+  const bad = tone(T, "danger");
+  const bar = over || perDay === 0 ? bad : good;
   const num = { fontFamily: F.mono, fontVariantNumeric: "tabular-nums" };
 
+  /*
+    2026-11-08 새 모양(사용자가 고른 시안 P5 — "정보가 너무 많다", "밋밋하다"): 맨 위는 상자 없이 큰 숫자 하나,
+    하루 몫 알약, 오늘 막대. 상태 문구는 **문제가 있을 때만** 한 줄(여유 있을 땐 초록 숫자가 이미 말해 준다).
+    '지금 통장으로 다 내면'은 아래 '한눈에' 식 중간의 소계 줄로 옮겼다 — 같은 식의 중간값이라서.
+  */
   const status = !bankKnown
     ? { head: "통장 잔액을 먼저 맞춰 주세요", sub: "아래 '입출금·맞추기'에서 은행 잔액을 넣으면 숫자가 맞아요" }
     : short
       ? { head: "이번 달은 월급으로도 모자라요", sub: `${top.month} 월급이 들어와도 카드값·고정지출을 다 못 내요` }
       : tight
         ? { head: "이번 달은 빠듯해요", sub: `지금까지 하루 평균 ${fmtWon(avgDay)} 썼어요` }
-        : avgDay > 0
-          ? { head: "이번 달은 여유 있어요!", sub: `지금까지 하루 평균 ${fmtWon(avgDay)} 썼어요` }
-          : null;
+        : null;
+  const showCashDetail = ctx.cashByAccount.length > 1 || ctx.cashCardUnknown.length > 0 || ctx.cashIncoming > 0;
 
   return (
-    <section aria-label="이번 달 더 써도 되는 돈"
-      style={{ ...card(T), borderColor: `${t.fill}40`, borderRadius: 22, padding: "16px 18px 16px", background: `linear-gradient(165deg, ${t.tint} 0%, ${T.bg2} 72%)` }}>
+    <section aria-label={short ? "월급 들어와도 모자라는 돈" : "이번 달 더 써도 되는 돈"} style={{ padding: "4px 2px 0" }}>
       {!hasPay ? (
         <div style={{ color: T.warn, fontSize: 15, fontWeight: 700, padding: "6px 0" }}>설정에서 월급(실수령)을 적어 주세요</div>
       ) : (
         <>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-            <span style={{ color: short ? t.text : T.cream, fontSize: 14.5, fontWeight: 700 }}>
-              {short ? "월급 들어와도 모자라는 돈" : "이번 달 더 써도 되는 돈"}
-              {!short && <span style={{ display: "block", color: T.muted, fontSize: 11.5, fontWeight: 500, marginTop: 1 }}>카드 · 현금 합쳐서</span>}
-            </span>
-            {!short && bankKnown && (
-              <span style={{ color: T.muted, fontSize: 12, textAlign: "right", lineHeight: 1.4 }}>
-                하루 <b style={{ ...num, color: T.cream }}>{fmtWon(perDay)}</b><br />· 말일까지 {daysLeft}일
-              </span>
-            )}
+          <div style={{ color: short ? t.text : T.muted, fontSize: 15, fontWeight: 500 }}>
+            {short ? "월급 들어와도 모자라는 돈" : "이번 달 더 써도 되는 돈"}
           </div>
-          <div style={{ ...num, color: short ? t.text : T.cream, fontSize: 44, fontWeight: 700, letterSpacing: -1.5, lineHeight: 1.15, marginTop: 4 }}>
-            {signed(v).replace(/원$/, "")}<span style={{ fontSize: 22, fontWeight: 700, marginLeft: 2, fontFamily: F.body }}>원</span>
+          <div style={{ ...num, color: short ? t.text : T.cream, fontSize: 46, fontWeight: 700, letterSpacing: -1.6, lineHeight: 1.15, marginTop: 2 }}>
+            {bare(v)}<span style={{ fontSize: 22, fontWeight: 600, marginLeft: 4, color: short ? t.text : T.muted, fontFamily: F.body }}>원</span>
           </div>
-
-          {/*
-            그중 현금·계좌이체로는(2026-11-07, 사용자: "지금 써도 되는 금액은 카드+현금 금액이라서 헷갈리더라고").
-            카드는 다음 달 월급이 내지만 현금·이체는 지금 통장에서 나가므로, 월급 전에 통장에서 나갈 돈을 빼고 본다(App.jsx cashCan).
-          */}
-          {!short && bankKnown && (
-            <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 12, background: T.bg2, border: `1px solid ${T.border}` }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: "block", color: T.cream, fontSize: 13.5, fontWeight: 700 }}>그중 현금 · 계좌이체로는</span>
-                <span style={{ display: "block", color: T.muted, fontSize: 11.5, marginTop: 1 }}>
-                  {ctx.cashCan < ctx.cashNow ? "전체 남은 돈까지만" : "통장 − 월급 전에 나갈 카드값 · 고정지출"}
+          {!short && (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 8, color: T.muted, fontSize: 13.5 }}>
+              {bankKnown && (
+                <span style={{ background: good.tint, color: good.text, borderRadius: 99, padding: "4px 10px", fontWeight: 700, fontSize: 13 }}>
+                  하루 <span style={num}>{fmtWon(perDay)}</span>
                 </span>
-              </span>
-              <span style={{ ...num, color: ctx.cashCan < 0 ? tone(T, "danger").text : T.cream, fontSize: 18, fontWeight: 700, whiteSpace: "nowrap" }}>
-                {ctx.cashCan < 0 ? `${signed(ctx.cashCan)}` : `${fmtWon(ctx.cashCan)}까지`}
-              </span>
-              </div>
-              {/*
-                통장별(2026-11-07, 사용자: "기업은행 잔여금액 포함인가?" → "통장별로 나눠서 보이게"). 합친 숫자만 있으면 한 통장에서
-                다 쓸 수 있는 줄 안다. 통장마다 이름 왼쪽 · 금액 오른쪽, 그 아래 흐린 글자로 잔액 − 나갈 돈.
-              */}
-              {(ctx.cashByAccount.length > 1 || ctx.cashCardUnknown.length > 0 || ctx.cashIncoming > 0) && (
-                <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 6 }}>
-                  {ctx.cashByAccount.map((a) => (
-                    <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                      <span style={{ minWidth: 0 }}>
-                        <span style={{ display: "block", color: T.cream, fontSize: 13, fontWeight: 600 }}>{a.name}</span>
-                        <span style={{ display: "block", color: T.muted, fontSize: 11, marginTop: 1 }}>
-                          잔액 {fmtWon(a.balance)}{a.fixedOut + a.cardOut > 0 ? ` − 나갈 돈 ${fmtWon(a.fixedOut + a.cardOut)}` : ""}
-                        </span>
-                      </span>
-                      <span style={{ ...num, color: a.left < 0 ? tone(T, "danger").text : T.cream, fontSize: 15, fontWeight: 700, whiteSpace: "nowrap" }}>{signed(a.left)}</span>
-                    </div>
-                  ))}
-                  {ctx.cashCardUnknown.map((c) => (
-                    <div key={c.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                      <span style={{ minWidth: 0 }}>
-                        <span style={{ display: "block", color: tone(T, "warn").text, fontSize: 13, fontWeight: 600 }}>{c.name}</span>
-                        <span style={{ display: "block", color: T.muted, fontSize: 11, marginTop: 1 }}>결제 통장을 몰라서 따로 뺐어요</span>
-                      </span>
-                      <span style={{ ...num, color: tone(T, "warn").text, fontSize: 15, fontWeight: 700, whiteSpace: "nowrap" }}>−{fmtWon(c.amount)}</span>
-                    </div>
-                  ))}
-                  {ctx.cashIncoming > 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <span style={{ color: T.muted, fontSize: 12.5 }}>곧 들어올 돈</span>
-                      <span style={{ ...num, color: T.cream, fontSize: 15, fontWeight: 700, whiteSpace: "nowrap" }}>+{fmtWon(ctx.cashIncoming)}</span>
-                    </div>
-                  )}
-                </div>
               )}
+              <span>카드 · 현금 합쳐서{bankKnown ? ` · 말일까지 ${daysLeft}일` : ""}</span>
             </div>
           )}
 
           {bankKnown && (
-            <div style={{ marginTop: 10 }}>
-              <div style={{ color: T.muted, fontSize: 12.5 }}>
-                오늘 <b style={{ ...num, color: T.cream }}>{fmtWon(today)}</b>
-                {perDay === 0
-                  ? <span style={{ color: bar.text }}> · 오늘 쓸 몫이 없어요</span>
-                  : <> / 하루 몫 {fmtWon(perDay)} · <b style={{ color: bar.text }}>{over ? `${fmtWon(today - perDay)} 더 썼어요` : `${fmtWon(perDay - today)} 남았어요`}</b></>}
-              </div>
+            <div style={{ marginTop: 18 }}>
               {/* 쓸 몫이 없는 날엔 막대를 안 그린다 — 0을 채운 빈 막대는 '오늘은 괜찮다'로 읽힌다 */}
               {perDay > 0 && (
-                <div style={{ height: 10, borderRadius: 6, background: T.paperLine || T.border, overflow: "hidden", marginTop: 8 }}>
+                <div style={{ height: 6, borderRadius: 6, background: T.paperLine || T.border, overflow: "hidden" }}>
                   <div style={{ width: `${(over ? 1 : ratio) * 100}%`, height: "100%", background: bar.fill, borderRadius: 6 }} />
                 </div>
               )}
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 7, color: T.muted, fontSize: 12.5 }}>
+                <span>오늘 <b style={{ ...num, color: T.cream, fontWeight: 600 }}>{fmtWon(today)}</b> 씀</span>
+                {perDay === 0
+                  ? <span style={{ color: bar.text }}>오늘 쓸 몫이 없어요</span>
+                  : <span style={{ color: over ? bar.text : T.muted, fontWeight: over ? 700 : 400 }}>{over ? `${fmtWon(today - perDay)} 더 썼어요` : `남은 하루 몫 ${fmtWon(perDay - today)}`}</span>}
+              </div>
             </div>
           )}
 
           {status && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, background: t.tint, borderRadius: 14, padding: "10px 12px" }}>
-              <span aria-hidden="true" style={{ flexShrink: 0, width: 30, height: 30, borderRadius: "50%", background: t.fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {state === "good" ? <Sprout size={16} color="#fff" strokeWidth={2.4} /> : <AlertCircle size={16} color="#fff" strokeWidth={2.4} />}
-              </span>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 12 }}>
+              <AlertCircle size={16} color={t.text} strokeWidth={2.4} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
               <span style={{ minWidth: 0 }}>
                 <span style={{ display: "block", color: t.text, fontSize: 13.5, fontWeight: 700 }}>{status.head}</span>
                 <span style={{ display: "block", color: T.muted, fontSize: 12, marginTop: 1 }}>{status.sub}</span>
               </span>
             </div>
           )}
+
+          {/*
+            그중 현금·계좌이체로는(2026-11-07, 사용자: "지금 써도 되는 금액은 카드+현금 금액이라서 헷갈리더라고").
+            카드는 다음 달 월급이 내지만 현금·이체는 지금 통장에서 나가므로, 월급 전에 통장에서 나갈 돈을 빼고 본다(App.jsx cashCan).
+            통장별(같은 날, "기업은행 잔여금액 포함인가?")은 베이지 상자 안 흰 칸 — 칸 하나에 통장 하나, 두 칸씩.
+            칸 아래 흐린 줄은 '잔액 − 그 통장에서 나갈 돈'.
+          */}
+          {!short && bankKnown && (
+            <div style={{ marginTop: 20, padding: "16px 16px 16px", borderRadius: 20, background: T.bg2 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", color: T.muted, fontSize: 14, fontWeight: 500 }}>그중 현금 · 계좌이체로는</span>
+                  {ctx.cashCan < ctx.cashNow && <span style={{ display: "block", color: T.muted, fontSize: 11.5, marginTop: 1 }}>전체 남은 돈까지만</span>}
+                </span>
+                <span style={{ ...num, color: ctx.cashCan < 0 ? bad.text : good.text, fontSize: 24, fontWeight: 700, letterSpacing: -0.5, whiteSpace: "nowrap" }}>
+                  {signed(ctx.cashCan)}
+                </span>
+              </div>
+              {showCashDetail && ctx.cashByAccount.length > 1 && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 14 }}>
+                  {ctx.cashByAccount.map((a) => (
+                    <div key={a.id} style={{ background: T.bg, borderRadius: 14, padding: "11px 12px", minWidth: 0 }}>
+                      <div style={{ color: T.muted, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
+                      <div style={{ ...num, color: a.left < 0 ? bad.text : T.cream, fontSize: 17, fontWeight: 700, marginTop: 3 }}>{bare(a.left)}</div>
+                      <div style={{ ...num, color: T.muted, fontSize: 11, marginTop: 3 }}>
+                        {bare(a.balance)}{a.fixedOut + a.cardOut > 0 ? ` − ${bare(a.fixedOut + a.cardOut)}` : ""}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {ctx.cashCardUnknown.map((c) => (
+                <div key={c.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginTop: 10 }}>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: "block", color: tone(T, "warn").text, fontSize: 13, fontWeight: 600 }}>{c.name}</span>
+                    <span style={{ display: "block", color: T.muted, fontSize: 11, marginTop: 1 }}>결제 통장을 몰라서 따로 뺐어요</span>
+                  </span>
+                  <span style={{ ...num, color: tone(T, "warn").text, fontSize: 14.5, fontWeight: 700, whiteSpace: "nowrap" }}>−{fmtWon(c.amount)}</span>
+                </div>
+              ))}
+              {ctx.cashIncoming > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 10 }}>
+                  <span style={{ color: T.muted, fontSize: 12.5 }}>곧 들어올 돈</span>
+                  <span style={{ ...num, color: T.cream, fontSize: 14.5, fontWeight: 700, whiteSpace: "nowrap" }}>+{fmtWon(ctx.cashIncoming)}</span>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
-      {/* 지금 통장 기준(2026-10-11) — '월급만으로'를 빼고 남은 한 칸을 안쪽 판으로 정리: 아이콘 + 이름·식 한 줄 + 오른쪽 큰 숫자 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, padding: "11px 14px", borderRadius: 14, background: T.bg2, border: `1px solid ${T.border}` }}>
-        <span aria-hidden="true" style={{ flexShrink: 0, width: 32, height: 32, borderRadius: "50%", background: left < 0 ? tone(T, "danger").tint : tone(T, "good").tint, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Landmark size={16} color={left < 0 ? tone(T, "danger").text : tone(T, "good").text} strokeWidth={2.2} />
-        </span>
-        <span style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ display: "block", color: T.cream, fontSize: 13.5, fontWeight: 700 }}>지금 통장으로 다 내면</span>
-          <span style={{ display: "block", color: T.muted, fontSize: 11.5, marginTop: 1 }}>{Number(ctx.payPending || 0) + Number(ctx.incomePendingSum || 0) > 0 ? "통장 + 곧 들어올 돈 − 카드값 − 고정지출" : "통장 − 카드값 − 고정지출"}</span>
-        </span>
-        <span style={{ ...num, color: left < 0 ? tone(T, "danger").text : tone(T, "good").text, fontSize: 18, fontWeight: 700, whiteSpace: "nowrap" }}>{signed(left)}</span>
-      </div>
     </section>
   );
 }
 
 /*
   **한눈에 목록** — 누르지 않아도 늘 보인다. 줄 순서와 부호가 곧 위 큰 숫자의 식이다:
-    통장 + 다음 달 월급 − 안 낸 카드값 − 이번 달 남은 고정지출 − 다음 달 고정지출 = 카드로 더 써도 되는 돈
+    통장 − 안 낸 카드값 − 이번 달 남은 고정지출 (= 지금 통장으로 다 내면)
+    + 다음 달 월급 − 다음 달 고정지출 = 이번 달 더 써도 되는 돈
 
-  새 디자인(2026-09-26): 흰 카드 한 장 위에 묶음마다 **동그란 부호 표시**(+ 초록 · − 빨강 · 통장 아이콘)를
-  달고, 묶음 사이는 여백과 옅은 선으로 끊는다. 하위 줄은 들여 쓴 흐린 글자로 금액을 세로로 맞춘다.
+  2026-11-08 새 모양(시안 P5): 상자·동그란 부호 표시를 걷어 내고 흰 바탕 위 **줄과 선**만. 큰 줄은 '+ / −'를
+  글자 앞에 붙이고, 빼는 금액은 빨강. 하위 줄은 들여 쓴 흐린 작은 글자. '지금 통장으로 다 내면'(bankLeft)은
+  따로 상자로 두지 않고 식 중간의 소계 줄로 — 위 세 줄을 더하면 그 숫자, 거기에 아래 두 줄을 더하면 맨 아래 결과.
   (그 전 판의 교훈 — 이름을 쉼표로 줄줄이 잇지 말 것, 한 항목 한 줄, 큰 것 몇 개 + '그 밖에 N건'.)
 */
 function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBill, unpaidFixed, unpaidFixedSum, pending }) {
   const num = { fontFamily: F.mono, fontVariantNumeric: "tabular-nums" };
-  const Badge = ({ kind, children }) => {
-    const t = tone(T, kind);
-    return (
-      <span aria-hidden="true" style={{ flexShrink: 0, width: 28, height: 28, borderRadius: "50%", background: t.tint, color: t.text, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {children}
-      </span>
-    );
-  };
-  const Head = ({ icon, kind = "good", label, amount, tag, strong, sign }) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
-      <Badge kind={kind}>{icon}</Badge>
-      <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 14.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+  const red = tone(T, "danger").text;
+  const Head = ({ sign, label, amount, tag, color }) => (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "2px 0" }}>
+      <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {sign && <span aria-hidden="true" style={{ color: sign === "−" ? red : T.muted, marginInlineEnd: 6 }}>{sign}</span>}
         {label}
         {tag && <span style={{ marginInlineStart: 6, fontSize: 11.5, color: T.muted, fontWeight: 500 }}>{tag}</span>}
       </span>
-      <span style={{ ...num, flexShrink: 0, color: strong || T.cream, fontSize: 15.5, fontWeight: 700 }}>{fmtWon(amount)}</span>
+      <span style={{ ...num, flexShrink: 0, color: color || (sign === "−" ? red : T.cream), fontSize: 15.5, fontWeight: 700 }}>{fmtWon(amount)}</span>
     </div>
   );
   const Sub = ({ label, amount, tag, dim }) => (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "3px 0 3px 38px" }}>
-      <span style={{ flex: 1, minWidth: 0, color: dim || T.muted, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "2px 0 2px 16px" }}>
+      <span style={{ flex: 1, minWidth: 0, color: dim || T.muted, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {label}{tag && <span style={{ marginInlineStart: 6, fontSize: 11.5, color: T.muted }}>{tag}</span>}
       </span>
-      <span style={{ ...num, flexShrink: 0, color: dim || T.muted, fontSize: 13.5, fontWeight: 500 }}>{fmtWon(amount)}</span>
+      <span style={{ ...num, flexShrink: 0, color: dim || T.muted, fontSize: 13, fontWeight: 500 }}>{fmtWon(amount)}</span>
     </div>
   );
   const Note = ({ children, color }) => (
-    <div style={{ color: color || T.muted, fontSize: 11.5, padding: "0 0 4px 38px", lineHeight: 1.5 }}>{children}</div>
+    <div style={{ color: color || T.muted, fontSize: 11.5, padding: "0 0 2px 16px", lineHeight: 1.5 }}>{children}</div>
   );
-  const Group = ({ children, first }) => (
-    <div style={{ padding: first ? "4px 0 10px" : "12px 0 10px", borderTop: first ? "none" : `1px solid ${T.paperLine || T.border}` }}>{children}</div>
+  const Group = ({ children }) => (
+    <div style={{ padding: "12px 2px", borderBottom: `1px solid ${T.paperLine || T.border}` }}>{children}</div>
+  );
+  const Total = ({ label, amount, big }) => (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: big ? "14px 2px 6px" : "12px 2px", borderBottom: big ? "none" : `1px solid ${T.paperLine || T.border}` }}>
+      <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: big ? 16 : 14.5, fontWeight: 800 }}>
+        <span aria-hidden="true" style={{ color: T.muted, marginInlineEnd: 6 }}>=</span>{label}
+      </span>
+      <span style={{ ...num, color: amount < 0 ? red : big ? tone(T, "good").text : T.cream, fontSize: big ? 18 : 15.5, fontWeight: 700 }}>{fmtWon(amount)}</span>
+    </div>
   );
 
   /*
@@ -448,40 +440,24 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
 
   return (
     <>
-      <h2 style={{ margin: "20px 2px 8px", color: T.cream, fontSize: 16, fontWeight: 800 }}>한눈에</h2>
-      <section aria-label="한눈에" style={{ ...card(T), padding: "8px 16px 6px" }}>
+      <h2 style={{ margin: "26px 2px 2px", color: T.muted, fontSize: 13, fontWeight: 600 }}>한눈에 — 위 숫자가 나온 식</h2>
+      <section aria-label="한눈에">
         {/*
           **큰 줄(Head)끼리 더하면 맨 아래 결과가 나와야 한다**(2026-10-21, 사용자: "금액이 좀 안 맞는 느낌").
-          예전엔 통장 줄이 잔액만, 월급 줄이 월급만 적고 '아직 안 들어온 이번 달 몫'·'매달 들어오는 돈'은 아래 작은
-          줄에만 있어서, 큰 줄을 더하면 그만큼(엄마 지원 20만 원 × 최대 두 번) 결과와 어긋났다. 위젯(widgetEq)은
-          이미 이렇게 합쳐 넘기고 있었다.
+          통장 줄은 '아직 안 들어온 이번 달 몫'·'매달 들어오는 돈'까지 합친다(위젯 widgetEq와 같은 기준).
         */}
-        <Group first>
-          <Head icon={<Landmark size={15} strokeWidth={2.2} />} label={bankExtra > 0 ? "통장 + 곧 들어올 돈" : "통장"} amount={balance + bankExtra} />
+        <Group>
+          <Head label={bankExtra > 0 ? "통장 + 곧 들어올 돈" : "통장"} amount={balance + bankExtra} />
           {(accounts.length > 1 || (bankExtra > 0 && accounts.length === 1)) && accounts.map((a) => (
-            <Sub key={a.id} label={`+ ${a.name}`} amount={a.balance} tag={a.bankSync ? `${agoAt(a.bankSync.at)} 맞춤` : null} />
+            <Sub key={a.id} label={a.name} amount={a.balance} tag={a.bankSync ? `${agoAt(a.bankSync.at)} 맞춤` : null} />
           ))}
-          {pending > 0 && <Sub label={`+ 아직 안 들어온 ${top.curMonth} 월급`} amount={pending} />}
+          {pending > 0 && <Sub label={`아직 안 들어온 ${top.curMonth} 월급`} amount={pending} />}
           {/* 월급 말고 매달 들어오는 돈(예: 가족이 넣어 주는 돈) — 이번 달 몫이 아직이면 곧 들어올 돈으로 더한다 */}
-          {(ctx.incomePending || []).map((i) => <Sub key={i.id} label={`+ 아직 안 들어온 ${i.name}`} amount={Number(i.amount)} />)}
+          {(ctx.incomePending || []).map((i) => <Sub key={i.id} label={`아직 안 들어온 ${i.name}`} amount={Number(i.amount)} />)}
         </Group>
 
-        {(hasPay || (ctx.incomes || []).length > 0) && (
-          <Group>
-            {hasPay && (ctx.incomes || []).length > 0 ? (
-              <>
-                <Head icon={<Plus size={15} strokeWidth={2.6} />} sign="더하기" label={`${top.month} 들어올 돈`} amount={top.pay + (ctx.incomeNextSum || 0)} />
-                <Sub label={`${top.month} 월급`} tag={top.tag} amount={top.pay} />
-                {ctx.incomes.map((i) => <Sub key={i.id} label={`+ ${i.name}`} amount={Number(i.amount)} tag="매달" />)}
-              </>
-            ) : hasPay
-              ? <Head icon={<Plus size={15} strokeWidth={2.6} />} sign="더하기" label={`${top.month} 월급`} tag={top.tag} amount={top.pay} />
-              : <Head icon={<Plus size={15} strokeWidth={2.6} />} sign="더하기" label={`${top.month} 고정 수입`} amount={ctx.incomeNextSum || 0} />}
-          </Group>
-        )}
-
         <Group>
-          <Head icon={<Minus size={15} strokeWidth={2.6} />} kind="danger" sign="빼기" label="안 낸 카드값" amount={cardBill} />
+          <Head sign="−" label="안 낸 카드값" amount={cardBill} />
           {cardTotals.map((c) => {
             /*
               언제 나가는지, 언제 맞춘 숫자인지(2026-09-17). 카드값은 결제 확인·명세서·맞추기가 같은 한 칸을
@@ -511,8 +487,7 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
         </Group>
 
         <Group>
-          <Head icon={<Minus size={15} strokeWidth={2.6} />} kind={unpaidFixed.length ? "warn" : "good"} sign="빼기"
-            label={`${top.curMonth} 남은 고정지출`} amount={unpaidFixedSum} strong={unpaidFixed.length ? T.warn : null} />
+          <Head sign="−" label={`${top.curMonth} 남은 고정지출`} amount={unpaidFixedSum} />
           {unpaidTop.map((f) => {
             const d = days.get(f.id);
             const late = d && d.day < todayDay;
@@ -522,10 +497,27 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
           {overdue.length > 0 && <Note color={T.warn}>날짜가 지난 것 {overdue.length}건 — 냈으면 아래 '고정지출 처리'에서 눌러 주세요</Note>}
         </Group>
 
+        {/* 지금 통장 기준(2026-09-13 사용자 제안 "통장-(이번달 카드값+고정지출)=잔여금액") — 위 세 줄의 소계 */}
+        <Total label="지금 통장으로 다 내면" amount={ctx.bankLeft} />
+
+        {(hasPay || (ctx.incomes || []).length > 0) && (
+          <Group>
+            {hasPay && (ctx.incomes || []).length > 0 ? (
+              <>
+                <Head sign="+" label={`${top.month} 들어올 돈`} amount={top.pay + (ctx.incomeNextSum || 0)} />
+                <Sub label={`${top.month} 월급`} tag={top.tag} amount={top.pay} />
+                {ctx.incomes.map((i) => <Sub key={i.id} label={i.name} amount={Number(i.amount)} tag="매달" />)}
+              </>
+            ) : hasPay
+              ? <Head sign="+" label={`${top.month} 월급`} tag={top.tag} amount={top.pay} />
+              : <Head sign="+" label={`${top.month} 고정 수입`} amount={ctx.incomeNextSum || 0} />}
+          </Group>
+        )}
+
         {hasPay && (
           <>
             <Group>
-              <Head icon={<Minus size={15} strokeWidth={2.6} />} kind="danger" sign="빼기" label={`${top.month} 고정지출`} amount={top.fixedCash + top.fixedCard} />
+              <Head sign="−" label={`${top.month} 고정지출`} amount={top.fixedCash + top.fixedCard} />
               {/*
                 다음 달 것도 무엇이 들었는지(2026-09-21) — 300만 원이 덩어리로만 뜨면 왜 큰지 모른다.
                 큰 것 셋 + 그 밖에. 미리 냈거나 건너뛴 것은 금액에서 이미 빠졌으니 여기서도 뺀다.
@@ -534,11 +526,7 @@ function AssetList({ T, ctx, top, hasPay, accounts, cardTotals, balance, cardBil
               {nextRest.length > 0 && <Sub label={`그 밖에 ${nextRest.length}건`} amount={nextRest.reduce((a, f) => a + f.amount, 0)} />}
               <Note>통장 {fmtWon(top.fixedCash)} · 카드 할부·정기결제 {fmtWon(top.fixedCard)}</Note>
             </Group>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0 10px", borderTop: `1.5px solid ${T.border}` }}>
-              <Badge kind={resultBad ? "danger" : "good"}><Equal size={15} strokeWidth={2.6} /></Badge>
-              <span style={{ flex: 1, color: T.cream, fontSize: 15, fontWeight: 800 }}>{resultBad ? "월급 들어와도 모자라는 돈" : "이번 달 더 써도 되는 돈"}</span>
-              <span style={{ ...num, color: resultBad ? T.danger : T.good, fontSize: 18, fontWeight: 700 }}>{fmtWon(top.value)}</span>
-            </div>
+            <Total big label={resultBad ? "월급 들어와도 모자라는 돈" : "이번 달 더 써도 되는 돈"} amount={top.value} />
           </>
         )}
       </section>
