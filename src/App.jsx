@@ -976,9 +976,10 @@ function AppInner() {
     if (c.payAccountId && accountTotals.some((a) => a.id === c.payAccountId)) return c.payAccountId;
     const { base, words } = cardWords(c.name);
     const hit = (data.balanceEntries || [])
-      .filter((b) => b.type === "out" && !b.isAdjustment && b.memo && (b.memo.includes(base) || (words.length >= 2 && words.filter((w) => b.memo.includes(w)).length >= 2)))
+      .filter((b) => b.type === "out" && !b.isAdjustment && b.memo && b.accountId && (b.memo.includes(base) || (words.length >= 2 && words.filter((w) => b.memo.includes(w)).length >= 2)))
       .sort((x, y) => String(y.date).localeCompare(String(x.date)))[0];
-    return hit ? (hit.accountId || firstAccId) : null;
+    // 통장이 안 적힌 기록은 첫 통장으로 짐작하지 않는다(2026-11-09 — 롯데카드가 국민은행에서 빠지는 것으로 보였다)
+    return hit && accountTotals.some((a) => a.id === hit.accountId) ? hit.accountId : null;
   };
   const cashByAccount = accountTotals.map((a) => {
     const fixedOut = unpaidFixedCash.filter((f) => (f.accountId && accountTotals.some((x) => x.id === f.accountId) ? f.accountId : firstAccId) === a.id)

@@ -539,7 +539,8 @@ export function SettingsView({ ctx }) {
             보여 주려면 어딘가에서 한 번은 적어야 한다. 알림 문구로는 알 수 없는 값이다.
           */}
           {(data.cards || []).map((c) => (
-            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
+            <div key={c.id} style={{ padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
               <label style={{ display: "flex", alignItems: "center", gap: 4, color: T.muted, fontSize: 13 }}>
                 <span>결제일</span>
@@ -551,6 +552,25 @@ export function SettingsView({ ctx }) {
                   style={{ ...inputSty(T), width: 56, padding: "6px 8px", fontSize: 15, textAlign: "center" }} />
               </label>
               <button onClick={() => removeCard(c.id)} aria-label={`${c.name} 카드 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
+              </div>
+              {/*
+                **결제 통장**(2026-11-09, 사용자: 기업은행에서 롯데카드가 나가는데 홈이 국민은행에서 뺐다). 알림으로 배운 값이
+                틀릴 수 있어서 사람이 고르면 그걸 쓴다(payAccountManual — 알림이 다시 바꾸지 않는다). '자동'은 알림으로 배운 값.
+              */}
+              {(data.accounts || []).length > 1 && (
+                <label style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13, marginTop: 6 }}>
+                  <span style={{ flexShrink: 0 }}>결제 통장</span>
+                  <select value={c.payAccountManual && c.payAccountId ? c.payAccountId : ""} aria-label={`${c.name} 결제 통장`}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      persist({ ...data, cards: data.cards.map((x) => (x.id === c.id ? (v ? { ...x, payAccountId: v, payAccountManual: true } : { ...x, payAccountManual: false }) : x)) });
+                    }}
+                    style={{ ...inputSty(T), flex: 1, padding: "6px 8px", fontSize: 14.5 }}>
+                    <option value="">자동(결제 알림으로 짐작)</option>
+                    {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </label>
+              )}
             </div>
           ))}
         </div>

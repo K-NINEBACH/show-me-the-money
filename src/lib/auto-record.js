@@ -829,7 +829,7 @@ export function autoRecordPayments(data, items, held = []) {
     홈의 '그중 현금·계좌이체로는'을 통장별로 나눌 때 그 카드값을 어느 통장에서 뺄지 정하는 데 쓴다(App.jsx cashByAccount).
   */
   const learnPayAccount = (cardId, accId) => {
-    cards = cards.map((c) => (c.id === cardId && c.payAccountId !== accId ? { ...c, payAccountId: accId } : c));
+    cards = cards.map((c) => (c.id === cardId && !c.payAccountManual && c.payAccountId !== accId ? { ...c, payAccountId: accId } : c));
   };
 
   const markPaid = (fixedId, markerId, key, payee) => {
