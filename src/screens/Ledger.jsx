@@ -214,19 +214,12 @@ export function LedgerView({ ctx }) {
   const catMap = Object.fromEntries(data.categories.map((c) => [c.id, c]));
   /*
     **미분류를 그 자리에서 정한다**(2026-11-09, 사용자: "미분류로 체크되어 있는 애들 기준으로 바로 카테고리 설정할 수 있게").
-    보기 → '미분류만'에서 줄 아래 단추를 누르면 끝. **같은 적요의 다른 미분류도 같이** 정한다 — 같은 가맹점을 여러 번 누를 일이 없게.
-    한 번 정해 두면 다음부터 같은 적요는 알아서 그 카테고리로 들어온다(data.js autoCategorize).
+    보기 → '미분류만'에서 줄 아래 단추를 누르면 **그 한 줄만** 정한다(같은 이름 다른 미분류를 같이 바꾸는 건 사용자가 빼 달라고 함, 같은 날).
+    앞으로 새로 들어오는 같은 적요는 알아서 그 카테고리로 들어온다(data.js autoCategorize).
   */
   const setCat = (item, c) => {
-    const key = (m) => String(m || "").replace(/\s+/g, "").toLowerCase();
-    const k = key(item.memo);
-    let n = 0;
-    const expenses = data.expenses.map((e) => {
-      if (e.id === item.id || (k && !catMap[e.categoryId] && !e.isReceivable && key(e.memo) === k)) { n++; return { ...e, categoryId: c.id, catTried: true }; }
-      return e;
-    });
-    persist({ ...data, expenses });
-    showToast(n > 1 ? `같은 이름 ${n}건을 '${c.name}'(으)로 정했어요` : `'${c.name}'(으)로 정했어요`);
+    persist({ ...data, expenses: data.expenses.map((e) => (e.id === item.id ? { ...e, categoryId: c.id, catTried: true } : e)) });
+    showToast(`'${c.name}'(으)로 정했어요`);
   };
   const searchLower = search.trim().toLowerCase();
   const matchesSearch = (e) => {
@@ -507,21 +500,10 @@ export function LedgerView({ ctx }) {
         ? { ...e, amount: n, categoryId: editCategoryId || null, catTried: true, date: editDate, memo: editMemo.trim(), paymentMethod: editPaymentMethod, cardId: editPaymentMethod === "card" ? editCardId : null, linkedBalanceId: editPaymentMethod === "cash" ? newLinkedBalanceId : null }
         : e
     );
-    // 고치기에서 카테고리를 정해도 같은 이름의 다른 미분류를 같이 정한다(2026-11-09, 사용자: "한 번이라도 카테고리에 넣어 둔 게 있으면
-    // 같은 이름으로 결제된 건 자동으로 같은 카테고리에"). 앞으로 들어올 것은 data.js autoCategorize가 같은 기준으로 따라간다.
-    const sameKey = (m) => String(m || "").replace(/\s+/g, "").toLowerCase();
-    const k = sameKey(editMemo);
-    let also = 0;
-    if (editCategoryId && catMap[editCategoryId] && k) {
-      next.expenses = next.expenses.map((e) => {
-        if (e.id === exp.id || e.isReceivable || catMap[e.categoryId] || sameKey(e.memo) !== k) return e;
-        also++;
-        return { ...e, categoryId: editCategoryId, catTried: true };
-      });
-    }
+    // 고친 그 한 줄만 바꾼다 — 같은 이름의 다른 기록을 같이 바꾸지 않는다(2026-11-09 사용자가 빼 달라고 함).
     persist(next);
     setEditingId(null);
-    showToast(also ? `수정했어요 · 같은 이름 미분류 ${also}건도 '${catMap[editCategoryId].name}'(으)로` : "수정했어요 · 카드값/통장에 바로 반영됐어요");
+    showToast("수정했어요 · 카드값/통장에 바로 반영됐어요");
   };
 
   // 자동이체/출금처리로 생긴 balanceEntry는 linkedFixedId·linkedFixedMonth로 원래
