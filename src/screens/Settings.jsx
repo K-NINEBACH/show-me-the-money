@@ -4,7 +4,7 @@ import { X, ChevronDown } from "lucide-react";
 import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn, card, tone } from "../lib/theme";
 import { fmtWon, migrate, todayISO } from "../lib/data";
 import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings, diagnostics, openBatterySettings, requestSmsAccess, widgetState } from "../lib/native";
-import { ALERT_LOG_KEY } from "../lib/constants";
+import { ALERT_LOG_KEY, PALETTE } from "../lib/constants";
 import { dropCode, showCode, dropLog, dropState, resetApplied } from "../lib/drop";
 import { parsePaymentText } from "../lib/data";
 import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../components/common";
@@ -111,6 +111,7 @@ export function SettingsView({ ctx }) {
   const T = useTheme();
   const { data, persist, showToast } = ctx;
   const [newCardName, setNewCardName] = useState("");
+  const [newCatName, setNewCatName] = useState("");
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountBalance, setNewAccountBalance] = useState("");
   const [payInput, setPayInput] = useState(String(data.monthlyPay || ""));
@@ -275,6 +276,15 @@ export function SettingsView({ ctx }) {
       : `"${cat?.name}" 카테고리를 삭제할까요?`;
     if (!window.confirm(msg)) return;
     persist({ ...data, categories: data.categories.filter((c) => c.id !== id) });
+  };
+
+  // 설정에서도 카테고리를 더한다(2026-11-09, 사용자: "설정에서 카테고리 들어가니깐 지우는 것만 되네"). 개수 제한은 없다. 색은 돌아가며
+  const addCategory = () => {
+    const nm = newCatName.trim();
+    if (!nm) return;
+    if (data.categories.some((c) => c.name === nm)) return showToast(`"${nm}"은 이미 있어요`);
+    persist({ ...data, categories: [...data.categories, { id: "c" + Date.now(), name: nm, color: PALETTE[data.categories.length % PALETTE.length] }] });
+    setNewCatName(""); showToast(`"${nm}" 카테고리를 더했어요`);
   };
 
   const [openSet, setOpenSet] = useState(readOpen);
@@ -657,7 +667,11 @@ export function SettingsView({ ctx }) {
               <button onClick={() => removeCategory(c.id)} aria-label={`${c.name} 카테고리 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
             </div>
           ))}
-          {data.categories.length === 0 && <div style={{ color: T.muted, fontSize: 15, textAlign: "center", padding: "10px 0" }}>카테고리가 없어요. &lsquo;기록&rsquo; 탭에서 추가할 수 있어요.</div>}
+          {data.categories.length === 0 && <div style={{ color: T.muted, fontSize: 15, textAlign: "center", padding: "10px 0" }}>카테고리가 없어요</div>}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCategory()} placeholder="새 카테고리 이름 — 예: 경조사" aria-label="새 카테고리 이름" style={inputSty(T)} />
+          <button onClick={addCategory} style={{ ...primaryBtn(T), width: 72 }}>추가</button>
         </div>
       </div>
       </Group>
