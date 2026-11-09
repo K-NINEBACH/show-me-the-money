@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
-import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar } from "lucide-react";
+import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar, Stethoscope } from "lucide-react";
 import { STORAGE_KEY, INBOX_KEY, SEEN_KEY, SEEN_DEAL_KEY, ALERT_LOG_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
 import { defaultData, migrate, autoCategorize, autoProcessFixed, repairMisdatedAuto, findPayDeposit, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount, nextDayOfMonth, effectiveBill } from "./lib/data";
@@ -32,6 +32,7 @@ import { LedgerView } from "./screens/Ledger";
 const Onboarding = lazy(() => import("./screens/Gates").then((m) => ({ default: m.Onboarding })));
 const MonthWrapUp = lazy(() => import("./screens/Gates").then((m) => ({ default: m.MonthWrapUp })));
 const CalendarView = lazy(() => import("./screens/Calendar").then((m) => ({ default: m.CalendarView })));
+const ConsultView = lazy(() => import("./screens/Consult").then((m) => ({ default: m.ConsultView })));
 const SettingsView = lazy(() => import("./screens/Settings").then((m) => ({ default: m.SettingsView })));
 
 /*
@@ -1045,9 +1046,10 @@ function AppInner() {
           {tab === "home" && <HomeView ctx={ctx} />}
           {tab === "add" && <AddView ctx={ctx} />}
           {tab === "ledger" && <LedgerView ctx={ctx} />}
-          {(tab === "calendar" || tab === "settings") && (
+          {(tab === "calendar" || tab === "consult" || tab === "settings") && (
             <Suspense fallback={<div style={{ color: T.muted, fontFamily: F.body, textAlign: "center", padding: "40px 0" }}>불러오는 중…</div>}>
               {tab === "calendar" && <CalendarView ctx={ctx} />}
+              {tab === "consult" && <ConsultView ctx={ctx} />}
               {tab === "settings" && <SettingsView ctx={ctx} />}
             </Suspense>
           )}
@@ -1057,6 +1059,7 @@ function AppInner() {
           <NavBtn icon={Plus} label="기록" active={tab === "add"} onClick={() => setTab("add")} />
           <NavBtn icon={BookOpen} label="내역" active={tab === "ledger"} onClick={() => setTab("ledger")} />
           <NavBtn icon={Calendar} label="달력" active={tab === "calendar"} onClick={() => setTab("calendar")} />
+          <NavBtn icon={Stethoscope} label="진단" active={tab === "consult"} onClick={() => setTab("consult")} />
           <NavBtn icon={Settings} label="설정" active={tab === "settings"} onClick={() => setTab("settings")} />
         </nav>
         {/* 자리는 늘 두고 글자만 바꾼다 — 그래야 스크린리더가 매번 읽어 준다 */}
