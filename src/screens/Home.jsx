@@ -280,7 +280,7 @@ function Hero({ T, ctx, top, hasPay, bankKnown, daysLeft }) {
             <div style={{ marginTop: 18 }}>
               {/* 쓸 몫이 없는 날엔 막대를 안 그린다 — 0을 채운 빈 막대는 '오늘은 괜찮다'로 읽힌다 */}
               {perDay > 0 && (
-                <div style={{ height: 6, borderRadius: 6, background: T.paperLine || T.border, overflow: "hidden" }}>
+                <div style={{ height: 6, borderRadius: 6, background: (T.mode === "dark" ? T.border : T.paperLine || T.border), overflow: "hidden" }}>
                   <div style={{ width: `${(over ? 1 : ratio) * 100}%`, height: "100%", background: bar.fill, borderRadius: 6 }} />
                 </div>
               )}
@@ -367,7 +367,7 @@ function Hero({ T, ctx, top, hasPay, bankKnown, daysLeft }) {
 function AssetList({ T, ctx, top, hasPay, balance, cardBill, unpaidFixedSum, pending }) {
   const num = { fontFamily: F.mono, fontVariantNumeric: "tabular-nums" };
   const red = tone(T, "danger").text;
-  const line = `1px solid ${T.paperLine || T.border}`;
+  const line = `1px solid ${(T.mode === "dark" ? T.border : T.paperLine || T.border)}`;
   const Row = ({ sign, label, amount, last }) => (
     <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "13px 2px", borderBottom: last ? "none" : line }}>
       <span style={{ flex: 1, minWidth: 0, color: T.muted, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

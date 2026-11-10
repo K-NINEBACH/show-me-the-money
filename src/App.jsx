@@ -976,6 +976,8 @@ function AppInner() {
   };
   const payAccountOf = (c) => {
     if (c.payAccountId && accountTotals.some((a) => a.id === c.payAccountId)) return c.payAccountId;
+    // 통장이 하나뿐이면 거기서 낼 수밖에 없다(2026-11-10 점검 — 통장 하나인데 '결제 통장 모름'으로 따로 빠졌다)
+    if (accountTotals.length === 1) return accountTotals[0].id;
     const { base, words } = cardWords(c.name);
     const hit = (data.balanceEntries || [])
       .filter((b) => b.type === "out" && !b.isAdjustment && b.memo && b.accountId && (b.memo.includes(base) || (words.length >= 2 && words.filter((w) => b.memo.includes(w)).length >= 2)))
