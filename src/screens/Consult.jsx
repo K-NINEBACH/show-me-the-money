@@ -26,12 +26,29 @@ export function ConsultView({ ctx }) {
   const fixedTotal = nextFixed.reduce((s, x) => s + x.amount, 0);
   const ratio = income > 0 ? fixedTotal / income : 0;
   const ratioTone = ratio >= 0.7 ? bad : ratio >= 0.5 ? warn : good;
-  const instList = nextFixed.filter((x) => x.inst).map((x) => {
-    const f = x.f;
+  /*
+    **마지막 '결제' 달**(2026-11-10, 사용자: "10월에 3개월 할부로 결제했으면 12월 카드 사용분까지 포함이니 1월 중순이 실질적으로
+    마지막 결제일 아니야?"). 앱의 할부 달(fixedInfo)은 '그 카드 사용분에 들어가는 달'이라 10·11·12월이고, 카드는 1~말일 사용분을
+    다음 달 결제일에 내므로 실제로 돈이 나가는 건 11·12·1월이다 → 카드 할부는 마지막 할부 달 + 1개월의 결제일.
+    한 달 일찍 내는 카드(earlyPay — 롯데)는 그 달에 내고, 통장 할부(K9)는 그 달에 통장에서 나간다 → 그대로.
+    다음 달 고정지출에 안 잡혀도(사용분은 이번 달이 마지막) 결제가 남았으면 목록에 둔다.
+  */
+  const cardOf = (f) => (data.cards || []).find((c) => c.id === f.cardId);
+  const instList = (data.fixedExpenses || []).filter((f) => f.totalMonths > 0).map((f) => {
+    const isCard = (f.paymentMethod || "cash") === "card";
+    const card = isCard ? cardOf(f) : null;
     const lastKey = monthKeyOffset(f.setupMonthKey, f.totalMonths - f.startInstallment);
-    return { ...x, lastKey, left: monthsBetween(nextKey, lastKey) + 1 };
-  }).sort((a, b) => a.lastKey.localeCompare(b.lastKey));
-  const instTotal = instList.reduce((s, x) => s + x.amount, 0);
+    const lastPayKey = isCard && !card?.earlyPay ? monthKeyOffset(lastKey, 1) : lastKey;
+    const payDay = isCard ? Number(card?.payDay) || null : Number(f.autoPayDay) || null;
+    // 이번 달 몫을 이미 냈는지 — 카드는 결제일이 지났는지(한 달 일찍 내는 카드는 installPaid), 통장은 처리 완료 표시
+    const paidNow = isCard
+      ? (card?.earlyPay ? !!card?.installPaid?.[curKey] : !!payDay && dayIntoCycle > payDay)
+      : !!f.paidMonths?.[curKey];
+    const left = monthsBetween(curKey, lastPayKey) + (paidNow ? 0 : 1);
+    return { id: f.id, name: f.name, amount: Number(fixedInfo(f, lastKey).amount), lastPayKey, payDay, left };
+  }).filter((x) => x.left > 0 && x.amount > 0).sort((a, b) => a.lastPayKey.localeCompare(b.lastPayKey));
+  // 다음 달 고정지출 안의 할부 몫(위 비율과 같은 기준) — 할부가 다 끝난 뒤 비율도 이것으로
+  const instTotal = nextFixed.filter((x) => x.inst).reduce((s, x) => s + x.amount, 0);
   const afterInst = income > 0 ? (fixedTotal - instTotal) / income : 0;
 
   /* ---------- 2) 카테고리 비교 — 이번 달 1~오늘 vs 지난 3달의 같은 날짜 구간(기간 길이를 맞춘다 — 2026-08-24 버그 교훈) ---------- */
@@ -152,7 +169,7 @@ export function ConsultView({ ctx }) {
       {instList.length > 0 && (
         <Box title="할부가 끝나면 풀리는 돈" sub="끝나는 순서대로">
           {instList.map((x) => (
-            <Row key={x.id} left={x.name} sub={`${ym(x.lastKey)} 마지막 · 남은 ${x.left}회`} right={`+${fmtWon(x.amount)}`} color={good.text} />
+            <Row key={x.id} left={x.name} sub={`마지막 결제 ${ym(x.lastPayKey)}${x.payDay ? ` ${x.payDay}일` : ""} · 남은 ${x.left}회`} right={`+${fmtWon(x.amount)}`} color={good.text} />
           ))}
           <Say t={good}>할부가 다 끝나면 고정비가 월급의 {pct(afterInst)}로 내려가요(매달 {fmtWon(instTotal)}).</Say>
         </Box>
