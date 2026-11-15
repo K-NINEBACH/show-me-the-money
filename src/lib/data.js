@@ -147,6 +147,8 @@ export function autoProcessFixed(d) {
     if ((f.paymentMethod || "cash") !== "cash") return f;
     if (!f.autoPayDay) return f;
     if (f.paidMonths && f.paidMonths[curKey]) return f;
+    // '안 냄'으로 둔 달은 만들지 않는다(2026-11-16 — 내역에서 지운 주택청약 자동이체가 앱을 열 때마다 다시 생겼다)
+    if (f.skipMonths && f.skipMonths[curKey]) return f;
     // 31일로 설정해둔 자동이체는 30일(또는 28/29일)짜리 달엔 today가 31에 절대 못
     // 닿아서 그 달엔 영원히 자동처리가 안 되던 버그 — payDateDay와 똑같이 그 달의
     // 마지막 날로 맞춰서 비교해야 함.

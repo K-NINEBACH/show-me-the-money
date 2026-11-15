@@ -514,6 +514,11 @@ export function LedgerView({ ctx }) {
   // 고정지출의 paidMonths를 가리킴 — 여기서 지워도 그쪽 마커는 안 지워지면(홈에서
   // "완료" 표시가 실제로는 없는 기록을 계속 가리키게 됨) 카드반영 삭제 때와 같은
   // 문제라 똑같이 정리해줌.
+  /*
+    **앱이 자동이체일에 만든 출금을 지우면 그 달은 '안 냄'**(2026-11-16, 사용자: 해지한 주택청약 자동이체를 지웠는데
+    앱을 나갔다 들어올 때마다 다시 생긴다). 완료 표시만 지우면 autoProcessFixed가 '아직 안 나갔네' 하고 또 만든다.
+    매달 반복만 — 할부는 건너뛰는 게 아니다(skipMonths 원칙). 해지했으면 고정지출 자체를 지워야 다음 달에도 안 생긴다.
+  */
   const clearLinkedFixedMarker = (b, next) => {
     if (!b.linkedFixedId || !b.linkedFixedMonth) return next;
     return {
@@ -522,7 +527,8 @@ export function LedgerView({ ctx }) {
         if (x.id !== b.linkedFixedId || x.paidMonths?.[b.linkedFixedMonth] !== b.id) return x;
         const pm = { ...x.paidMonths };
         delete pm[b.linkedFixedMonth];
-        return { ...x, paidMonths: pm };
+        const skip = x.autoPayDay && !(x.totalMonths > 0) && !b.auto;
+        return { ...x, paidMonths: pm, ...(skip ? { skipMonths: { ...(x.skipMonths || {}), [b.linkedFixedMonth]: true } } : {}) };
       }),
     };
   };
@@ -540,7 +546,10 @@ export function LedgerView({ ctx }) {
     let next = { ...data, balanceEntries: data.balanceEntries.filter((x) => x.id !== id) };
     next = clearLinkedFixedMarker(b, next);
     persist(next);
-    showToast("삭제했어요");
+    const fx = b.linkedFixedId ? (data.fixedExpenses || []).find((x) => x.id === b.linkedFixedId) : null;
+    showToast(fx?.autoPayDay && !(fx.totalMonths > 0) && !b.auto
+      ? `삭제했어요 · ${fx.name}은 이번 달 '안 냄'으로 뒀어요. 해지했으면 기록 → 고정지출에서 지워 주세요`
+      : "삭제했어요");
   };
 
   /*
