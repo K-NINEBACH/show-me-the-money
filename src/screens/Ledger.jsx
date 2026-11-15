@@ -51,7 +51,7 @@ function IconBtn({ label, color, onClick, children }) {
   ("식비 · 현대카드 · 자동") · 오른쪽 금액. 예전의 알록달록한 태그 여러 개 대신 흐린 한 줄로 모았다.
   **줄 전체를 누르면 고치기**가 열린다(연필 아이콘은 뺐다 — 줄마다 있으면 목록이 시끄럽다).
 */
-export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, onDelete }) {
+export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, onDelete, categories, onPickCat }) {
   const T = useTheme();
   const catName = cat ? cat.name : "미분류";
   const title = e.memo || catName;
@@ -60,7 +60,19 @@ export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, 
   const Body = onEdit ? "button" : "div";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: `1px solid ${T.paperLine}` }}>
-      <CatBadge name={catName} color={cat?.color} />
+      {/* **아이콘을 누르면 바로 카테고리 고르기**(2026-11-16, 사용자: "매번 여러 번 거쳐서 들어가기 귀찮아").
+          보이지 않는 select를 아이콘 위에 겹쳐 휴대폰의 고르기 창이 바로 뜬다. 그 한 줄만 바꾼다. */}
+      {onPickCat ? (
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <CatBadge name={catName} color={cat?.color} />
+          <select value={cat?.id || ""} aria-label={`${title} 카테고리 바꾸기 (지금 ${catName})`}
+            onChange={(ev) => onPickCat(ev.target.value)}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", fontSize: 16 }}>
+            <option value="">미분류</option>
+            {(categories || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      ) : <CatBadge name={catName} color={cat?.color} />}
       <Body {...(onEdit ? { onClick: onEdit, "aria-label": `${title} ${fmtWon(e.amount)} 고치기` } : {})}
         style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: onEdit ? "pointer" : "default", fontFamily: "inherit", color: "inherit" }}>
         <div style={{ color: T.ink, fontSize: 15, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
@@ -221,8 +233,8 @@ export function LedgerView({ ctx }) {
     앞으로 새로 들어오는 같은 적요는 알아서 그 카테고리로 들어온다(data.js autoCategorize).
   */
   const setCat = (item, c) => {
-    persist({ ...data, expenses: data.expenses.map((e) => (e.id === item.id ? { ...e, categoryId: c.id, catTried: true } : e)) });
-    showToast(`'${c.name}'(으)로 정했어요`);
+    persist({ ...data, expenses: data.expenses.map((e) => (e.id === item.id ? { ...e, categoryId: c ? c.id : null, catTried: true } : e)) });
+    showToast(c ? `'${c.name}'(으)로 정했어요` : "미분류로 뒀어요");
   };
   const searchLower = search.trim().toLowerCase();
   const matchesSearch = (e) => {
@@ -863,7 +875,8 @@ export function LedgerView({ ctx }) {
                 <LedgerRow e={item} cat={catMap[item.categoryId]} dateNode={dateNode}
                   methodLabel={(item.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === (item.cardId || data.cards[0]?.id))?.name || "카드") : "현금"}
                   methodColor={(item.paymentMethod || "cash") === "card" ? T.gold : T.good}
-                  onEdit={() => startEdit(item)} />
+                  onEdit={() => startEdit(item)}
+                  categories={data.categories} onPickCat={(id) => { if (editingId === item.id) setEditingId(null); setCat(item,data.categories.find((c) => c.id === id) || null); }} />
                 {category === "uncat" && !catMap[item.categoryId] && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "2px 0 12px 48px" }}>
                     {data.categories.map((c) => (
