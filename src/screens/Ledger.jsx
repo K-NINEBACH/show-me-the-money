@@ -162,21 +162,24 @@ function ReceivableRow({ ctx, e, cat, onDelete, dateNode }) {
   이 줄은 그걸 안 그려서, 지출과 달리 무엇이 자동으로 들어왔는지 안 보였다.
   통장이 여럿이라 어느 통장인지도 같이 적는다.
 */
-function BalanceRow({ b, accountName, onDelete, dateNode }) {
+function BalanceRow({ b, accountName, onDelete, onEdit, dateNode }) {
   const T = useTheme();
-  const kind = b.isAdjustment ? "잔액 맞춤" : b.type === "in" ? "입금" : "출금";
+  const kind = b.isAdjustment ? "잔액 맞춤" : b.transferId ? "이체" : b.type === "in" ? "입금" : "출금";
   // 지출 줄과 같은 모양 — 적요가 제목, 종류·통장·자동은 흐린 한 줄. 입금은 초록 +, 출금은 − (2026-09-26)
   const tags = [b.memo && b.memo !== kind ? kind : null, accountName, b.auto ? "자동" : null].filter(Boolean).join(" · ");
   const inflow = b.type === "in";
   const color = b.isAdjustment ? T.inkMuted : inflow ? T.good : T.danger;
+  // 지출 줄처럼 줄을 누르면 고치기(2026-11-16) — 잔액 맞춤은 거래가 아니라 고칠 게 없다(지우기만)
+  const Body = onEdit ? "button" : "div";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: `1px solid ${T.paperLine}` }}>
       <CatBadge name={kind} color={color} icon={b.isAdjustment ? Scale : inflow ? ArrowDownLeft : ArrowUpRight} />
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <Body {...(onEdit ? { onClick: onEdit, "aria-label": `${kind} ${b.memo || ""} ${fmtWon(b.amount)} 고치기` } : {})}
+        style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: onEdit ? "pointer" : "default", fontFamily: "inherit", color: "inherit" }}>
         <div style={{ color: T.ink, fontSize: 15, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.memo || kind}</div>
         {tags && <div style={{ color: T.inkMuted, fontSize: 12, marginTop: 2 }}>{tags}</div>}
         {dateNode}
-      </div>
+      </Body>
       <div style={{ color: inflow ? T.good : T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap" }}>
         {inflow ? "+" : "−"}{fmtWon(b.amount)}
       </div>
@@ -442,6 +445,7 @@ export function LedgerView({ ctx }) {
   };
 
   const startEdit = (e) => {
+    setBalEditId(null);
     setEditingId(e.id);
     setEditAmount(String(e.amount));
     setEditCategoryId(e.categoryId || "");   // 자동으로 들어온 기록은 카테고리가 없다("" = 미분류)
@@ -539,6 +543,57 @@ export function LedgerView({ ctx }) {
     showToast("삭제했어요");
   };
 
+  /*
+    **입출금·이체·현금 인출도 내역에서 고친다**(2026-11-16, 사용자: "계좌이체나 현금인출 한 것도 내역에서 수정할 수 있게").
+    - 이체는 두 줄(보낸 통장 출금 + 받은 통장 입금)이 transferId로 묶여 있다 → 금액·날짜는 두 줄을 같이, 적요는 누른 줄만.
+      통장은 못 바꾼다(어느 쪽을 바꾸는지 헷갈린다 — 지우고 홈에서 다시).
+    - 지출 기록에 딸린 출금·입금(현금 지출, 대리결제 정산)은 금액·종류를 여기서 못 바꾼다. 지출 쪽 금액과 갈라지면
+      두 숫자 중 무엇이 맞는지 모르게 된다. 날짜·적요·통장은 고쳐도 된다.
+    - 고정지출 처리로 이어진 출금은 날짜를 다른 달로 못 옮긴다(그 달 '완료' 표시가 이 기록을 가리킨다).
+    - 은행 알림으로 들어온 기록도 고칠 수 있다. 잔액은 다음 은행 알림이 다시 맞춘다(bankSync).
+    - 여유(게이지) 계산엔 원래 안 들어가는 기록이라 통장 잔액만 바뀐다.
+  */
+  const [balEditId, setBalEditId] = useState(null);
+  const [balAmount, setBalAmount] = useState("");
+  const [balType, setBalType] = useState("out");
+  const [balDate, setBalDate] = useState("");
+  const [balMemo, setBalMemo] = useState("");
+  const [balAccountId, setBalAccountId] = useState("");
+  useEffect(() => { setBalEditId(null); }, [timeScope, category, search]);
+  const balLinkedExpense = (b) => (data.expenses || []).find((e) => e.linkedBalanceId === b.id || e.reimbursementBalanceId === b.id || e.settlementBalanceId === b.id);
+  const startBalEdit = (b) => {
+    setEditingId(null);
+    setBalEditId(b.id);
+    setBalAmount(String(b.amount));
+    setBalType(b.type === "in" ? "in" : "out");
+    setBalDate(b.date);
+    setBalMemo(b.memo || "");
+    setBalAccountId(data.accounts.some((a) => a.id === b.accountId) ? b.accountId : data.accounts[0]?.id || "");
+  };
+  const saveBalEdit = (b) => {
+    const n = Number(balAmount);
+    if (!n || n <= 0) return showToast("금액을 입력해주세요");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(balDate)) return showToast("날짜를 골라주세요");
+    const linkedExp = balLinkedExpense(b);
+    const lockAmount = !!linkedExp;
+    if (lockAmount && n !== Number(b.amount)) return showToast("지출 기록에 딸린 출금이라 금액은 그 지출을 고치면 같이 바뀌어요");
+    if (b.linkedFixedId && b.linkedFixedMonth && balDate.slice(0, 7) !== b.linkedFixedMonth) return showToast(`고정지출 ${b.linkedFixedMonth.slice(5)}월 처리 기록이라 다른 달로는 못 옮겨요`);
+    const memo = balMemo.trim();
+    const entries = (data.balanceEntries || []).map((x) => {
+      if (x.id === b.id) {
+        const out = { ...x, amount: n, date: balDate, memo, edited: true };
+        if (!b.transferId && !lockAmount) out.type = balType;
+        if (!b.transferId) out.accountId = balAccountId || x.accountId;
+        return out;
+      }
+      if (b.transferId && x.transferId === b.transferId) return { ...x, amount: n, date: balDate, edited: true };   // 이체 짝도 같이
+      return x;
+    });
+    persist({ ...data, balanceEntries: entries });
+    setBalEditId(null);
+    showToast(b.transferId ? "이체를 고쳤어요 · 양쪽 통장에 같이 반영됐어요" : "고쳤어요 · 통장 잔액에 바로 반영됐어요");
+  };
+
   // 셀렉트 하나로 눈에 잘 안 띄지만 다크 배경에서도 읽히게 최소한의 스타일만 입힌 것 —
   // 원래 있던 카테고리/카드/통장 칩 버튼들을 이걸로 바꿔서 편집 폼 세로 길이를 크게 줄임.
   const editSelectSty = { flex: 1, background: "#fff", border: `1px solid ${T.paperLine}`, borderRadius: 10, padding: "10px 12px", color: T.ink, fontSize: 15, outline: "none" };
@@ -602,6 +657,46 @@ export function LedgerView({ ctx }) {
       </div>
     </div>
   );
+
+  const renderBalEditForm = (b) => {
+    const linkedExp = balLinkedExpense(b);
+    const pair = b.transferId ? (data.balanceEntries || []).find((x) => x.transferId === b.transferId && x.id !== b.id) : null;
+    const pairName = pair ? data.accounts.find((a) => a.id === pair.accountId)?.name : null;
+    const note = b.transferId
+      ? `이체예요 — 금액·날짜는 ${pairName || "상대 통장"} 쪽 기록도 같이 바뀌어요. 통장을 바꾸려면 지우고 홈에서 다시 이체하세요.`
+      : linkedExp ? "지출 기록에 딸린 거라 금액·종류는 그 지출에서 고쳐요. 날짜·적요·통장은 여기서 고쳐도 돼요."
+      : b.linkedFixedId ? "고정지출 처리 기록이에요 — 같은 달 안에서만 날짜를 옮길 수 있어요."
+      : b.auto ? "은행 알림으로 들어온 기록이에요. 잔액은 다음 은행 알림 때 다시 맞춰져요." : null;
+    const lockType = !!b.transferId || !!linkedExp;
+    return (
+      <div style={{ marginTop: 8, marginBottom: 8, background: T.mode === "dark" ? "#00000022" : "#00000008", borderRadius: 10, padding: 10 }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <MoneyInput value={balAmount} onChange={setBalAmount} />
+          <select value={balType} disabled={lockType} onChange={(ev) => setBalType(ev.target.value)} aria-label="입금·출금"
+            style={{ ...editSelectSty, flex: "0 0 84px", opacity: lockType ? 0.6 : 1 }}>
+            <option value="out">출금</option>
+            <option value="in">입금</option>
+          </select>
+        </div>
+        {!b.transferId && data.accounts.length > 1 && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            <select value={balAccountId} onChange={(ev) => setBalAccountId(ev.target.value)} aria-label="통장" style={editSelectSty}>
+              {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <input type="date" value={balDate} onChange={(ev) => setBalDate(ev.target.value)} aria-label="날짜" style={{ ...inputSty(T), flex: "0 0 132px", background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}` }} />
+          <input value={balMemo} onChange={(ev) => setBalMemo(ev.target.value)} placeholder="적요 (예: 현금 인출)" aria-label="적요" style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}` }} />
+        </div>
+        {note && <div style={{ color: T.inkMuted, fontSize: 12, marginBottom: 8 }}>{note}</div>}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={() => setBalEditId(null)} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.ink, fontSize: 14, cursor: "pointer" }}>취소</button>
+          <button onClick={() => saveBalEdit(b)} style={{ flex: 2, ...primaryBtn(T), padding: "9px 0" }}>저장</button>
+        </div>
+      </div>
+    );
+  };
 
   let totalsLine = null;
   if (category === "card") totalsLine = (
@@ -730,7 +825,9 @@ export function LedgerView({ ctx }) {
               return (
                 <div key={item.id}>
                   {head}
-                  <BalanceRow b={item} dateNode={dateNode} accountName={data.accounts.length > 1 ? data.accounts.find((a) => a.id === (item.accountId || data.accounts[0]?.id))?.name : null} onDelete={() => removeBalance(item.id)} />
+                  <BalanceRow b={item} dateNode={dateNode} accountName={data.accounts.length > 1 ? data.accounts.find((a) => a.id === (item.accountId || data.accounts[0]?.id))?.name : null} onDelete={() => removeBalance(item.id)}
+                    onEdit={item.isAdjustment ? null : () => (balEditId === item.id ? setBalEditId(null) : startBalEdit(item))} />
+                  {balEditId === item.id && renderBalEditForm(item)}
                 </div>
               );
             }
