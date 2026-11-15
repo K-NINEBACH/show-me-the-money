@@ -15,7 +15,7 @@
         android:id="@+id/widget_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="카드로 더 써도 되는 돈"
+        android:text="이번 달 더 써도 되는 돈"
         android:textColor="#D8B06A"
         android:textSize="13sp"
         android:maxLines="1"

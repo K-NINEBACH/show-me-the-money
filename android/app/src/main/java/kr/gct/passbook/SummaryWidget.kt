@@ -49,7 +49,7 @@ class SummaryWidget : AppWidgetProvider() {
             } else {
                 val can = s.optLong("canSpend", 0L)
                 val short = can < 0
-                v.setTextViewText(R.id.widget_title, if (short) "월급 들어와도 모자라는 돈" else "카드로 더 써도 되는 돈")
+                v.setTextViewText(R.id.widget_title, if (short) "월급 들어와도 모자라는 돈" else "이번 달 더 써도 되는 돈")
                 v.setTextViewText(R.id.widget_amount, (if (short) "-" else "") + Summary.won(if (short) -can else can))
                 v.setTextColor(R.id.widget_amount, if (short) 0xFFE25C5C.toInt() else 0xFFF2E8D5.toInt())
                 // 아래 한 줄엔 하루 몫·남은 날, 결제일이 일주일 안이면 "10/12(3일 뒤) … 나가요"까지 붙는다(1.4)

@@ -98,7 +98,7 @@ open class SizedWidget(private val kind: String) : AppWidgetProvider() {
             val color = when (state) { "danger" -> DANGER; "warn" -> WARN; else -> GOOD }
             val head = s.optString("head", "")
 
-            v.setTextViewText(R.id.w_title, if (short) "월급 들어와도 모자라는 돈" else "카드로 더 써도 되는 돈")
+            v.setTextViewText(R.id.w_title, if (short) "월급 들어와도 모자라는 돈" else "이번 달 더 써도 되는 돈")
             v.setTextViewText(R.id.w_amount, (if (short) "-" else "") + Summary.won(Math.abs(can)))
             v.setTextColor(R.id.w_amount, color)
             v.setTextViewText(R.id.w_per, if (short) "" else "하루 ${Summary.won(per)}")
@@ -137,7 +137,7 @@ open class SizedWidget(private val kind: String) : AppWidgetProvider() {
                     when (state) { "danger" -> R.drawable.w_pill_danger; "warn" -> R.drawable.w_pill_warn; else -> R.drawable.w_pill_good })
             }
 
-            // 식: 통장 + 월급 − 안 낸 카드값 − 고정지출 = 카드로 더 써도 되는 돈(위 큰 숫자)
+            // 식: 통장 + 월급 − 안 낸 카드값 − 고정지출 = 이번 달 더 써도 되는 돈(위 큰 숫자)
             if (rowCount > 0) {
                 val rows = ArrayList<Triple<String, Long, Boolean>>()
                 if (hasEq) {
