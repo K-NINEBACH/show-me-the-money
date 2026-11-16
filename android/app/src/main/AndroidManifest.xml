@@ -30,10 +30,15 @@
         android:usesCleartextTraffic="false"
         android:theme="@style/Theme.Passbook">
 
+        <!--
+          singleTop(1.11, 2026-11-16). 예전 singleTask는 안드로이드 17(삼성)의 최근 앱 화면에서 다시 띄울 때
+          "Caller with mInTask … but target is singleInstance/Task"로 거부돼 '앱을 열지 못했어요'가 떴다(결과 코드 −96).
+          위젯·알림은 FLAG_ACTIVITY_NEW_TASK라 떠 있는 작업을 앞으로 가져올 뿐 화면이 둘로 늘지 않는다.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTask"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

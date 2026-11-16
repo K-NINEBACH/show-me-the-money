@@ -569,6 +569,10 @@ D:\dev\gradle-8.7     Gradle
 
 **껍데기 1.9부터 스스로 업데이트한다**(2026-10-30, 사용자: "앱 들어갈 때마다 자동으로 되게"). 앱을 열 때(3시간에 한 번) 배포 주소의 `apk/latest.json`을 보고 새 버전이면 받아 sha256을 맞춘 뒤 PackageInstaller로 깐다(`Updater.kt`). 처음 한 번은 '업데이트할까요?' 창과 '이 출처 허용'이 뜬다. 그 뒤엔 이 앱이 설치자로 적혀 안드로이드 12+는 묻지 않고, **앱을 벗어날 때** 깐다(쓰는 중에 안 꺼지게). 올리는 법: versionCode·versionName을 올려 빌드 → `node tools/apk-release.mjs`(APK는 GitHub 릴리스 `apk-<버전>`, 저장소엔 안 넣는다) → `public/apk/latest.json` 커밋·푸시.
 
+**MainActivity는 `singleTop`이다 — `singleTask`로 되돌리지 말 것**(껍데기 1.11, 2026-11-16). 사용자: "앱에서 앱으로 바로 넘어갈 때마다
+'앱을 열지 못했어요'." 폰 기록: 최근 앱 화면이 그 작업 안에서 다시 띄우려 하자 안드로이드 17이 `Caller with mInTask … but target is
+singleInstance/Task`로 거부(결과 −96). 바꾼 뒤 실패 0. 이런 증상은 `adb logcat -b all`에서 `Failed to launch task`·`result code=`로 찾는다.
+
 웹만 고쳤으면 **APK를 다시 깔 필요가 없다** — 원격 주소를 띄우므로 푸시하면
 앱을 다시 켤 때 반영된다. 네이티브(알림 규칙·백업·앱 이름)를 고칠 때만 재설치.
 
