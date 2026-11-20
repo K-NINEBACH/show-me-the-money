@@ -20,7 +20,17 @@ export const defaultData = () => ({
   fixedExpenses: [],
   fixedIncomes: [],   // 매달 들어오는 고정 수입(월급 말고 — 예: 가족이 매달 넣어 주는 돈, 2026-10-03)
   balanceEntries: [],
+  // 구글 결제 금액 → 정기결제 이름(2026-11-21). 새로 까는 사람은 비어 있다 — 아래 LEGACY_GOOGLE_SUBS 참고
+  googleSubs: {},
 });
+
+/*
+  **9,900원 유튜브 · 30,000원 클로드는 처음 쓰던 사람만의 규칙이다**(2026-11-21, 사용자: 여자친구 폰에도 깔되
+  "내꺼랑 별개로 본인꺼만 적용"). 예전엔 코드에 박혀 있어서, 다른 사람 폰에서도 구글 9,900원 결제가 '유튜브 정기결제'로
+  묶였다. 이제 데이터의 googleSubs 칸이다. 이 칸이 없는 저장 데이터(= 이 날 전부터 쓰던 폰, 그 폰의 옛 백업)만
+  예전 두 금액을 받는다. 새로 깔면 defaultData가 빈 칸을 넣으므로 아무것도 묶이지 않는다.
+*/
+export const LEGACY_GOOGLE_SUBS = { 9900: "유튜브", 30000: "클로드" };
 
 export function migrate(raw) {
   const d = { ...defaultData(), ...raw };
@@ -84,6 +94,8 @@ export function migrate(raw) {
     예산을 적었는지 알 수 없고, 틀린 값으로 채우면 큰 숫자가 조용히 틀린다. 없으면 0, 홈이 적으라고 안내한다.
   */
   d.monthlyPay = Number(raw.monthlyPay) || 0;
+  d.googleSubs = raw.googleSubs && typeof raw.googleSubs === "object" && !Array.isArray(raw.googleSubs)
+    ? raw.googleSubs : { ...LEGACY_GOOGLE_SUBS };
   // Old backups may still carry pinLock/trash from a previous version of the app — drop them silently.
   delete d.pinLock;
   delete d.trash;
@@ -105,13 +117,13 @@ const memoKey = (m) => String(m || "").replace(/\s+/g, "").toLowerCase();
   → 구글 결제는 **이름 + 금액**이 같아야 따라가고, 아래 두 금액은 늘 정기결제(사람이 바꿔도 되돌린다 — '고정'으로 묶어 달라고 했다).
 */
 const isGoogle = (m) => /구글페이먼트|googlepayment/.test(memoKey(m));
-const GOOGLE_SUBS = { 9900: "유튜브", 30000: "클로드" };
-const googleSub = (e) => isGoogle(e.memo) && GOOGLE_SUBS[Number(e.amount)] != null;
+export const googleSubName = (d, e) => (isGoogle(e.memo) && (d.googleSubs || {})[Number(e.amount)]) || null;
 const learnKey = (e) => (isGoogle(e.memo) ? `${memoKey(e.memo)}|${Number(e.amount)}` : memoKey(e.memo));
 export function autoCategorize(d) {
   const exps = d.expenses || [];
   let cats = d.categories || [];
   let subId = cats.find((c) => /정기/.test(c.name))?.id || null;
+  const googleSub = (e) => googleSubName(d, e) != null;
   const needs = (e) => (!e.catTried && !e.categoryId) || (googleSub(e) && (!subId || e.categoryId !== subId));
   if (!exps.some(needs)) return d;
   const has = (id) => cats.some((c) => c.id === id);

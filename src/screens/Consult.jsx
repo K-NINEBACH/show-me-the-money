@@ -3,7 +3,7 @@
 // 계산은 새로 만들지 않고 ctx 값(다음 달 월급·고정지출·더 써도 되는 돈)을 그대로 쓴다 — 홈과 숫자가 갈라지면 안 된다.
 import { useMemo } from "react";
 import { useTheme, F, tone } from "../lib/theme";
-import { fmtWon, netAmount, fixedInfo, monthKeyOffset, daysInMonthKey } from "../lib/data";
+import { fmtWon, netAmount, fixedInfo, monthKeyOffset, daysInMonthKey, googleSubName } from "../lib/data";
 
 const num = { fontFamily: F.mono, fontVariantNumeric: "tabular-nums" };
 const ym = (k) => `${k.slice(0, 4)}년 ${Number(k.slice(5, 7))}월`;
@@ -90,8 +90,8 @@ export function ConsultView({ ctx }) {
       .forEach((e) => {
         const k = `${String(e.memo || "").replace(/\s+/g, "")}|${Number(e.amount)}`;
         if (extra.some((x) => x.k === k) || seen.has(Number(e.amount))) return;
-        // 구글 결제는 이름이 다 같아서 사용자가 알려 준 금액으로 이름을 붙인다(data.js GOOGLE_SUBS와 같은 값)
-        const g = /구글페이먼트/.test(String(e.memo || "").replace(/\s+/g, "")) ? { 9900: "유튜브", 30000: "클로드" }[Number(e.amount)] : null;
+        // 구글 결제는 이름이 다 같아서 사용자가 알려 준 금액으로 이름을 붙인다(data.googleSubs — 새로 깐 폰은 비어 있음)
+        const g = googleSubName(data, e);
         extra.push({ k, key: e.id, name: g ? `${g} · 구글 결제` : e.memo || "정기결제", amount: Number(e.amount), registered: false, last: e.date });
       });
     return [...fixedSubs, ...extra].sort((a, b) => b.amount - a.amount);
