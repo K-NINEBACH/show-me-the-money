@@ -1,4 +1,4 @@
-import { autoRecordPayments, ledgerBalance } from "../src/lib/auto-record.js";
+import { autoRecordPayments, ledgerBalance, sameBankWithoutTail } from "../src/lib/auto-record.js";
 let fail = 0;
 const check = (n, got, want) => { const ok = String(got) === String(want); if (!ok) fail++; console.log(`  ${ok ? "PASS" : "FAIL"}  ${n}${ok ? "" : `  (기대 ${want} / 실제 ${got})`}`); };
 // 같은 은행 통장 둘을 **둘 다 등록**한 경우(2026-11-21, 농협 두 개). 값은 모두 가짜.
@@ -26,4 +26,9 @@ check("셋째 통장: 기록 0건", r.registered.length, 0);
 // 4) 사람이 3자리(122)로 적어도 알림의 2자리(22)와 맞는다
 r = autoRecordPayments(base({ acctTail: "122" }, { acctTail: "344" }), [{ text: OUT_A, pkg: PKG, at }]);
 check("3자리로 적어도 생활비로", ledgerBalance(r.next.accounts, r.next.balanceEntries, "a1"), 470000);
+// 5) 설정 경고 — 같은 은행 둘 이상인데 끝자리 없는 통장(은행 상관없이)
+const w = sameBankWithoutTail([{ name: "신한 월급" }, { name: "신한 적금", acctTail: "123" }, { name: "신한 비상금" }, { name: "국민은행" }]);
+check("경고: 신한만", w.map((x) => x.bank).join(), "신한");
+check("경고: 끝자리 없는 둘", w[0].names.join(), "신한 월급,신한 비상금");
+check("다 적으면 경고 없음", sameBankWithoutTail([{ name: "농협 A", acctTail: "1" + "22" }, { name: "농협 B", acctTail: "344" }]).length, 0);
 console.log(fail ? `\n${fail}건 실패` : "\n전부 통과"); process.exit(fail ? 1 : 0);

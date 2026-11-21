@@ -63,6 +63,7 @@ export function AddView({ ctx }) {
   const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState("");
+  const [instMonths, setInstMonths] = useState(""); // 카드 할부 개월(비우면 일시불)
 
   /*
     공유·자동화로 넘어온 문자가 있으면 열자마자 읽어서 채운다.
@@ -124,6 +125,34 @@ export function AddView({ ctx }) {
     if (payMethod === "card" && !cardId) return showToast("설정에서 카드를 먼저 등록해주세요");
     if (payMethod === "cash" && !accountId) return showToast("설정에서 통장을 먼저 등록해주세요");
     const catName = data.categories.find((c) => c.id === categoryId)?.name || "지출";
+
+    /*
+      **카드 할부로 적으면 할부 기간 동안 고정지출로 나간다**(2026-11-21, 사용자: "카드 할부로 입력하면 알아서
+      할부기간동안은 고정지출로"). 알림 자동 등록(auto-record의 할부 결제)과 같은 모양 — 월 금액 = 총액 ÷ 개월,
+      나머지는 첫 달, 첫 회차는 결제한 달. 카드값(bill)에는 안 더한다(할부 몫으로 매달 들어간다 — 더하면 두 번).
+      알림으로 같은 할부가 이미 들어와 있으면 새로 안 만들고 카테고리만 붙인다.
+    */
+    const months = payMethod === "card" ? Number(instMonths) || 0 : 0;
+    if (months >= 2) {
+      if (months > 60) return showToast("할부는 60개월까지예요");
+      const eKey = date.slice(0, 7);
+      const dupInst = (data.fixedExpenses || []).find((f) => f.cardId === cardId && f.setupMonthKey === eKey && Number(f.purchaseAmount) === n);
+      if (dupInst) {
+        persist({ ...data, fixedExpenses: data.fixedExpenses.map((f) => (f.id === dupInst.id ? { ...f, categoryId, ...(memo.trim() ? { name: memo.trim() + " 할부" } : {}) } : f)) });
+        setAmount(""); setMemo(""); setInstMonths("");
+        return showToast("알림으로 들어온 할부에 카테고리를 붙였어요");
+      }
+      const monthly = Math.floor(n / months);
+      const first = n - monthly * (months - 1);
+      const inst = {
+        id: "f" + Date.now(), name: `${memo.trim() || catName} 할부`, baseAmount: monthly, totalMonths: months, startInstallment: 1,
+        setupMonthKey: eKey, overrides: first !== monthly ? { [eKey]: first } : {}, paymentMethod: "card", cardId, accountId: null,
+        paidMonths: {}, autoPayDay: null, categoryId, purchaseAmount: n, purchaseDate: date,
+      };
+      persist({ ...data, fixedExpenses: [...(data.fixedExpenses || []), inst] });
+      setAmount(""); setMemo(""); setInstMonths("");
+      return showToast(`${months}개월 할부로 등록했어요 · 매달 ${fmtWon(monthly)}씩 고정지출로 나가요`);
+    }
 
     /*
       **알림으로 이미 들어온 결제를 손으로 또 적는 걸 막는다**(2026-09-11).
@@ -257,6 +286,28 @@ export function AddView({ ctx }) {
                 ))}
               </div>
               <button onClick={addCategory} style={primaryBtn(T)}>카테고리 추가</button>
+            </div>
+          )}
+
+          {payMethod === "card" && (data.cards || []).length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: T.muted, fontSize: 15, marginBottom: 7 }}>할부</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {["", "2", "3", "6", "12"].map((m) => (
+                  <button key={m || "0"} onClick={() => setInstMonths(m)} aria-pressed={instMonths === m}
+                    style={{ flex: "1 0 52px", padding: "8px 0", borderRadius: 8, border: instMonths === m ? `2px solid ${T.gold}` : `1px solid ${T.border}`, background: instMonths === m ? T.gold + "22" : "transparent", color: T.cream, fontSize: 14.5, fontWeight: 700, cursor: "pointer" }}>
+                    {m ? `${m}개월` : "일시불"}
+                  </button>
+                ))}
+                <input type="number" inputMode="numeric" value={["", "2", "3", "6", "12"].includes(instMonths) ? "" : instMonths}
+                  onChange={(e) => setInstMonths(e.target.value)} placeholder="직접" aria-label="할부 개월 직접 입력"
+                  style={{ ...inputSty(T), flex: "1 0 60px", width: 60, padding: "8px", fontFamily: F.mono, textAlign: "center" }} />
+              </div>
+              {Number(instMonths) >= 2 && Number(amount) > 0 && (
+                <div style={{ color: T.muted, fontSize: 13, marginTop: 6 }}>
+                  매달 {fmtWon(Math.floor(Number(amount) / Number(instMonths)))}씩 {instMonths}개월 동안 고정지출(할부)로 나가요. 이번 달 카드값엔 첫 달 몫만 들어가요.
+                </div>
+              )}
             </div>
           )}
 

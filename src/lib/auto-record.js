@@ -175,6 +175,16 @@ function pickByKeys(list, keys) {
   보낸 앱이 KB라는 걸 아는 이상 그건 확실히 틀린 답이다. 못 고르면 보류하고
   사람에게 넘긴다. 보낸 곳을 모를 때만 예전처럼 글자로 넘어간다.
 */
+/** 같은 은행 통장이 둘 이상인데 끝자리를 모르는 통장들 — 설정에서 알린다(은행 이름별) */
+export function sameBankWithoutTail(accounts) {
+  const out = [];
+  for (const it of ISSUERS) {
+    const same = (accounts || []).filter((a) => issuerOfName(a.name) === it);
+    if (same.length >= 2 && same.some((a) => !a.acctTail)) out.push({ bank: it.keys[0], names: same.filter((a) => !a.acctTail).map((a) => a.name) });
+  }
+  return out;
+}
+
 function issuerOfName(name) {
   const n = String(name || "");
   if (!n) return null;

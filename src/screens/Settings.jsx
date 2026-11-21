@@ -8,6 +8,7 @@ import { ALERT_LOG_KEY, PALETTE } from "../lib/constants";
 import { dropCode, showCode, dropLog, dropState, resetApplied } from "../lib/drop";
 import { parsePaymentText } from "../lib/data";
 import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../components/common";
+import { sameBankWithoutTail } from "../lib/auto-record";
 
 /** "3분 전", "2시간 전", "어제" — 진단 화면용 */
 function ago(ms) {
@@ -524,6 +525,7 @@ export function SettingsView({ ctx }) {
             <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
               <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 16 }}>{a.name}</span>
               <input
+                key={a.acctTail || "none"}
                 defaultValue={a.acctTail || ""}
                 inputMode="numeric"
                 maxLength={4}
@@ -548,7 +550,12 @@ export function SettingsView({ ctx }) {
         </div>
         <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
           이름에 은행 이름이 들어가야 은행 알림을 알아서 이 통장에 붙여요. 잔액은 은행 알림이 오면 저절로 맞춰져요.
-          같은 은행 통장이 둘이면 이름을 다르게 짓고(예: 농협 월급, 농협 생활비) '끝자리'에 계좌번호 맨 끝 숫자 3자리를 적어 주세요 — 알림에 찍힌 끝자리로 가려요.
+          {sameBankWithoutTail(data.accounts).map((w) => (
+            <div key={w.bank} style={{ color: T.warn, fontWeight: 700 }}>
+              {w.bank} 통장이 여러 개예요 — {w.names.join(", ")}에 끝자리를 적어 주세요. 안 적으면 알림이 어느 통장 것인지 몰라 알림함에 남을 수 있어요.
+            </div>
+          ))}
+          같은 은행 통장이 둘 이상이면 이름을 다르게 짓고(예: 농협 월급, 농협 생활비) '끝자리'에 계좌번호 맨 끝 숫자 3자리를 적어 주세요 — 알림에 찍힌 끝자리로 가려요.
         </div>
       </Field>
 
