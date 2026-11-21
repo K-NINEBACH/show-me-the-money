@@ -523,7 +523,8 @@ export function SettingsView({ ctx }) {
         <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
           {(data.accounts || []).map((a) => (
             <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
-              <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 16 }}>{a.name}</span>
+              <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 16, wordBreak: "keep-all" }}>{a.name}</span>
+              <span style={{ color: T.muted, fontSize: 13, flexShrink: 0 }}>끝자리</span>
               <input
                 key={a.acctTail || "none"}
                 defaultValue={a.acctTail || ""}
@@ -537,7 +538,7 @@ export function SettingsView({ ctx }) {
                   persist({ ...data, accounts: data.accounts.map((x) => (x.id === a.id ? (v ? { ...x, acctTail: v } : (({ acctTail, ...rest }) => rest)(x)) : x)) });
                   showToast(v ? `${a.name}: 끝자리 ${v}로 가려요` : `${a.name}: 끝자리 지움`);
                 }}
-                style={{ ...inputSty(T), width: 76, padding: "6px 8px", fontSize: 14, textAlign: "center" }}
+                style={{ ...inputSty(T), width: 64, padding: "6px 6px", fontSize: 14, textAlign: "center" }}
               />
               <button onClick={() => removeAccount(a.id)} aria-label={`${a.name} 통장 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
             </div>
@@ -549,7 +550,7 @@ export function SettingsView({ ctx }) {
           <button onClick={addAccount} style={primaryBtn(T)}>통장 추가</button>
         </div>
         <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
-          이름에 은행 이름이 들어가야 은행 알림을 알아서 이 통장에 붙여요. 잔액은 은행 알림이 오면 저절로 맞춰져요.
+          이름에 은행 이름이 들어가야 은행 알림을 알아서 이 통장에 붙여요. 잔액은 은행 알림이 오면 저절로 맞춰져요.{" "}
           {sameBankWithoutTail(data.accounts).map((w) => (
             <div key={w.bank} style={{ color: T.warn, fontWeight: 700 }}>
               {w.bank} 통장이 여러 개예요 — {w.names.join(", ")}에 끝자리를 적어 주세요. 안 적으면 알림이 어느 통장 것인지 몰라 알림함에 남을 수 있어요.
@@ -573,7 +574,13 @@ export function SettingsView({ ctx }) {
           {(data.cards || []).map((c) => (
             <div key={c.id} style={{ padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 16 }}>{c.name}</span>
+                <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 16, wordBreak: "keep-all" }}>{c.name}</span>
+                <button onClick={() => removeCard(c.id)} aria-label={`${c.name} 카드 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
+              </div>
+              {/* 폰 폭(360px)에서 이름·끝자리·결제일을 한 줄에 두면 이름이 글자마다 끊겨서(2026-11-21 화면 시험) 둘째 줄로 내렸다 */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, color: T.muted, fontSize: 13 }}>
+              <span>끝 4자리</span>
               <input
                 key={c.cardTail || "none"}
                 defaultValue={c.cardTail || ""}
@@ -584,12 +591,13 @@ export function SettingsView({ ctx }) {
                 onBlur={(e) => {
                   const v = e.target.value.replace(/\D/g, "").slice(-4);
                   if (v === (c.cardTail || "")) return;
-                  if (v && v.length !== 4) return showToast("카드번호 끝 4자리를 적어 주세요");
+                  if (v && v.length !== 4) { e.target.value = c.cardTail || ""; return showToast("카드번호 끝 4자리를 적어 주세요"); }
                   persist({ ...data, cards: data.cards.map((x) => (x.id === c.id ? (v ? { ...x, cardTail: v } : (({ cardTail, ...rest }) => rest)(x)) : x)) });
                   showToast(v ? `${c.name}: 끝 ${v}로 가려요` : `${c.name}: 끝자리 지움`);
                 }}
                 style={{ ...inputSty(T), width: 70, padding: "6px 6px", fontSize: 14, textAlign: "center" }}
               />
+              </label>
               <label style={{ display: "flex", alignItems: "center", gap: 4, color: T.muted, fontSize: 13 }}>
                 <span>결제일</span>
                 <input type="number" min="1" max="31" inputMode="numeric" value={c.payDay || ""} aria-label={`${c.name} 결제일`}
@@ -599,7 +607,6 @@ export function SettingsView({ ctx }) {
                   }}
                   style={{ ...inputSty(T), width: 56, padding: "6px 8px", fontSize: 15, textAlign: "center" }} />
               </label>
-              <button onClick={() => removeCard(c.id)} aria-label={`${c.name} 카드 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
               </div>
               {/*
                 **결제 통장**(2026-11-09, 사용자: 기업은행에서 롯데카드가 나가는데 홈이 국민은행에서 뺐다). 알림으로 배운 값이
@@ -633,7 +640,7 @@ export function SettingsView({ ctx }) {
             </div>
           ))}
           이름에 카드사 이름이 들어가야 결제 알림을 알아서 이 카드에 붙여요. 카드값은 홈에서 봐요.
-          같은 카드사 카드가 여러 장이면(예: 신한 신용 · 신한 체크) '끝4자리'에 카드번호 끝 4자리를 적어 주세요.
+          같은 카드사 카드가 여러 장이면(예: 신한 신용 · 신한 체크) '끝 4자리'에 카드번호 끝 4자리를 적어 주세요.
           결제일을 적어 두면 홈에 "10/12 결제 · 23일 뒤"로 보여요.
         </div>
       </Field>

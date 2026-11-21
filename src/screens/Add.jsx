@@ -218,7 +218,7 @@ export function AddView({ ctx }) {
           </button>
           <button onClick={() => setPayMethod("installment")} aria-pressed={payMethod === "installment"}
             style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 0", borderRadius: 10, border: payMethod === "installment" ? `2px solid ${T.warn}` : `1px solid ${T.border}`, background: payMethod === "installment" ? T.warn + "22" : "transparent", color: T.cream, fontSize: 15.5, fontWeight: 700, cursor: "pointer" }}>
-            <Repeat size={14} /> 할부(고정지출)
+            <Repeat size={14} /> 고정지출
           </button>
         </div>
       </Field>
@@ -278,7 +278,7 @@ export function AddView({ ctx }) {
 
           {newCatMode && (
             <div style={{ marginTop: -8, marginBottom: 16, background: T.bg2, borderRadius: 10, padding: 12 }}>
-              <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="표기내역" aria-label="새 카테고리 이름" style={{ ...inputSty(T), marginBottom: 8 }} autoFocus />
+              <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="카테고리 이름 — 예: 보험료" aria-label="새 카테고리 이름" style={{ ...inputSty(T), marginBottom: 8 }} autoFocus />
               <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
                 {PALETTE.map((col, i) => (
                   <button key={col} onClick={() => setNewCatColor(col)} aria-label={`색 ${i + 1}`} aria-pressed={newCatColor === col}
@@ -318,7 +318,7 @@ export function AddView({ ctx }) {
             </div>
             <div style={{ flex: 1.4 }}>
               <label htmlFor="add-memo" style={{ display: "block", color: T.muted, fontSize: 15, marginBottom: 7 }}>메모 (선택)</label>
-              <input id="add-memo" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+              <input id="add-memo" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 스타벅스" style={inputSty(T)} />
             </div>
           </div>
 
@@ -469,7 +469,7 @@ function InstallmentForm({ ctx }) {
       )}
 
       <Field label="표기내역">
-        <input value={fixedName} onChange={(e) => setFixedName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+        <input value={fixedName} onChange={(e) => setFixedName(e.target.value)} placeholder="이름 — 예: 실손보험, 넷플릭스" aria-label="고정지출 이름" style={inputSty(T)} />
       </Field>
       <Field label="월 납입 금액">
         <MoneyInput value={fixedAmount} onChange={setFixedAmount} />

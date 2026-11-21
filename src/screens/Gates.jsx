@@ -83,7 +83,7 @@ export function Onboarding({ data, persist }) {
             {useCard && (
               <div style={{ width: "100%", marginBottom: 20 }}>
                 <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 6 }}>카드 이름 (나중에 여러 개 추가 가능)</div>
-                <input value={cardName} onChange={(e) => setCardName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+                <input value={cardName} onChange={(e) => setCardName(e.target.value)} placeholder="예: 신한카드 (카드사 이름을 넣어 주세요)" aria-label="카드 이름" style={inputSty(T)} />
               </div>
             )}
             <div style={{ display: "flex", gap: 8, width: "100%" }}>
@@ -99,7 +99,7 @@ export function Onboarding({ data, persist }) {
             <div style={{ color: T.muted, fontSize: 14.5, marginBottom: 20, textAlign: "center" }}>여러 통장은 나중에 설정에서 추가할 수 있어요.</div>
             <div style={{ width: "100%", marginBottom: 14 }}>
               <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 6 }}>통장 이름</div>
-              <input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+              <input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="예: 농협은행 (은행 이름을 넣어 주세요)" aria-label="통장 이름" style={inputSty(T)} />
             </div>
             <div style={{ width: "100%", marginBottom: 20 }}>
               <div style={{ color: T.muted, fontSize: 13.5, marginBottom: 6 }}>지금 잔액 (선택, 나중에 수정 가능)</div>
@@ -128,7 +128,7 @@ export function Onboarding({ data, persist }) {
             </div>
             <div style={{ width: "100%", marginBottom: 20 }}>
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="표기내역" style={inputSty(T)} />
+                <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="카테고리 이름 — 예: 보험료" aria-label="새 카테고리 이름" style={inputSty(T)} />
                 <button onClick={addCat} style={{ ...primaryBtn(T), width: 60 }}>추가</button>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

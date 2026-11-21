@@ -81,7 +81,8 @@ export function LedgerRow({ e, cat, methodLabel, methodColor, dateNode, onEdit, 
         </div>
         {dateNode}
       </Body>
-      <div style={{ color: T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 15.5, textAlign: "right", whiteSpace: "nowrap" }}>−{fmtWon(e.amount)}</div>
+      {/* 금액을 눌러도 고치기(2026-11-21 화면 시험 — 금액 칸은 버튼 밖이라 눌러도 아무 일이 없었다) */}
+      <div onClick={onEdit || undefined} aria-hidden="true" style={{ color: T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 15.5, textAlign: "right", whiteSpace: "nowrap", cursor: onEdit ? "pointer" : "default" }}>−{fmtWon(e.amount)}</div>
       {onDelete && <IconBtn label={`${title} ${fmtWon(e.amount)} 삭제`} color={T.inkMuted} onClick={onDelete}><Trash2 size={15} aria-hidden="true" /></IconBtn>}
     </div>
   );
@@ -192,7 +193,7 @@ function BalanceRow({ b, accountName, onDelete, onEdit, dateNode }) {
         {tags && <div style={{ color: T.inkMuted, fontSize: 12, marginTop: 2 }}>{tags}</div>}
         {dateNode}
       </Body>
-      <div style={{ color: inflow ? T.good : T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap" }}>
+      <div onClick={onEdit || undefined} aria-hidden="true" style={{ color: inflow ? T.good : T.ink, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", cursor: onEdit ? "pointer" : "default" }}>
         {inflow ? "+" : "−"}{fmtWon(b.amount)}
       </div>
       <IconBtn label={`${kind} ${b.memo || ""} ${fmtWon(b.amount)} 삭제`} color={T.inkMuted} onClick={onDelete}><Trash2 size={15} aria-hidden="true" /></IconBtn>
@@ -651,7 +652,7 @@ export function LedgerView({ ctx }) {
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
         <input type="date" value={editDate} onChange={(ev) => setEditDate(ev.target.value)} style={{ ...inputSty(T), flex: "0 0 132px", background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}` }} />
-        <input value={editMemo} onChange={(ev) => setEditMemo(ev.target.value)} placeholder="표기내역" style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}` }} />
+        <input value={editMemo} onChange={(ev) => setEditMemo(ev.target.value)} placeholder="메모" aria-label="메모" style={{ ...inputSty(T), background: "#fff", color: T.ink, border: `1px solid ${T.paperLine}` }} />
       </div>
 
       {e.reimbursedAmount != null ? (

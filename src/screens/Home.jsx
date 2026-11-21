@@ -1197,7 +1197,7 @@ function BalanceCard({ ctx, accountBalance, compact }) {
           )}
           <MoneyInput value={amount} onChange={setAmount} placeholder="금액" autoFocus ariaLabel="금액" />
           <QuickAmountButtons amount={amount} setAmount={setAmount} />
-          <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="표기내역" aria-label="메모" style={{ ...inputSty(T), marginTop: 4 }} />
+          <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="메모 (선택)" aria-label="메모" style={{ ...inputSty(T), marginTop: 4 }} />
           <button onClick={submit} style={{ ...primaryBtn(T), background: mode === "in" ? T.good : mode === "transfer" ? T.gold : T.danger, color: mode === "transfer" ? T.onGold : "#fff", marginTop: 4 }}>
             {mode === "in" ? "입금 기록" : mode === "transfer" ? "이체 기록" : "출금 기록"}
           </button>
