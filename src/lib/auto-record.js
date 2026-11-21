@@ -149,6 +149,23 @@ const ISSUERS = [
   { re: /samsungcard/, keys: ["삼성"] },
   { re: /bccard/, keys: ["비씨", "BC"] },
   { re: /citibank/, keys: ["씨티"] },
+  /*
+    2026-11-21 더함(여자친구 폰 준비 — "미리미리 준비 최대한"). 패키지 이름은 짐작이라 못 맞혀도,
+    문자는 맨 앞 보낸 곳 이름(issuerOfHead)으로 가려지니 그 낱말이 핵심이다.
+  */
+  { re: /kbankwith|.kbank|kbanksmart/, keys: ["케이뱅크"] },
+  { re: /kfcc|smg|mgbank/, keys: ["새마을", "MG"] },
+  { re: /epost/, keys: ["우체국"] },
+  { re: /scbank|standardchartered/, keys: ["SC제일", "제일은행"] },
+  { re: /busanbank|busan/, keys: ["부산", "BNK"] },
+  { re: /dgb|imbank/, keys: ["iM뱅크", "대구", "DGB"] },
+  { re: /knbank|kyongnam/, keys: ["경남"] },
+  { re: /kjbank/, keys: ["광주"] },
+  { re: /jbbank/, keys: ["전북"] },
+  { re: /jejubank/, keys: ["제주"] },
+  { re: /suhyup/, keys: ["수협"] },
+  { re: /cuonbank|shinhyup|\.cu\./, keys: ["신협"] },
+  { re: /kdb/, keys: ["산업은행", "KDB"] },
 ];
 
 function issuerOf(pkg) {
@@ -176,11 +193,11 @@ function pickByKeys(list, keys) {
   사람에게 넘긴다. 보낸 곳을 모를 때만 예전처럼 글자로 넘어간다.
 */
 /** 같은 은행 통장이 둘 이상인데 끝자리를 모르는 통장들 — 설정에서 알린다(은행 이름별) */
-export function sameBankWithoutTail(accounts) {
+export function sameBankWithoutTail(accounts, field = "acctTail") {
   const out = [];
   for (const it of ISSUERS) {
     const same = (accounts || []).filter((a) => issuerOfName(a.name) === it);
-    if (same.length >= 2 && same.some((a) => !a.acctTail)) out.push({ bank: it.keys[0], names: same.filter((a) => !a.acctTail).map((a) => a.name) });
+    if (same.length >= 2 && same.some((a) => !a[field])) out.push({ bank: it.keys[0], names: same.filter((a) => !a[field]).map((a) => a.name) });
   }
   return out;
 }
@@ -266,7 +283,42 @@ function pickOne(list, text, pkg) {
   카드가 하나뿐이면 그 카드로 본다.
 */
 function findCard(cards, text, pkg) {
-  return pickOne(cards, text, pkg);
+  return pickOne(cards, text, pkg) || pickCardByTail(cards, text, pkg);
+}
+
+/*
+  **같은 카드사 카드가 여럿이면 카드번호 끝 4자리로 가른다**(2026-11-21, "미리미리 준비"). 카드 문자엔
+  "신한카드(1234)승인", "KB국민카드1*2*승인", "삼성1234승인"처럼 끝 번호가 (가려서) 찍힌다. 사람이 설정에서
+  카드마다 끝 4자리(cardTail)를 적으면, '*' 자리는 건너뛰고 나머지 숫자가 다 맞는 카드가 하나일 때 붙인다.
+  끝자리를 적은 카드 중 아무것도 안 맞고 안 적은 카드가 딱 하나면 그 카드로 본다(나머지는 다 아니라서).
+*/
+export function cardTailOf(text) {
+  const head = String(text || "").replace(/[[(]?\s*web\s*발신\s*[\])]?/gi, " ").slice(0, 60);
+  const m = head.match(/(?:^|[^\d,*/:.])([\d*]{4})(?=\)|\s*(?:승인|사용|결제|체크|일시불|할부))/);
+  if (!m) return null;
+  return (m[1].match(/\d/g) || []).length >= 2 ? m[1] : null;
+}
+
+export function cardTailMatches(mine, seen) {
+  const a = String(mine || "").replace(/\D/g, "").slice(-4);
+  const b = String(seen || "");
+  if (a.length !== 4 || b.length !== 4) return false;
+  for (let i = 0; i < 4; i++) if (b[i] !== "*" && b[i] !== a[i]) return false;
+  return true;
+}
+
+function pickCardByTail(cards, text, pkg) {
+  const seen = cardTailOf(text);
+  if (!seen) return null;
+  const same = sameBankAccounts(cards, text, pkg);
+  if (same.length < 2) return null;
+  const hit = same.filter((c) => c.cardTail && cardTailMatches(c.cardTail, seen));
+  if (hit.length === 1) return hit[0];
+  if (hit.length === 0) {
+    const untagged = same.filter((c) => !c.cardTail);
+    if (untagged.length === 1 && untagged.length < same.length) return untagged[0];
+  }
+  return null;
 }
 
 /** 통장 입출금으로 보이나 */

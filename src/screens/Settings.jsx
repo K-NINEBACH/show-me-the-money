@@ -532,7 +532,7 @@ export function SettingsView({ ctx }) {
                 placeholder="끝자리"
                 aria-label={`${a.name} 계좌번호 끝자리`}
                 onBlur={(e) => {
-                  const v = e.target.value.replace(/D/g, "").slice(-4);
+                  const v = e.target.value.replace(/\D/g, "").slice(-4);
                   if (v === (a.acctTail || "")) return;
                   persist({ ...data, accounts: data.accounts.map((x) => (x.id === a.id ? (v ? { ...x, acctTail: v } : (({ acctTail, ...rest }) => rest)(x)) : x)) });
                   showToast(v ? `${a.name}: 끝자리 ${v}로 가려요` : `${a.name}: 끝자리 지움`);
@@ -573,7 +573,23 @@ export function SettingsView({ ctx }) {
           {(data.cards || []).map((c) => (
             <div key={c.id} style={{ padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
+              <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 16 }}>{c.name}</span>
+              <input
+                key={c.cardTail || "none"}
+                defaultValue={c.cardTail || ""}
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="끝4자리"
+                aria-label={`${c.name} 카드번호 끝 4자리`}
+                onBlur={(e) => {
+                  const v = e.target.value.replace(/\D/g, "").slice(-4);
+                  if (v === (c.cardTail || "")) return;
+                  if (v && v.length !== 4) return showToast("카드번호 끝 4자리를 적어 주세요");
+                  persist({ ...data, cards: data.cards.map((x) => (x.id === c.id ? (v ? { ...x, cardTail: v } : (({ cardTail, ...rest }) => rest)(x)) : x)) });
+                  showToast(v ? `${c.name}: 끝 ${v}로 가려요` : `${c.name}: 끝자리 지움`);
+                }}
+                style={{ ...inputSty(T), width: 70, padding: "6px 6px", fontSize: 14, textAlign: "center" }}
+              />
               <label style={{ display: "flex", alignItems: "center", gap: 4, color: T.muted, fontSize: 13 }}>
                 <span>결제일</span>
                 <input type="number" min="1" max="31" inputMode="numeric" value={c.payDay || ""} aria-label={`${c.name} 결제일`}
@@ -611,7 +627,13 @@ export function SettingsView({ ctx }) {
           <button onClick={addCard} style={{ ...primaryBtn(T), width: 72 }}>추가</button>
         </div>
         <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
+          {sameBankWithoutTail(data.cards, "cardTail").map((w) => (
+            <div key={w.bank} style={{ color: T.warn, fontWeight: 700 }}>
+              {w.bank} 카드가 여러 장이에요 — {w.names.join(", ")}에 카드번호 끝 4자리를 적어 주세요. 안 적으면 결제 알림이 어느 카드 것인지 몰라 알림함에 남을 수 있어요.
+            </div>
+          ))}
           이름에 카드사 이름이 들어가야 결제 알림을 알아서 이 카드에 붙여요. 카드값은 홈에서 봐요.
+          같은 카드사 카드가 여러 장이면(예: 신한 신용 · 신한 체크) '끝4자리'에 카드번호 끝 4자리를 적어 주세요.
           결제일을 적어 두면 홈에 "10/12 결제 · 23일 뒤"로 보여요.
         </div>
       </Field>
