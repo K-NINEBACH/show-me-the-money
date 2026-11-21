@@ -445,6 +445,19 @@ export function nextDayOfMonth(day, today = new Date()) {
   return { when, label: `${when.getMonth() + 1}/${when.getDate()}`, days: Math.round((when - t0) / 86400000) };
 }
 
+/*
+  **고정지출 금액이 중간에 바뀌면 '이번 달부터 계속'**(2026-11-21, 여자친구 질문: "중간에 금액 변동되면 삭제하고 등록해야 하는지?").
+  예전엔 연필이 이번 달(overrides[이번 달])만 바꿔서, 계속 바뀐 금액이면 지우고 다시 만들어야 했다(그러면 처리 기록·할부 회차가 끊긴다).
+  기본 금액(baseAmount)을 새 금액으로 바꾸되, **지난달까지는 예전 금액으로 못 박는다**(overrides에 적음) — 안 그러면 지난 달
+  계산·기록이 새 금액으로 바뀐다. 이번 달과 그 뒤에 따로 적어 둔 금액은 지운다(새 금액이 이긴다).
+*/
+export function changeFixedAmountFrom(f, fromKey, n) {
+  const overrides = {};
+  const start = f.setupMonthKey && f.setupMonthKey < fromKey ? f.setupMonthKey : fromKey;
+  for (let k = start; k < fromKey; k = monthKeyOffset(k, 1)) overrides[k] = f.overrides?.[k] ?? f.baseAmount;
+  return { ...f, baseAmount: n, overrides };
+}
+
 export function fixedInfo(f, curKey) {
   const amt = f.overrides && f.overrides[curKey] != null ? f.overrides[curKey] : f.baseAmount;
   if (!f.totalMonths || f.totalMonths <= 0) return { active: true, label: null, amount: amt, installment: null, isLast: false };

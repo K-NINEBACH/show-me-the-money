@@ -684,7 +684,7 @@ function markFixedPaid(ctx, f, info, mKey) {
       (e) => (e.paymentMethod || "cash") === "card" && e.cardId === cidOk && !e.isCardAdjustment && e.reimbursedAmount == null);
     if (hit) {
       // 카드값에는 이미 들어가 있다. 정기결제로 표시만 바꿔 예산에서 두 번 안 세게 한다.
-      next.expenses = data.expenses.map((e) => (e.id === hit.id ? { ...e, isCardAdjustment: true, memoBefore: e.memo, memo: `${f.name} · 정기결제 카드반영` } : e));
+      next.expenses = data.expenses.map((e) => (e.id === hit.id ? { ...e, isCardAdjustment: true, memoBefore: e.memo, memo: `${f.name} · 정기결제 카드반영`, ...(f.categoryId && !e.categoryId ? { categoryId: f.categoryId } : {}) } : e));
       next.fixedExpenses = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, paidMonths: { ...(x.paidMonths || {}), [curKey]: hit.id } } : x));
       persist(next);
       showToast(`카드 알림으로 이미 들어온 ${fmtWon(info.amount)}에 연결했어요`);
@@ -714,7 +714,7 @@ function markFixedPaid(ctx, f, info, mKey) {
     // 남겨서 내역에 보이게 하되, isCardAdjustment로 표시해 예산 집계(fixedSumAll이
     // 이미 매달 이 금액을 미리 반영하고 있음)에서는 이중 계산되지 않게 함.
     const adjId = "e" + Date.now();
-    const adjExpense = { id: adjId, amount: Number(info.amount), categoryId: null, date: todayISO(), memo: `${f.name} · 정기결제 카드반영`, isReceivable: false, settled: false, repaidAmount: null, paymentMethod: "card", cardId: cid, linkedBalanceId: null, isCardAdjustment: true };
+    const adjExpense = { id: adjId, amount: Number(info.amount), categoryId: f.categoryId || null, date: todayISO(), memo: `${f.name} · 정기결제 카드반영`, isReceivable: false, settled: false, repaidAmount: null, paymentMethod: "card", cardId: cid, linkedBalanceId: null, isCardAdjustment: true };
     next.expenses = [...data.expenses, adjExpense];
     marker = adjId;
   } else {

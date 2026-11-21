@@ -1255,7 +1255,7 @@ export function autoRecordPayments(data, items, held = []) {
     const expense = {
       id: expenseId,
       amount,
-      categoryId: null,
+      categoryId: hitCard?.fixed?.categoryId || null, // 고정지출에 정해 둔 카테고리(2026-11-21)
       date,
       memo: hitCard
         ? `${hitCard.fixed.name} · 정기결제 카드반영`

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { CreditCard, Wallet, Repeat, ClipboardPaste, Check, Pencil, X } from "lucide-react";
 import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
 import { PALETTE } from "../lib/constants";
-import { fmtWon, todayISO, parsePaymentText, sortFixedList, fixedInfo, createdTime } from "../lib/data";
+import { fmtWon, todayISO, parsePaymentText, sortFixedList, fixedInfo, createdTime, changeFixedAmountFrom } from "../lib/data";
 import { PaymentInbox } from "../components/payment-inbox";
 import { Field, MoneyInput, QuickAmountButtons, FixedSortTabs } from "../components/common";
 
@@ -294,6 +294,7 @@ function InstallmentForm({ ctx }) {
   const [fixedCardId, setFixedCardId] = useState(fixedDefaults.cardId);
   const [fixedAccountId, setFixedAccountId] = useState(fixedDefaults.accountId);
   const [autoPayDay, setAutoPayDay] = useState("");
+  const [fixedCatId, setFixedCatId] = useState("");
   const [overrideEditId, setOverrideEditId] = useState(null);
   const [overrideInput, setOverrideInput] = useState("");
   const [sortKey, setSortKey] = useState("amountDesc");
@@ -326,21 +327,26 @@ function InstallmentForm({ ctx }) {
       const tm = Number(totalMonths); const si = Number(startInstallment);
       if (!tm || tm < 1) return showToast("총 개월수를 입력해주세요");
       if (!si || si < 1 || si > tm) return showToast("현재 회차를 올바르게 입력해주세요 (1~총개월수)");
-      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: tm, startInstallment: si, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null, accountId: fixedPaymentMethod === "cash" ? fixedAccountId : null, paidMonths: {}, autoPayDay: fixedPaymentMethod === "cash" && Number(autoPayDay) >= 1 ? Number(autoPayDay) : null };
+      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: tm, startInstallment: si, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null, accountId: fixedPaymentMethod === "cash" ? fixedAccountId : null, paidMonths: {}, autoPayDay: fixedPaymentMethod === "cash" && Number(autoPayDay) >= 1 ? Math.min(31, Number(autoPayDay)) : null, ...(fixedCatId ? { categoryId: fixedCatId } : {}) };
     } else {
-      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: 0, startInstallment: 1, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null, accountId: fixedPaymentMethod === "cash" ? fixedAccountId : null, paidMonths: {}, autoPayDay: fixedPaymentMethod === "cash" && Number(autoPayDay) >= 1 ? Number(autoPayDay) : null };
+      item = { id: "f" + Date.now(), name: fixedName.trim(), baseAmount: n, totalMonths: 0, startInstallment: 1, setupMonthKey: curKey, overrides: {}, paymentMethod: fixedPaymentMethod, cardId: fixedPaymentMethod === "card" ? fixedCardId : null, accountId: fixedPaymentMethod === "cash" ? fixedAccountId : null, paidMonths: {}, autoPayDay: fixedPaymentMethod === "cash" && Number(autoPayDay) >= 1 ? Math.min(31, Number(autoPayDay)) : null, ...(fixedCatId ? { categoryId: fixedCatId } : {}) };
     }
     persist({ ...data, fixedExpenses: [...(data.fixedExpenses || []), item] });
-    setFixedName(""); setFixedAmount(""); setTotalMonths(""); setStartInstallment("1"); setIsInstallment(false); setAutoPayDay("");
+    setFixedName(""); setFixedAmount(""); setTotalMonths(""); setStartInstallment("1"); setIsInstallment(false); setAutoPayDay(""); setFixedCatId("");
     showToast("표기내역을 추가했어요");
   };
-  const saveOverride = (f) => {
+  const saveOverride = (f, onward) => {
     const n = Number(overrideInput);
     if (!n || n <= 0) return showToast("금액을 입력해주세요");
-    const updated = data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, overrides: { ...x.overrides, [curKey]: n } } : x));
+    const updated = data.fixedExpenses.map((x) => (x.id !== f.id ? x
+      : onward ? changeFixedAmountFrom(x, curKey, n) : { ...x, overrides: { ...x.overrides, [curKey]: n } }));
     persist({ ...data, fixedExpenses: updated });
     setOverrideEditId(null); setOverrideInput("");
-    showToast("이번 달 금액을 수정했어요");
+    showToast(onward ? "이번 달부터 금액을 바꿨어요(지난달까지는 그대로)" : "이번 달 금액만 바꿨어요");
+  };
+  const setFixedCat = (f, id) => {
+    persist({ ...data, fixedExpenses: data.fixedExpenses.map((x) => (x.id === f.id ? { ...x, categoryId: id || null } : x)) });
+    showToast("카테고리를 바꿨어요");
   };
 
   return (
@@ -368,8 +374,13 @@ function InstallmentForm({ ctx }) {
                     {info.isLast && <span style={{ color: T.warn, fontSize: 12, fontWeight: 700, marginLeft: 6 }}>마지막 회차</span>}
                   </div>
                   <div style={{ color: T.muted, fontSize: 14 }}>
-                    {f.totalMonths ? "할부" : "매달 반복"} · 기본 {fmtWon(f.baseAmount)} · {(f.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === f.cardId)?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장(자동이체)")}{f.autoPayDay ? ` · 매달 ${f.autoPayDay}일 자동` : ""}
+                    {f.totalMonths ? "할부" : "매달 반복"} · 기본 {fmtWon(f.baseAmount)} · {(f.paymentMethod || "cash") === "card" ? (data.cards.find((c) => c.id === f.cardId)?.name || "카드") : (data.accounts.find((a) => a.id === f.accountId)?.name || "통장(자동이체)")}{f.autoPayDay ? ` · 매달 ${f.autoPayDay >= 31 ? "말일" : f.autoPayDay + "일"} 자동` : ""}
                   </div>
+                  <select value={data.categories.some((c) => c.id === f.categoryId) ? f.categoryId : ""} onChange={(e) => setFixedCat(f, e.target.value)}
+                    aria-label={`${f.name} 카테고리`} style={{ ...inputSty(T), marginTop: 4, padding: "4px 8px", fontSize: 13.5, width: "auto" }}>
+                    <option value="">카테고리 없음</option>
+                    {data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
                 {info.active && (
                   <button onClick={() => { setOverrideEditId(f.id); setOverrideInput(String(info.amount)); }} aria-label={`${f.name} 이번 달 금액 수정`} style={{ background: "none", border: "none", cursor: "pointer", color: T.gold, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><Pencil size={14} aria-hidden="true" /></button>
@@ -382,7 +393,12 @@ function InstallmentForm({ ctx }) {
               {overrideEditId === f.id && (
                 <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
                   <MoneyInput value={overrideInput} onChange={setOverrideInput} />
-                  <button onClick={() => saveOverride(f)} style={{ ...primaryBtn(T), width: 60 }}>확인</button>
+                </div>
+              )}
+              {overrideEditId === f.id && (
+                <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
+                  <button onClick={() => saveOverride(f, true)} style={{ ...primaryBtn(T), flex: 1 }}>이번 달부터 계속</button>
+                  <button onClick={() => saveOverride(f, false)} style={{ ...primaryBtn(T), flex: 1, background: "transparent", color: T.cream, border: `1px solid ${T.border}` }}>이번 달만</button>
                 </div>
               )}
               {reassignEditId === f.id && (
@@ -407,6 +423,12 @@ function InstallmentForm({ ctx }) {
       <Field label="월 납입 금액">
         <MoneyInput value={fixedAmount} onChange={setFixedAmount} />
         <QuickAmountButtons amount={fixedAmount} setAmount={setFixedAmount} />
+      </Field>
+      <Field label="카테고리 (선택)">
+        <select value={fixedCatId} onChange={(e) => setFixedCatId(e.target.value)} aria-label="고정지출 카테고리" style={inputSty(T)}>
+          <option value="">카테고리 없음</option>
+          {data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
       </Field>
       <Field label="반복 유형">
         <div style={{ display: "flex", gap: 8 }}>
@@ -462,7 +484,10 @@ function InstallmentForm({ ctx }) {
               <input type="number" value={autoPayDay} onChange={(e) => setAutoPayDay(e.target.value)} placeholder="예: 25" min="1" max="31"
                 style={{ ...inputSty(T), fontFamily: F.mono, width: 70, textAlign: "center" }} />
               <span style={{ color: T.muted, fontSize: 14 }}>일에 자동 출금</span>
+              <button type="button" onClick={() => setAutoPayDay(Number(autoPayDay) >= 31 ? "" : "31")} aria-pressed={Number(autoPayDay) >= 31}
+                style={{ padding: "6px 12px", borderRadius: 8, border: Number(autoPayDay) >= 31 ? `2px solid ${T.good}` : `1px solid ${T.border}`, background: Number(autoPayDay) >= 31 ? T.good + "22" : "transparent", color: T.cream, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>말일</button>
             </div>
+            {Number(autoPayDay) >= 31 && <div style={{ color: T.muted, fontSize: 12.5, marginTop: 5 }}>매달 마지막 날(30일·31일, 2월은 28·29일)에 처리해요.</div>}
             <div style={{ color: T.muted, fontSize: 12.5, marginTop: 5 }}>비워두면 매달 홈에서 직접 &lsquo;출금처리&rsquo; 버튼을 눌러야 해요.</div>
           </div>
         )}
