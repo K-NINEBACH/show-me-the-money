@@ -21,8 +21,10 @@ import java.util.Calendar
   같은 결제가 문자 앱 알림으로도 온다. 글자가 달라(알림은 '보낸 사람 + 본문') 여기선
   못 거르고, 웹이 날짜·시각·금액으로 한 번 거른다(dealKey).
 
-  처음엔 **어제 0시부터** 읽는다. 설치 전 문자까지 한꺼번에 밀려들면 이미 손으로 적은
-  것과 겹칠 수 있고, 어제 것까지면 "어제 결제한 게 안 들어왔다"는 건 건진다.
+  처음엔 **이번 달 1일 0시부터** 읽는다(1.12, 2026-11-21 — "맨 처음에 내역란에 최소 이번 달 것부터는
+  상세 내역이 있으면 좋겠다"). 새로 깐 폰은 손으로 적은 게 없으니 겹칠 게 없고, 같은 결제가 두 번
+  오면 웹이 시각으로 거른다. 예전(1.11까지)엔 어제 0시부터였다 — 이미 쓰던 폰은 SMS_LAST가 있어서
+  이 값을 안 쓴다(지난 문자가 다시 밀려들지 않는다).
 */
 object SmsInbox {
     private const val PREF = "passbook_native"
@@ -45,7 +47,7 @@ object SmsInbox {
         lastRun = now
 
         val p = prefs(ctx)
-        val from = yesterdayStart()
+        val from = monthStart()
         var smsLast = p.getLong(SMS_LAST, from)
         var mmsLast = p.getLong(MMS_LAST, from / 1000)
 
@@ -110,8 +112,8 @@ object SmsInbox {
         if (ok) PaymentQueue.push(ctx, PKG, text)
     }
 
-    private fun yesterdayStart(): Long = Calendar.getInstance().apply {
-        add(Calendar.DAY_OF_MONTH, -1)
+    private fun monthStart(): Long = Calendar.getInstance().apply {
+        set(Calendar.DAY_OF_MONTH, 1)
         set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
     }.timeInMillis
 

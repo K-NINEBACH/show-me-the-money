@@ -522,7 +522,21 @@ export function SettingsView({ ctx }) {
         <div style={{ background: T.bg2, borderRadius: 10, padding: 6, marginBottom: 10 }}>
           {(data.accounts || []).map((a) => (
             <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
-              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{a.name}</span>
+              <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 16 }}>{a.name}</span>
+              <input
+                defaultValue={a.acctTail || ""}
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="끝자리"
+                aria-label={`${a.name} 계좌번호 끝자리`}
+                onBlur={(e) => {
+                  const v = e.target.value.replace(/D/g, "").slice(-4);
+                  if (v === (a.acctTail || "")) return;
+                  persist({ ...data, accounts: data.accounts.map((x) => (x.id === a.id ? (v ? { ...x, acctTail: v } : (({ acctTail, ...rest }) => rest)(x)) : x)) });
+                  showToast(v ? `${a.name}: 끝자리 ${v}로 가려요` : `${a.name}: 끝자리 지움`);
+                }}
+                style={{ ...inputSty(T), width: 76, padding: "6px 8px", fontSize: 14, textAlign: "center" }}
+              />
               <button onClick={() => removeAccount(a.id)} aria-label={`${a.name} 통장 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
             </div>
           ))}
@@ -534,6 +548,7 @@ export function SettingsView({ ctx }) {
         </div>
         <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
           이름에 은행 이름이 들어가야 은행 알림을 알아서 이 통장에 붙여요. 잔액은 은행 알림이 오면 저절로 맞춰져요.
+          같은 은행 통장이 둘이면 이름을 다르게 짓고(예: 농협 월급, 농협 생활비) '끝자리'에 계좌번호 맨 끝 숫자 3자리를 적어 주세요 — 알림에 찍힌 끝자리로 가려요.
         </div>
       </Field>
 

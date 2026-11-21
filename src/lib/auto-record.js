@@ -276,7 +276,35 @@ function bankDirection(text) {
   못 고르면 자동으로 안 넣는다.
 */
 function findAccount(accounts, text, pkg) {
-  return pickOne(accounts, text, pkg);
+  return pickOne(accounts, text, pkg) || pickByTail(accounts, text, pkg);
+}
+
+/*
+  **같은 은행 통장을 둘 다 등록했으면 계좌 끝자리로 가른다**(2026-11-21, "농협은행에 계좌만 2개면?").
+  이름으로는 둘 다 '농협'이라 pickOne이 못 고른다(예전엔 알림함에 보류). 알림에 찍힌 끝자리와
+  통장의 acctTail이 같은 게 딱 하나일 때만 붙인다. 끝자리는 설정 → 통장 관리에서 적거나, 잔액이
+  이어지는 알림에서 배운다(아래 learnSameBankTail).
+*/
+function sameBankAccounts(accounts, text, pkg) {
+  const issuer = issuerOf(pkg) || issuerOfHead(text);
+  if (!issuer) return [];
+  return (accounts || []).filter((a) => issuer.keys.some((k) => String(a.name || "").includes(k)));
+}
+
+/** 끝자리 비교 — 사람은 3자리, 알림은 은행마다 2~4자리라 짧은 쪽이 긴 쪽 끝과 같으면 같은 통장(2자리 이상) */
+export function sameTail(a, b) {
+  const x = String(a || ""), y = String(b || "");
+  if (x.length < 2 || y.length < 2) return false;
+  return x.length >= y.length ? x.endsWith(y) : y.endsWith(x);
+}
+
+function pickByTail(accounts, text, pkg) {
+  const tail = acctTailOf(text);
+  if (!tail) return null;
+  const same = sameBankAccounts(accounts, text, pkg);
+  if (same.length < 2) return null;
+  const hit = same.filter((a) => sameTail(a.acctTail, tail));
+  return hit.length === 1 ? hit[0] : null;
 }
 
 /*
@@ -886,9 +914,19 @@ export function autoRecordPayments(data, items, held = []) {
     const tail = acctTailOf(text);
     const bank = balanceOf(text);
     const dir = tail && bank != null && amount > 0 && !cardApproval(text, pkg) ? bankDirection(text) : null;
-    const acc = dir ? findAccount(accounts, text, pkg) : null;
-    if (!acc || acc.acctTail) continue;
     const before = dir === "in" ? bank - amount : bank + amount;
+    const acc0 = dir ? findAccount(accounts, text, pkg) : null;
+    if (!acc0 && dir) {
+      // 같은 은행 통장이 둘 이상이고 아직 끝자리를 모르면 — 거래 전 잔액이 이어지는 통장이 딱 하나일 때 배운다
+      const cands = sameBankAccounts(accounts, text, pkg).filter((a) => !a.acctTail &&
+        (before === ledgerBalance(accounts, balanceEntries, a.id) || before === a.bankSync?.balance));
+      if (cands.length === 1 && !accounts.some((a) => sameTail(a.acctTail, tail))) {
+        accounts = accounts.map((a) => (a.id === cands[0].id ? { ...a, acctTail: tail } : a));
+      }
+      continue;
+    }
+    const acc = acc0;
+    if (!acc || acc.acctTail) continue;
     if (before === ledgerBalance(accounts, balanceEntries, acc.id) || before === acc.bankSync?.balance) {
       accounts = accounts.map((a) => (a.id === acc.id ? { ...a, acctTail: tail } : a));
     }
@@ -1050,7 +1088,7 @@ export function autoRecordPayments(data, items, held = []) {
     */
     if (!card) {
       const dir = bankDirection(text);
-      const acc = dir ? findAccount(data.accounts, text, pkg) : null;
+      const acc = dir ? findAccount(accounts, text, pkg) : null;
       if (!dir || !acc) {
         leftover.push(item);
         continue;
@@ -1062,7 +1100,7 @@ export function autoRecordPayments(data, items, held = []) {
       */
       const tail = acctTailOf(text);
       const accNow = accounts.find((a) => a.id === acc.id) || acc;
-      if (tail && accNow.acctTail && accNow.acctTail !== tail) {
+      if (tail && accNow.acctTail && !sameTail(accNow.acctTail, tail)) {
         otherAcct.push(item);
         continue;
       }
