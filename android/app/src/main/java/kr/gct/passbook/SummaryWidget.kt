@@ -42,7 +42,14 @@ class SummaryWidget : AppWidgetProvider() {
         private fun draw(ctx: Context, manager: AppWidgetManager, id: Int) {
             val v = RemoteViews(ctx.packageName, R.layout.widget_summary)
             val s = Summary.read(ctx)
-            if (s == null || !s.optBoolean("hasPay", false)) {
+            if (s != null && Summary.spentFocus(s)) {
+                // '쓴 돈' 중심 폰(1.13): 이번 달 쓴 돈 크게, 아래엔 지난달 비교 · 더 써도 되는 돈
+                v.setTextViewText(R.id.widget_title, Summary.spentTitle(s))
+                v.setTextViewText(R.id.widget_amount, Summary.won(s.optLong("spent", 0L)))
+                v.setTextColor(R.id.widget_amount, 0xFFF2E8D5.toInt())
+                val (_, sub) = Summary.spentLine(ctx) ?: ("" to "")
+                v.setTextViewText(R.id.widget_sub, sub)
+            } else if (s == null || !s.optBoolean("hasPay", false)) {
                 v.setTextViewText(R.id.widget_title, "내 돈 챙겨줘")
                 v.setTextViewText(R.id.widget_amount, "—")
                 v.setTextViewText(R.id.widget_sub, if (s == null) "앱을 한 번 열어 주세요" else "설정에서 월급을 적어 주세요")

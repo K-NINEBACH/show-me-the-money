@@ -1022,6 +1022,21 @@ function AppInner() {
     card: cardBillTotal, fixedLeft: unpaidFixedSum, fixedNext: nextFixedCash + nextFixedCard,
   };
   const hasPay = !!(monthlyPay || payIn);
+  /*
+    **위젯·아침 알림도 '쓴 돈' 중심으로**(2026-11-23, 껍데기 1.13 — 여자친구 폰). 홈 맨 위를 '이번 달 쓴 돈'으로 고른 폰(homeFocus "spent")은
+    위젯·아침 알림도 그 숫자를 크게. 숫자는 홈 SpentHero와 같은 값을 그대로 넘긴다(껍데기는 옮기기만).
+    '어제'는 껍데기가 아침 8시에 저장된 날짜(dateKey)를 보고 today/yday 중 고른다 — 요약은 앱을 연 때의 것이라서.
+  */
+  const ydayISO = (() => { const d = new Date(); d.setDate(d.getDate() - 1); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); })();
+  const spentSummary = {
+    focus: data.homeFocus === "spent" ? "spent" : "",
+    spent: totalSpentThisMonth,
+    cardSpent: recordedSpent - normalSpent, cashSpent: normalSpent, fixedOut: fixedPaidSum,
+    diff: dayIntoCycle >= 3 && prevRecordedToDate > 0 ? recordedSpent - prevRecordedToDate : null,
+    avgDay: dayIntoCycle >= 1 ? Math.round(recordedSpent / dayIntoCycle) : 0,
+    yday: pdata.expenses.filter((e) => e.date === ydayISO && !e.isReceivable && !e.isCardAdjustment).reduce((s, e) => s + netAmount(e), 0),
+    dateKey: todayStr, monthKey: curKey,
+  };
 
   const processedSpent = spent - unpaidFixedSum;
   const realRemaining = spendingGoal - processedSpent;
@@ -1051,7 +1066,7 @@ function AppInner() {
   return (
     <ThemeContext.Provider value={T}>
       <div style={S.appShell}>
-        <NativeSummary s={{ canSpend, perDay, daysLeft, payLeft, bankLeft, hasPay, bankKnown, month: Number(nextKey.slice(5, 7)), due, ...widgetEq }} />
+        <NativeSummary s={{ canSpend, perDay, daysLeft, payLeft, bankLeft, hasPay, bankKnown, month: Number(nextKey.slice(5, 7)), due, ...widgetEq, ...spentSummary }} />
         <main style={S.screen}>
           {tab === "home" && <HomeView ctx={ctx} />}
           {tab === "add" && <AddView ctx={ctx} />}

@@ -730,6 +730,12 @@ function PotBox({ T, ctx }) {
             <span style={{ color: T.cream, fontFamily: F.mono, fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtWon(pot.balance)}</span>
           </div>
         )}
+        {pot.accounts.length > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginTop: 6 }}>
+            <span style={{ color: T.muted, fontSize: 13 }}>이번 달 들어온 돈{pot.inCount ? ` · ${pot.inCount}건` : ""}</span>
+            <span style={{ color: tone(T, "good").text, fontFamily: F.mono, fontSize: 15, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{pot.inSum ? "+" : ""}{fmtWon(pot.inSum)}</span>
+          </div>
+        )}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginTop: 6 }}>
           <span style={{ color: T.muted, fontSize: 13 }}>이번 달 쓴 돈{pot.count ? ` · ${pot.count}건` : ""}</span>
           <span style={{ color: T.cream, fontFamily: F.mono, fontSize: 15, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtWon(pot.spent)}</span>

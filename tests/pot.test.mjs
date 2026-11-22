@@ -30,6 +30,14 @@ check("내 고정지출만", v.fixedExpenses.map((f) => f.id).join(","), "f1");
 const s = potSummary(d, "2026-11");
 check("데이트 잔액 = 300,000 + 200,000 − 7,000", s.balance, 493000);
 check("데이트 이번 달 쓴 돈 = 카드 50,000 + 현금 7,000", s.spent, 57000);
+check("데이트 이번 달 들어온 돈 = 통장 입금 합(내 통장 입금은 안 셈)", s.inSum + "/" + s.inCount, "200000/1");
+{
+  const d2 = { ...d, balanceEntries: [...d.balanceEntries,
+    { id: "adj", type: "in", amount: 5000, date: "2026-11-20", accountId: "p", isAdjustment: true },
+    { id: "old", type: "in", amount: 9000, date: "2026-10-20", accountId: "p" },
+    { id: "in2", type: "in", amount: 150000, date: "2026-11-21", accountId: "p" }] };
+  check("잔액 맞춤·지난달 입금은 빼고 이번 달 입금만 합", potSummary(d2, "2026-11").inSum, 350000);
+}
 check("현금 지출이 데이트 통장 것인지", isPotExpense(d.expenses[2], d, potIds(d)), true);
 // 따로 보기가 없으면 그대로
 const plain = { ...d, accounts: d.accounts.map(({ pot, ...a }) => a), cards: d.cards.map(({ pot, ...c }) => c) };

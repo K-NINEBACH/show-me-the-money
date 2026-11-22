@@ -340,7 +340,11 @@ export function potSummary(d, curKey) {
     return { id: a.id, name: a.name, balance: bal, bankSync: a.bankSync };
   });
   const monthExp = (d.expenses || []).filter((e) => !e.isReceivable && String(e.date).slice(0, 7) === curKey && isPotExpense(e, d, ids));
+  // 이번 달 들어온 돈(2026-11-23, 사용자: "그냥 통장 단위로 보여줘, 따로따로 하지 말고") — 보낸 사람별로 안 나누고 통장 입금 합 하나.
+  // 잔액 맞춤(isAdjustment)은 거래가 아니라 뺀다.
+  const monthIn = (d.balanceEntries || []).filter((b) => b.type === "in" && !b.isAdjustment && String(b.date).slice(0, 7) === curKey && isPotBalance(b, ids));
   return {
+    inSum: monthIn.reduce((s, b) => s + Number(b.amount || 0), 0), inCount: monthIn.length,
     accounts, cards: (d.cards || []).filter((c) => c.pot).map((c) => ({ id: c.id, name: c.name })),
     balance: accounts.reduce((s, a) => s + a.balance, 0),
     spent: monthExp.reduce((s, e) => s + netAmount(e), 0), count: monthExp.length,

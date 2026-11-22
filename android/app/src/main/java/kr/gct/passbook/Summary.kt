@@ -94,9 +94,58 @@ object Summary {
         return "${d.optString("label")}($when0) ${d.optString("name")} ${won(d.optLong("amount", 0L))} 나가요"
     }
 
+    /*
+      **'쓴 돈' 중심**(1.13, 2026-11-23 — 여자친구 폰). 웹 홈 맨 위를 '이번 달 쓴 돈'으로 고른 폰(focus "spent")은
+      위젯·아침 알림도 쓴 돈을 크게. 숫자는 웹이 낸 것(spent·diff·yday…)을 옮기기만 한다. 사용자 폰은 focus가 비어 있어 그대로.
+    */
+    fun spentFocus(s: JSONObject?): Boolean = s?.optString("focus", "") == "spent"
+
+    private fun ymd(offsetDays: Int): String {
+        val c = Calendar.getInstance(); c.add(Calendar.DAY_OF_YEAR, offsetDays)
+        return String.format("%04d-%02d-%02d", c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH))
+    }
+
+    /** 요약이 이번 달 것이면 "이번 달 쓴 돈", 지난달에 저장된 채면 "11월 쓴 돈" */
+    fun spentTitle(s: JSONObject): String {
+        val mk = s.optString("monthKey", "")
+        val now = ymd(0).substring(0, 7)
+        return if (mk.isEmpty() || mk == now) "이번 달 쓴 돈" else "${mk.substring(5).toInt()}월 쓴 돈"
+    }
+
+    /** "지난달 같은 날보다 N원 더 씀" — 웹이 비교할 만하지 않다고 본 날(1~2일·지난달 기록 없음)엔 null */
+    fun diffText(s: JSONObject): String? {
+        if (!s.has("diff") || s.isNull("diff")) return null
+        val d = s.optLong("diff", 0L)
+        return "지난달 같은 날보다 " + (if (d == 0L) "같게 씀" else "${won(Math.abs(d))} ${if (d > 0) "더" else "덜"} 씀")
+    }
+    fun diffMore(s: JSONObject): Boolean = s.optLong("diff", 0L) > 0
+
+    /** 아침에 '어제 쓴 돈' — 저장된 날이 어제면 그날의 today, 오늘이면 yday. 그보다 낡았으면 모른다(null) */
+    private fun yesterdaySpent(s: JSONObject): Long? = when (s.optString("dateKey", "")) {
+        ymd(-1) -> s.optLong("today", 0L)
+        ymd(0) -> s.optLong("yday", 0L)
+        else -> null
+    }
+
+    fun spentLine(ctx: Context): Pair<String, String>? {
+        val s = read(ctx) ?: return null
+        val spent = won(s.optLong("spent", 0L))
+        val y = yesterdaySpent(s)
+        val title = if (y != null) "어제 ${won(y)} · ${spentTitle(s).removeSuffix(" 쓴 돈")} $spent 썼어요" else "${spentTitle(s)} $spent"
+        val parts = ArrayList<String>()
+        diffText(s)?.let { parts.add(it) }
+        if (s.optBoolean("hasPay", false)) {
+            val can = s.optLong("canSpend", 0L)
+            parts.add(if (can < 0) "월급으로 ${won(-can)} 모자라요" else "더 써도 되는 돈 ${won(can)}")
+        }
+        val due = dueLine(ctx)?.let { " · $it" } ?: ""
+        return title to (parts.joinToString(" · ") + staleTag(ctx) + due).removePrefix(" · ")
+    }
+
     /** 위젯·알림에 쓸 한 줄. 낡았으면 며칠 전 기준인지 붙인다 */
     fun line(ctx: Context): Pair<String, String>? {
         val s = read(ctx) ?: return null
+        if (spentFocus(s)) return spentLine(ctx)
         if (!s.optBoolean("hasPay", false)) return "월급을 적어 주세요" to "설정에서 월급(실수령)을 넣으면 오늘 쓸 수 있는 돈이 나와요"
         val can = s.optLong("canSpend", 0L)
         val per = s.optLong("perDay", 0L)
@@ -136,7 +185,7 @@ object Summary {
         )
     }
 
-    /** 아침 알림 — 오늘 쓸 수 있는 돈 한 줄. 결제일이 사흘 안이면 그것부터 알린다 */
+    /** 아침 알림 — 오늘 쓸 수 있는 돈 한 줄('쓴 돈' 중심 폰은 어제·이번 달 쓴 돈). 결제일이 사흘 안이면 그것부터 알린다 */
     fun daily(ctx: Context) {
         val (title, text) = line(ctx) ?: return
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit().putLong(DAILY, System.currentTimeMillis()).apply()

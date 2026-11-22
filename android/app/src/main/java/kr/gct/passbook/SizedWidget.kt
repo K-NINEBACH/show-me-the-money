@@ -72,6 +72,13 @@ open class SizedWidget(private val kind: String) : AppWidgetProvider() {
             val hasSub = kind != "22"
             val rowCount = when (kind) { "53" -> 4; "54" -> 5; else -> 0 }
 
+            if (s != null && Summary.spentFocus(s)) {
+                drawSpent(ctx, v, s, kind, hasBar, hasToday, hasPill, hasSub, rowCount)
+                click(ctx, v)
+                try { manager.updateAppWidget(id, v) } catch (e: Exception) { }
+                return
+            }
+
             if (s == null || !s.optBoolean("hasPay", false)) {
                 v.setTextViewText(R.id.w_title, "내 돈 챙겨줘")
                 v.setTextViewText(R.id.w_amount, "—")
@@ -163,6 +170,65 @@ open class SizedWidget(private val kind: String) : AppWidgetProvider() {
 
             click(ctx, v)
             try { manager.updateAppWidget(id, v) } catch (e: Exception) { /* 못 그려도 앱은 돈다 */ }
+        }
+
+        /*
+          **'쓴 돈' 중심 폰**(1.13, 2026-11-23 — 여자친구). 웹 홈 SpentHero와 같은 줄 순서:
+          큰 숫자 = 이번 달 쓴 돈 · 오른쪽 작게 오늘 · 알약 = 지난달 같은 날 비교(더 썼으면 빨강) ·
+          식 칸(5×3·5×4) = 카드 / 현금·이체 / 나간 고정지출(셋 합 = 큰 숫자) + 더 써도 되는 돈. 막대는 숨긴다(하루 몫 기준이라).
+        */
+        private const val INK = 0xFF1B2A12.toInt()
+        private fun drawSpent(ctx: Context, v: RemoteViews, s: JSONObject, kind: String,
+                              hasBar: Boolean, hasToday: Boolean, hasPill: Boolean, hasSub: Boolean, rowCount: Int) {
+            val today = s.optLong("today", 0L)
+            val diff = Summary.diffText(s)
+            val more = Summary.diffMore(s)
+            v.setTextViewText(R.id.w_title, Summary.spentTitle(s))
+            v.setTextViewText(R.id.w_amount, Summary.won(s.optLong("spent", 0L)))
+            v.setTextColor(R.id.w_amount, INK)
+            v.setTextViewText(R.id.w_per, "오늘 ${Summary.won(today)}")
+            if (hasSub) {
+                val can = if (s.optBoolean("hasPay", false)) s.optLong("canSpend", 0L) else null
+                val canTxt = when { can == null -> ""; can < 0 -> "월급으로 ${Summary.won(-can)} 모자라요"; else -> "더 써도 되는 돈 ${Summary.won(can)}" }
+                val due = Summary.dueLineOrNull(ctx)?.let { " · $it" } ?: ""
+                // 5×1은 알약 칸이 없어서 비교를 이 줄에 넣는다
+                val head = if (!hasPill && kind != "22" && diff != null) "$diff · " else ""
+                v.setTextViewText(R.id.w_sub, (head + canTxt + Summary.staleTag(ctx) + due).removePrefix(" · "))
+            }
+            if (hasToday) {
+                v.setTextViewText(R.id.w_today, "하루 평균 ${Summary.won(s.optLong("avgDay", 0L))}(고정지출 뺌)")
+                v.setTextColor(R.id.w_today, MUTED)
+            }
+            if (hasBar) { v.setViewVisibility(R.id.w_bar_ok, View.GONE); v.setViewVisibility(R.id.w_bar_over, View.GONE) }
+            val color = if (more) DANGER else GOOD
+            if (kind == "22") {
+                v.setTextViewText(R.id.w_status, diff?.replace("지난달 같은 날보다 ", "지난달보다 ") ?: "")
+                v.setTextColor(R.id.w_status, color)
+            }
+            if (hasPill) {
+                v.setTextViewText(R.id.w_status, diff ?: "")
+                v.setTextColor(R.id.w_status, color)
+                v.setViewVisibility(R.id.w_pill, if (diff == null) View.GONE else View.VISIBLE)
+                v.setInt(R.id.w_pill, "setBackgroundResource", if (more) R.drawable.w_pill_danger else R.drawable.w_pill_good)
+            }
+            if (rowCount > 0) {
+                val rows = ArrayList<Pair<String, String>>()
+                rows.add("카드" to Summary.won(s.optLong("cardSpent", 0L)))
+                rows.add("현금·이체" to Summary.won(s.optLong("cashSpent", 0L)))
+                rows.add("나간 고정지출" to Summary.won(s.optLong("fixedOut", 0L)))
+                if (s.optBoolean("hasPay", false)) {
+                    val can = s.optLong("canSpend", 0L)
+                    rows.add((if (can < 0) "월급으로 모자람" else "더 써도 되는 돈") to Summary.won(Math.abs(can)))
+                }
+                for (i in 1..rowCount) {
+                    val r = rows.getOrNull(i - 1)
+                    if (r == null) { v.setViewVisibility(rowId(i), View.GONE); continue }
+                    v.setViewVisibility(rowId(i), View.VISIBLE)
+                    v.setTextViewText(labelId(i), r.first)
+                    v.setTextViewText(valueId(i), r.second)
+                    v.setTextColor(valueId(i), if (i == 4) (if (s.optLong("canSpend", 0L) < 0) DANGER else GOOD) else INK)
+                }
+            }
         }
 
         private fun rowId(i: Int) = when (i) { 1 -> R.id.r1; 2 -> R.id.r2; 3 -> R.id.r3; 4 -> R.id.r4; else -> R.id.r5 }
