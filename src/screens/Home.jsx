@@ -126,12 +126,16 @@ export function HomeView({ ctx }) {
         ? <SpentHero T={T} ctx={ctx} />
         : <Hero T={T} ctx={ctx} top={top} hasPay={hasPay} bankKnown={bankKnown} left={left} daysLeft={daysLeft} />}
 
+      {/* 쓴 돈을 크게 보는 폰은 데이트 통장을 바로 아래에 — 한 화면에 '내가 쓴 돈 / 데이트 통장'이 같이 보이게(2026-11-22).
+          더 써도 되는 돈 쪽은 그 아래 '한눈에'가 큰 숫자의 식이라 붙여 두고 데이트 통장은 그 뒤에 둔다. */}
+      {spentFocus && ctx.pot && <PotBox T={T} ctx={ctx} />}
+
       <SyncNudge T={T} ctx={ctx} cardTotals={cardTotals} onOpen={() => openPanel("card")} />
 
       <AssetList T={T} ctx={ctx} top={top} hasPay={hasPay} accounts={ctx.accountTotals || []} cardTotals={cardTotals}
         balance={accountBalance} cardBill={cardBillTotal} unpaidFixed={unpaidFixed} unpaidFixedSum={unpaidFixedSum} pending={ctx.payPending} />
 
-      {ctx.pot && <PotBox T={T} ctx={ctx} />}
+      {!spentFocus && ctx.pot && <PotBox T={T} ctx={ctx} />}
 
       <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
         <button onClick={() => openPanel("bank")} aria-expanded={panel === "bank"} aria-controls="home-panel" style={actBtn(panel === "bank", true)}>입출금·맞추기</button>
