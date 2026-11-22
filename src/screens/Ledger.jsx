@@ -227,7 +227,7 @@ export function LedgerView({ ctx }) {
   */
   const pIds = useMemo(() => potIds(data), [data.accounts, data.cards]);
   const [side, setSide] = useState("mine"); // mine | pot
-  const potTitle = ctx.pot ? (ctx.pot.accounts.length === 1 ? ctx.pot.accounts[0].name : "따로 보는 통장") : "";
+  const potTitle = "데이트 통장";
   const sideOk = (isPot) => !pIds.any || (side === "pot" ? isPot : !isPot);
   const [category, setCategory] = useState("all"); // all | card | receivable | balance
   const [search, setSearch] = useState("");

@@ -634,7 +634,7 @@ function PotBox({ T, ctx }) {
   const pot = ctx.pot;
   const [openId, setOpenId] = useState(null);
   const [val, setVal] = useState("");
-  const title = pot.accounts.length === 1 ? pot.accounts[0].name : "따로 보는 통장";
+  const title = "데이트 통장";
   return (
     <section aria-label={title} style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${T.border}` }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>

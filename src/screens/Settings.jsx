@@ -543,14 +543,6 @@ export function SettingsView({ ctx }) {
               <button onClick={() => removeAccount(a.id)} aria-label={`${a.name} 통장 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
             </div>
           ))}
-          {/* 따로 보기(2026-11-22, data.js personalView) — 데이트 통장·모임 통장처럼 내 돈이 아닌 통장. 줄이 좁아 통장 목록 아래에 따로 둔다 */}
-          {(data.accounts || []).length > 1 && (data.accounts || []).map((a) => (
-            <PotToggle key={"pot-" + a.id} T={T} label={a.name} on={!!a.pot}
-              onChange={(on) => {
-                persist({ ...data, accounts: data.accounts.map((x) => (x.id === a.id ? (on ? { ...x, pot: true } : (({ pot, ...rest }) => rest)(x)) : x)) });
-                showToast(on ? `${a.name}: 내 돈 계산에서 빼고 따로 보여요` : `${a.name}: 다시 내 돈으로 세요`);
-              }} />
-          ))}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <input value={newAccountName} onChange={(e) => setNewAccountName(e.target.value)} placeholder="통장 이름 — 예: 국민은행" aria-label="새 통장 이름" style={inputSty(T)} />
@@ -564,8 +556,7 @@ export function SettingsView({ ctx }) {
               {w.bank} 통장이 여러 개예요 — {w.names.join(", ")}에 끝자리를 적어 주세요. 안 적으면 알림이 어느 통장 것인지 몰라 알림함에 남을 수 있어요.
             </div>
           ))}
-          같은 은행 통장이 둘 이상이면 이름을 다르게 짓고(예: 농협 월급, 농협 생활비) '끝자리'에 계좌번호 맨 끝 숫자 3자리를 적어 주세요 — 알림에 찍힌 끝자리로 가려요.{" "}
-          데이트 통장처럼 같이 모으는 통장은 '따로 보기'를 켜면 내 돈 계산에서 빠지고 홈·내역에 따로 보여요. 그 통장 카드도 아래 카드 관리에서 '따로 보기'를 켜 주세요.
+          같은 은행 통장이 둘 이상이면 이름을 다르게 짓고(예: 농협 월급, 농협 생활비) '끝자리'에 계좌번호 맨 끝 숫자 3자리를 적어 주세요 — 알림에 찍힌 끝자리로 가려요.
         </div>
       </Field>
 
@@ -635,13 +626,6 @@ export function SettingsView({ ctx }) {
                   </select>
                 </label>
               )}
-              {(data.accounts || []).some((a) => a.pot) && (
-                <PotToggle T={T} label={c.name} on={!!c.pot} compact
-                  onChange={(on) => {
-                    persist({ ...data, cards: data.cards.map((x) => (x.id === c.id ? (on ? { ...x, pot: true } : (({ pot, ...rest }) => rest)(x)) : x)) });
-                    showToast(on ? `${c.name}: 내 돈 계산에서 빼고 따로 보여요` : `${c.name}: 다시 내 돈으로 세요`);
-                  }} />
-              )}
             </div>
           ))}
         </div>
@@ -658,6 +642,30 @@ export function SettingsView({ ctx }) {
           이름에 카드사 이름이 들어가야 결제 알림을 알아서 이 카드에 붙여요. 카드값은 홈에서 봐요.
           같은 카드사 카드가 여러 장이면(예: 신한 신용 · 신한 체크) '끝 4자리'에 카드번호 끝 4자리를 적어 주세요.
           결제일을 적어 두면 홈에 "10/12 결제 · 23일 뒤"로 보여요.
+        </div>
+      </Field>
+
+      {/*
+        **데이트 통장**(2026-11-22, 사용자: "카카오뱅크 데이트 말고 그냥 데이트 통장 란을 하나 만들어서, 거기에 추가된 계좌에서 왔다 갔다 하는 것만
+        데이트로 취급"). 여기서 고른 통장(과 그 통장 카드)만 pot — 내 돈 계산에서 빠지고 홈·내역에 '데이트 통장'으로 따로 보인다(data.js personalView).
+        통장은 위 통장 관리에서 먼저 넣는다(알림이 붙으려면 이름에 은행 이름이 있어야 해서).
+      */}
+      <Field label="데이트 통장">
+        <PotPicker T={T} label="통장" items={data.accounts || []}
+          onPick={(id) => {
+            persist({ ...data, accounts: (data.accounts || []).map((x) => (x.id === id ? { ...x, pot: true } : (({ pot, ...rest }) => rest)(x))) });
+            const n = (data.accounts || []).find((x) => x.id === id)?.name;
+            showToast(id ? `${n}: 데이트 통장으로 따로 봐요` : "데이트 통장을 껐어요");
+          }} />
+        <PotPicker T={T} label="그 통장 카드" items={data.cards || []}
+          onPick={(id) => {
+            persist({ ...data, cards: (data.cards || []).map((x) => (x.id === id ? { ...x, pot: true } : (({ pot, ...rest }) => rest)(x))) });
+            const n = (data.cards || []).find((x) => x.id === id)?.name;
+            showToast(id ? `${n}: 데이트 통장 카드로 따로 봐요` : "데이트 통장 카드를 뺐어요");
+          }} />
+        <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>
+          고른 통장에서 들어오고 나간 돈과 그 통장 카드로 쓴 돈만 데이트로 봐요 — 내 돈 계산에서 빠지고 홈·내역에 '데이트 통장'으로 따로 보여요.
+          통장·카드는 위에서 먼저 추가해 주세요. 내가 데이트 통장으로 보내는 돈은 내 통장 고정지출로 넣어 두면 내 몫으로 셈해요.
         </div>
       </Field>
       </Group>
@@ -806,12 +814,17 @@ export function SettingsView({ ctx }) {
   );
 }
 
-// 따로 보기 켜고 끄기 한 줄(통장·카드 공용). 체크 상자는 손가락으로 누르기 좁아서 줄 전체가 눌린다
-function PotToggle({ T, label, on, onChange, compact }) {
+// 데이트 통장으로 볼 통장·카드 하나 고르기(없음 = 끔)
+function PotPicker({ T, label, items, onPick }) {
+  const cur = items.find((x) => x.pot)?.id || "";
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 40, padding: compact ? "2px 0 0" : "4px 8px", color: on ? T.cream : T.muted, fontSize: 13.5, cursor: "pointer" }}>
-      <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked)} style={{ width: 18, height: 18, flexShrink: 0, accentColor: T.gold }} />
-      <span style={{ minWidth: 0, wordBreak: "keep-all" }}>{compact ? "따로 보기(데이트 통장 카드처럼)" : <>{label} — 따로 보기</>}</span>
+    <label style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13.5, marginBottom: 8 }}>
+      <span style={{ flexShrink: 0, minWidth: 76 }}>{label}</span>
+      <select value={cur} onChange={(e) => onPick(e.target.value)} aria-label={`데이트 ${label}`}
+        style={{ ...inputSty(T), flex: 1, minWidth: 0, padding: "8px 10px", fontSize: 15 }}>
+        <option value="">없음</option>
+        {items.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+      </select>
     </label>
   );
 }
