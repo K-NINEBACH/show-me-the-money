@@ -116,6 +116,8 @@ export function HomeView({ ctx }) {
       <AssetList T={T} ctx={ctx} top={top} hasPay={hasPay} accounts={ctx.accountTotals || []} cardTotals={cardTotals}
         balance={accountBalance} cardBill={cardBillTotal} unpaidFixed={unpaidFixed} unpaidFixedSum={unpaidFixedSum} pending={ctx.payPending} />
 
+      {ctx.pot && <PotBox T={T} ctx={ctx} />}
+
       <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
         <button onClick={() => openPanel("bank")} aria-expanded={panel === "bank"} aria-controls="home-panel" style={actBtn(panel === "bank", true)}>입출금·맞추기</button>
         <button onClick={() => openPanel("card")} aria-expanded={panel === "card"} aria-controls="home-panel" style={actBtn(panel === "card")}>카드 결제·명세서</button>
@@ -621,6 +623,63 @@ function agoAt(at) {
   const h = Math.round(m / 60);
   if (h < 24) return `${h}시간 전`;
   return `${Math.round(h / 24)}일 전`;
+}
+
+/*
+  **따로 보는 통장(데이트 통장) 칸**(2026-11-22, 여자친구 폰: "이번 달 써도 되는 돈 / ---- / 데이트 통장"처럼 따로).
+  위의 숫자(더 써도 되는 돈·한눈에)에는 이 통장·카드가 안 들어간다(data.js personalView). 여기선 잔액과 이번 달 그 통장·카드로 쓴 돈만.
+  잔액은 은행 알림으로 저절로 맞고, 처음이나 어긋났을 땐 '잔액 맞추기'로 은행 앱 숫자를 넣는다(위의 맞추기는 내 통장만 보여서 여기 따로 둔다).
+*/
+function PotBox({ T, ctx }) {
+  const pot = ctx.pot;
+  const [openId, setOpenId] = useState(null);
+  const [val, setVal] = useState("");
+  const title = pot.accounts.length === 1 ? pot.accounts[0].name : "따로 보는 통장";
+  return (
+    <section aria-label={title} style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${T.border}` }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <h2 style={{ margin: 0, color: T.cream, fontSize: 15, fontWeight: 700 }}>{title}</h2>
+        <span style={{ color: T.muted, fontSize: 12 }}>내 돈 계산엔 안 들어가요</span>
+      </div>
+      <div style={{ background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 12, padding: "12px 14px", marginTop: 8 }}>
+        {pot.accounts.length > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+            <span style={{ color: T.muted, fontSize: 13 }}>잔액</span>
+            <span style={{ color: T.cream, fontFamily: F.mono, fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtWon(pot.balance)}</span>
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginTop: 6 }}>
+          <span style={{ color: T.muted, fontSize: 13 }}>이번 달 쓴 돈{pot.count ? ` · ${pot.count}건` : ""}</span>
+          <span style={{ color: T.cream, fontFamily: F.mono, fontSize: 15, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtWon(pot.spent)}</span>
+        </div>
+        {pot.accounts.map((a) => (
+          <div key={a.id} style={{ marginTop: 10 }}>
+            {pot.accounts.length > 1 && (
+              <div style={{ display: "flex", justifyContent: "space-between", color: T.muted, fontSize: 12.5 }}>
+                <span>{a.name}</span><span style={{ fontFamily: F.mono }}>{fmtWon(a.balance)}</span>
+              </div>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+              <span style={{ flex: 1, color: T.muted, fontSize: 12 }}>{a.bankSync?.at ? `은행과 ${agoAt(a.bankSync.at)} 맞춤` : "아직 은행과 안 맞춤"}</span>
+              <button onClick={() => { setOpenId(openId === a.id ? null : a.id); setVal(""); }} aria-expanded={openId === a.id}
+                style={{ minHeight: 34, padding: "0 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.cream, fontSize: 12.5, cursor: "pointer" }}>
+                잔액 맞추기
+              </button>
+            </div>
+            {openId === a.id && (
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input inputMode="numeric" value={val} onChange={(e) => setVal(e.target.value.replace(/[^\d]/g, ""))}
+                  placeholder="은행 앱에 보이는 잔액" aria-label={`${a.name} 실제 잔액`} style={{ ...inputSty(T), flex: 1, minWidth: 0 }} />
+                <button onClick={() => { if (!val) return; reconcileAccount(ctx, a, val); setOpenId(null); }}
+                  style={{ ...primaryBtn(T), width: "auto", padding: "0 14px" }}>맞추기</button>
+              </div>
+            )}
+          </div>
+        ))}
+        <div style={{ color: T.muted, fontSize: 12, marginTop: 10 }}>자세한 내역은 내역 탭 → '{title}'</div>
+      </div>
+    </section>
+  );
 }
 
 function reconcileAccount(ctx, account, actualBalance) {

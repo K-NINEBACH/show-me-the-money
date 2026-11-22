@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react"
 import { Plus, Settings, Home as HomeIcon, BookOpen, Calendar, Stethoscope } from "lucide-react";
 import { STORAGE_KEY, INBOX_KEY, SEEN_KEY, SEEN_DEAL_KEY, ALERT_LOG_KEY } from "./lib/constants";
 import { THEMES, DARK, ThemeContext, F, applyThemeVars } from "./lib/theme";
-import { defaultData, migrate, autoCategorize, autoProcessFixed, repairMisdatedAuto, findPayDeposit, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount, nextDayOfMonth, effectiveBill } from "./lib/data";
+import { defaultData, migrate, autoCategorize, autoProcessFixed, repairMisdatedAuto, findPayDeposit, fixedInfo, monthKey, monthKeyOffset, daysInMonthKey, todayISO, netAmount, nextDayOfMonth, effectiveBill, personalView, potSummary } from "./lib/data";
 import { NavBtn } from "./components/common";
 import { pullPendingPayments, saveBackup, inNativeApp, pushSummary } from "./lib/native";
 import { autoRecordPayments, isCancelText, dealKey, ledgerBalance, syncMoment } from "./lib/auto-record";
@@ -698,13 +698,16 @@ function AppInner() {
     );
   }
 
+  // 내 돈 계산은 따로 보는 통장·카드(데이트 통장, data.js personalView)를 뺀 보기로 한다 — 기록은 data 그대로
+  const pdata = personalView(data);
+  const pot = potSummary(data, monthKey(new Date()));
   const today = new Date();
   const todayStr = todayISO();
   const curKey = monthKey(today);
   const cycleLen = daysInMonthKey(curKey);
   const dayIntoCycle = today.getDate();
 
-  const cycleExpenses = data.expenses.filter((e) => e.date.slice(0, 7) === curKey && !e.isReceivable);
+  const cycleExpenses = pdata.expenses.filter((e) => e.date.slice(0, 7) === curKey && !e.isReceivable);
   // 정기결제 "카드반영"은 하루 몫에서 이미 뺀 고정지출이라 오늘 쓴 돈이 아니다 — 누르는 날이 "오늘"을 부풀리지 않게(2026-10-02 점검)
   const todaySpent = cycleExpenses.filter((e) => e.date === todayISO() && !e.isCardAdjustment).reduce((s, e) => s + netAmount(e), 0);
   const normalSpent = cycleExpenses.filter((e) => (e.paymentMethod || "cash") !== "card").reduce((s, e) => s + netAmount(e), 0);
@@ -725,7 +728,7 @@ function AppInner() {
   const cardReimbursedThisCycle = cycleExpenses.filter((e) => (e.paymentMethod || "cash") === "card").reduce((s, e) => s + Number(e.reimbursedAmount || 0), 0);
   const reimbursedThisCycle = cycleExpenses.reduce((s, e) => s + Number(e.reimbursedAmount || 0), 0);
 
-  const cards = data.cards && data.cards.length ? data.cards : [{ id: "card1", name: "카드", bill: 0 }];
+  const cards = pdata.cards && pdata.cards.length ? pdata.cards : [{ id: "card1", name: "카드", bill: 0 }];
   /*
     **이번 달은 그냥 안 내고 넘어가는 것**(2026-09-19, 사용자: "모임회비 같은 건 가끔 여유가 없어서
     모른척 넘어갈 때도 있어. 안 내고 다음 달 되면 그대로 패스").
@@ -734,8 +737,8 @@ function AppInner() {
     달이 바뀌면 저절로 다시 나타난다(달별로 적어 두므로). 못 낸 돈이 다음 달로 쌓이지 않는다.
   */
   const skippedThis = (f) => !!(f.skipMonths && f.skipMonths[curKey]);
-  const fixedSkipped = data.fixedExpenses.map((f) => ({ ...f, info: fixedInfo(f, curKey) })).filter((f) => f.info.active && skippedThis(f));
-  const fixedActiveAll = data.fixedExpenses.map((f) => ({ ...f, info: fixedInfo(f, curKey) })).filter((f) => f.info.active && !skippedThis(f));
+  const fixedSkipped = pdata.fixedExpenses.map((f) => ({ ...f, info: fixedInfo(f, curKey) })).filter((f) => f.info.active && skippedThis(f));
+  const fixedActiveAll = pdata.fixedExpenses.map((f) => ({ ...f, info: fixedInfo(f, curKey) })).filter((f) => f.info.active && !skippedThis(f));
   const fixedActive = fixedActiveAll.filter((f) => (f.paymentMethod || "cash") !== "card");
   const fixedCardActive = fixedActiveAll.filter((f) => (f.paymentMethod || "cash") === "card");
   const fixedCardInstallment = fixedCardActive.filter((f) => f.totalMonths > 0);
@@ -758,7 +761,7 @@ function AppInner() {
   const fixedPaidSum = fixedActive.reduce((s, f) => {
     const mark = f.paidMonths && f.paidMonths[curKey];
     if (!mark) return s;
-    const entry = (data.balanceEntries || []).find((b) => b.id === mark);
+    const entry = (pdata.balanceEntries || []).find((b) => b.id === mark);
     if (entry && String(entry.date).slice(0, 7) !== curKey) return s;
     return s + Number(f.info.amount);
   }, 0);
@@ -789,7 +792,7 @@ function AppInner() {
     */
     const prevMonth = monthKeyOffset(curKey, -1);
     const prevInstall = !c.earlyPay && Number(c.payDay) >= 1 && dayIntoCycle <= Number(c.payDay)
-      ? data.fixedExpenses
+      ? pdata.fixedExpenses
           .filter((f) => (f.paymentMethod || "cash") === "card" && f.totalMonths > 0 && f.cardId === c.id && fixedInfo(f, prevMonth).active)
           .reduce((s, f) => s + Number(fixedInfo(f, prevMonth).amount), 0)
       : 0;
@@ -826,14 +829,14 @@ function AppInner() {
   const cardBillTotal = cardTotals.reduce((s, c) => s + c.total, 0);
 
   const prevKey = monthKeyOffset(curKey, -1);
-  const prevMonthExpenses = data.expenses.filter((e) => !e.isReceivable && e.date.slice(0, 7) === prevKey);
+  const prevMonthExpenses = pdata.expenses.filter((e) => !e.isReceivable && e.date.slice(0, 7) === prevKey);
   // totalSpentThisMonth과 같은 방식으로 계산해야 공평한 비교가 됨 — "카드반영"으로 생긴
   // isCardAdjustment 항목은 fixedSumAll(예측치) 쪽에서 이미 잡고 있어서, 실제 지출
   // 합산에서까지 더하면 이중계산됨. 예전엔 이 구분 없이 그냥 다 더해서, 카드반영을 쓴
   // 달일수록 "지난달 총 지출"이 실제보다 부풀려져 있었음.
   const prevNormalSpent = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") !== "card").reduce((s, e) => s + netAmount(e), 0);
   const prevCardSpent = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") === "card" && !e.isCardAdjustment).reduce((s, e) => s + netAmount(e), 0);
-  const prevFixedSum = data.fixedExpenses.map((f) => fixedInfo(f, prevKey)).filter((i) => i.active).reduce((s, i) => s + Number(i.amount), 0);
+  const prevFixedSum = pdata.fixedExpenses.map((f) => fixedInfo(f, prevKey)).filter((i) => i.active).reduce((s, i) => s + Number(i.amount), 0);
   const prevTotalSpent = prevNormalSpent + prevCardSpent + prevFixedSum;
   // 홈 화면의 "지난달 대비"는 이번 달 지금까지(진행 중)와 지난달 전체(이미 끝난 달)를
   // 그냥 비교하면 월초일수록 무조건 크게 줄어든 것처럼 보임(비교 기간 길이가 다르니까) —
@@ -845,16 +848,16 @@ function AppInner() {
   const prevTotalSpentToDate = prevNormalSpentToDate + prevCardSpentToDate + prevFixedSum;
 
   const spent = normalSpent + fixedSum + cardBillTotal - cardReimbursedThisCycle;
-  const spendingGoal = data.spendingGoal || 0;
+  const spendingGoal = pdata.spendingGoal || 0;
   const hasGoal = spendingGoal > 0;
   const remaining = spendingGoal - spent;
   const budgetRatio = hasGoal ? Math.min(spent / spendingGoal, 1.2) : (spent > 0 ? 1.2 : 0);
-  const receivables = data.expenses.filter((e) => e.isReceivable && !e.settled);
+  const receivables = pdata.expenses.filter((e) => e.isReceivable && !e.settled);
 
-  const accounts = data.accounts && data.accounts.length ? data.accounts : [{ id: "acc1", name: "통장", initialBalance: 0 }];
+  const accounts = pdata.accounts && pdata.accounts.length ? pdata.accounts : [{ id: "acc1", name: "통장", initialBalance: 0 }];
   const accountTotals = accounts.map((a) => {
-    const aIn = (data.balanceEntries || []).filter((b) => (b.accountId || accounts[0]?.id) === a.id && b.type === "in").reduce((s, b) => s + Number(b.amount), 0);
-    const aOut = (data.balanceEntries || []).filter((b) => (b.accountId || accounts[0]?.id) === a.id && b.type === "out").reduce((s, b) => s + Number(b.amount), 0);
+    const aIn = (pdata.balanceEntries || []).filter((b) => (b.accountId || accounts[0]?.id) === a.id && b.type === "in").reduce((s, b) => s + Number(b.amount), 0);
+    const aOut = (pdata.balanceEntries || []).filter((b) => (b.accountId || accounts[0]?.id) === a.id && b.type === "out").reduce((s, b) => s + Number(b.amount), 0);
     return { ...a, balance: Number(a.initialBalance || 0) + aIn - aOut };
   });
   const accountBalance = accountTotals.reduce((s, a) => s + a.balance, 0);
@@ -873,8 +876,8 @@ function AppInner() {
     쓴 건지 모른다. 결제일(예: 14일)에 누르면 그달 1~13일 쓴 것까지 0이 됐다.
   */
   const nextKey = monthKeyOffset(curKey, 1);
-  const monthlyPay = Number(data.monthlyPay || 0);
-  const payIn = findPayDeposit(data.balanceEntries, monthlyPay, curKey);
+  const monthlyPay = Number(pdata.monthlyPay || 0);
+  const payIn = findPayDeposit(pdata.balanceEntries, monthlyPay, curKey);
   const nextPay = payIn ? Number(payIn.amount) : monthlyPay;
   /*
     **다음 달 몫을 이미 미리 낸 것은 빼야 한다**(2026-09-20, 사용자: "모임 회비 같은 건 저번 달
@@ -883,14 +886,14 @@ function AppInner() {
     건너뛰기(skipMonths[nextKey])가 된 것은 다음 달 예상에서 뺀다.
   */
   const nextDone = (f) => !!(f.paidMonths && f.paidMonths[nextKey]) || !!(f.skipMonths && f.skipMonths[nextKey]);
-  const nextFixedCash = data.fixedExpenses
+  const nextFixedCash = pdata.fixedExpenses
     .filter((f) => (f.paymentMethod || "cash") !== "card" && !nextDone(f))
     .map((f) => fixedInfo(f, nextKey))
     .filter((i) => i.active)
     .reduce((s, i) => s + Number(i.amount), 0);
   // 다음 달 카드 고정지출(할부 몫 + 정기결제). 청구는 그다음 달이지만 다음 달에 어차피 긁히는 돈이라
   // '월급 들어온 뒤 여유'에서는 미리 뺀다(2026-09-14 사용자 지적 — 빠져 있었다)
-  const nextFixedCard = data.fixedExpenses
+  const nextFixedCard = pdata.fixedExpenses
     .filter((f) => (f.paymentMethod || "cash") === "card" && !nextDone(f))
     .map((f) => fixedInfo(f, nextKey))
     .filter((i) => i.active)
@@ -901,14 +904,14 @@ function AppInner() {
   */
   const earlyCardIds = new Set(cards.filter((c) => c.earlyPay).map((c) => c.id));
   const cardInstallThisMonth = fixedCardInstallment.filter((f) => !earlyCardIds.has(f.cardId)).reduce((s, f) => s + Number(f.info.amount), 0);
-  const earlyNextInstall = data.fixedExpenses
+  const earlyNextInstall = pdata.fixedExpenses
     .filter((f) => (f.paymentMethod || "cash") === "card" && f.totalMonths > 0 && earlyCardIds.has(f.cardId))
     .map((f) => fixedInfo(f, nextKey)).filter((i) => i.active).reduce((s, i) => s + Number(i.amount), 0);
   const cardRecurThisMonth = fixedCardRecurring.reduce((s, f) => s + Number(f.info.amount), 0);
   const cardThisMonth = cardSpentThisCycle + cardInstallThisMonth + cardRecurThisMonth;
   const payLeft = nextPay - nextFixedCash - cardThisMonth - earlyNextInstall;
   // 이번 달 몫 월급(지난달 말~이번 달 초)이 아직 안 들어왔으면, 통장 식은 곧 들어올 그 돈을 더해서 본다
-  const prevPayIn = findPayDeposit(data.balanceEntries, monthlyPay, prevKey);
+  const prevPayIn = findPayDeposit(pdata.balanceEntries, monthlyPay, prevKey);
   const payPending = monthlyPay > 0 && !prevPayIn && dayIntoCycle <= 5 ? monthlyPay : 0;
 
   /*
@@ -934,7 +937,7 @@ function AppInner() {
     여기서 따로 센다. 이번 달 몫이 아직 안 들어왔으면 '통장으로 다 내면'에 더하고(곧 들어올 돈), 다음 달 몫은 다음 달
     월급처럼 더한다. 들어오면 그 입금이 통장 잔액에 있으니(은행 알림으로 자동 표시) 더하지 않는다.
   */
-  const incomes = data.fixedIncomes || [];
+  const incomes = pdata.fixedIncomes || [];
   const incomePending = incomes.filter((i) => !(i.receivedMonths && i.receivedMonths[curKey]));
   const incomePendingSum = incomePending.reduce((s, i) => s + Number(i.amount), 0);
   const incomeNextSum = incomes.reduce((s, i) => s + Number(i.amount), 0);
@@ -979,7 +982,7 @@ function AppInner() {
     // 통장이 하나뿐이면 거기서 낼 수밖에 없다(2026-11-10 점검 — 통장 하나인데 '결제 통장 모름'으로 따로 빠졌다)
     if (accountTotals.length === 1) return accountTotals[0].id;
     const { base, words } = cardWords(c.name);
-    const hit = (data.balanceEntries || [])
+    const hit = (pdata.balanceEntries || [])
       .filter((b) => b.type === "out" && !b.isAdjustment && b.memo && b.accountId && (b.memo.includes(base) || (words.length >= 2 && words.filter((w) => b.memo.includes(w)).length >= 2)))
       .sort((x, y) => String(y.date).localeCompare(String(x.date)))[0];
     // 통장이 안 적힌 기록은 첫 통장으로 짐작하지 않는다(2026-11-09 — 롯데카드가 국민은행에서 빠지는 것으로 보였다)
@@ -1022,7 +1025,7 @@ function AppInner() {
   const realBudgetRatio = hasGoal ? Math.min(processedSpent / spendingGoal, 1.2) : (processedSpent > 0 ? 1.2 : 0);
 
   const ctx = {
-    data, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
+    data, pdata, pot, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
     cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSkipped, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, recordedSpent, fixedPaidSum, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
     nextKey, monthlyPay, payIn, nextPay, nextFixedCash, nextFixedCard, cardSpentThisCycle, cardInstallThisMonth, cardRecurThisMonth, cardThisMonth, payLeft, payPending,
     bankLeft, canSpend, cashNow, cashCan, cardDueBeforePay, unpaidFixedCashSum, cashByAccount, cashCardUnknown, cashIncoming, daysLeft, perDay, bankKnown, hasPay, incomes, incomePending, incomePendingSum, incomeNextSum,
@@ -1052,8 +1055,8 @@ function AppInner() {
           {tab === "ledger" && <LedgerView ctx={ctx} />}
           {(tab === "calendar" || tab === "consult" || tab === "settings") && (
             <Suspense fallback={<div style={{ color: T.muted, fontFamily: F.body, textAlign: "center", padding: "40px 0" }}>불러오는 중…</div>}>
-              {tab === "calendar" && <CalendarView ctx={ctx} />}
-              {tab === "consult" && <ConsultView ctx={ctx} />}
+              {tab === "calendar" && <CalendarView ctx={{ ...ctx, data: ctx.pdata }} />}
+              {tab === "consult" && <ConsultView ctx={{ ...ctx, data: ctx.pdata }} />}
               {tab === "settings" && <SettingsView ctx={ctx} />}
             </Suspense>
           )}

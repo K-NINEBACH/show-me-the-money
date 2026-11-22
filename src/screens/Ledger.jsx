@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Pencil, Trash2, ArrowDownCircle, ArrowUpCircle, Search, ArrowDownLeft, ArrowUpRight, Scale } from "lucide-react";
 import { useTheme, F, paperCard, inputSty, primaryBtn } from "../lib/theme";
-import { fmtWon, createdTime, dateStrFor, monthKeyOffset, todayISO, netAmount } from "../lib/data";
+import { fmtWon, createdTime, dateStrFor, monthKeyOffset, todayISO, netAmount, potIds, isPotBalance, isPotExpense, isPotFixed } from "../lib/data";
 import { MoneyInput, QuickAmountButtons, CatBadge } from "../components/common";
 import { settleReceivable } from "./Home";
 
@@ -221,6 +221,14 @@ export function LedgerView({ ctx }) {
   const T = useTheme();
   const { data, persist, showToast, curKey } = ctx;
   const [timeScope, setTimeScope] = useState("cycle"); // cycle | all | range
+  /*
+    **내 돈 / 따로 보는 통장(데이트 통장)으로 나눠 본다**(2026-11-22, data.js personalView). 따로 보는 통장·카드가 없으면 단추도 없고 전부 보인다.
+    합계·날짜별 합도 고른 쪽만 센다. 고치기·지우기는 그대로(기록은 하나).
+  */
+  const pIds = useMemo(() => potIds(data), [data.accounts, data.cards]);
+  const [side, setSide] = useState("mine"); // mine | pot
+  const potTitle = ctx.pot ? (ctx.pot.accounts.length === 1 ? ctx.pot.accounts[0].name : "따로 보는 통장") : "";
+  const sideOk = (isPot) => !pIds.any || (side === "pot" ? isPot : !isPot);
   const [category, setCategory] = useState("all"); // all | card | receivable | balance
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -250,12 +258,12 @@ export function LedgerView({ ctx }) {
   };
 
   // 세 종류(카드·현금 지출/대리결제/입출금)를 시간 범위로 먼저 거르고,
-  const scopedExpenses = useMemo(() => data.expenses.filter((e) => !e.isReceivable && dateInScope(e.date)).filter(matchesSearch),
-    [data.expenses, timeScope, curKey, rangeStart, rangeEnd, searchLower]);
-  const scopedReceivables = useMemo(() => data.expenses.filter((e) => e.isReceivable && dateInScope(e.date)).filter(matchesSearch),
-    [data.expenses, timeScope, curKey, rangeStart, rangeEnd, searchLower]);
-  const scopedBalance = useMemo(() => (data.balanceEntries || []).filter((b) => dateInScope(b.date)).filter((b) => !searchLower || (b.memo || "").toLowerCase().includes(searchLower)),
-    [data.balanceEntries, timeScope, curKey, rangeStart, rangeEnd, searchLower]);
+  const scopedExpenses = useMemo(() => data.expenses.filter((e) => !e.isReceivable && dateInScope(e.date) && sideOk(isPotExpense(e, data, pIds))).filter(matchesSearch),
+    [data.expenses, timeScope, curKey, rangeStart, rangeEnd, searchLower, side, pIds]);
+  const scopedReceivables = useMemo(() => data.expenses.filter((e) => e.isReceivable && dateInScope(e.date) && sideOk(isPotExpense(e, data, pIds))).filter(matchesSearch),
+    [data.expenses, timeScope, curKey, rangeStart, rangeEnd, searchLower, side, pIds]);
+  const scopedBalance = useMemo(() => (data.balanceEntries || []).filter((b) => dateInScope(b.date) && sideOk(isPotBalance(b, pIds))).filter((b) => !searchLower || (b.memo || "").toLowerCase().includes(searchLower)),
+    [data.balanceEntries, timeScope, curKey, rangeStart, rangeEnd, searchLower, side, pIds]);
 
   // 할부로 결제한 것 — 결제한 날짜(purchaseDate, 없으면 등록 시각 id)로 범위를 본다
   const instDateOf = (f) => {
@@ -265,11 +273,11 @@ export function LedgerView({ ctx }) {
     return `${f.setupMonthKey}-01`;
   };
   const scopedInstalls = useMemo(() => (data.fixedExpenses || [])
-    .filter((f) => Number(f.purchaseAmount) > 0 && f.totalMonths > 0)
+    .filter((f) => Number(f.purchaseAmount) > 0 && f.totalMonths > 0 && sideOk(isPotFixed(f, pIds)))
     .map((f) => ({ ...f, date: instDateOf(f) }))
     .filter((f) => dateInScope(f.date))
     .filter((f) => !searchLower || String(f.name).toLowerCase().includes(searchLower)),
-    [data.fixedExpenses, timeScope, curKey, rangeStart, rangeEnd, searchLower]);
+    [data.fixedExpenses, timeScope, curKey, rangeStart, rangeEnd, searchLower, side, pIds]);
 
   // ...그다음 카테고리로 좁힘. "전체 흐름"이면 셋 다, 아니면 해당하는 것만.
   let categoryExpenses = [], categoryReceivables = [], categoryBalance = [], categoryInstalls = [];
@@ -778,6 +786,18 @@ export function LedgerView({ ctx }) {
           </button>
         </div>
       </div>
+
+      {pIds.any && (
+        <div role="group" aria-label="어느 돈" style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          {[["mine", "내 돈"], ["pot", potTitle]].map(([k, l]) => (
+            <button key={k} onClick={() => setSide(k)} aria-pressed={side === k}
+              style={{ flex: 1, minWidth: 0, minHeight: 38, borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 8px",
+                border: side === k ? "none" : `1px solid ${T.border}`, background: side === k ? T.gold : T.bg2, color: side === k ? T.onGold : T.muted }}>
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
 
       {searchOpen && (
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="메모나 카테고리로 검색" aria-label="검색어" type="search" autoFocus

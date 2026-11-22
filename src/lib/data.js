@@ -249,6 +249,60 @@ export function repairMisdatedAuto(d, texts = []) {
 }
 
 /*
+  **따로 보는 통장·카드**(2026-11-22, 여자친구 폰: 여자친구 명의 카카오뱅크 '데이트 통장'에 둘이 돈을 모아 그 통장 카드로 데이트비를 낸다
+  — "이번 달 써도 되는 돈 / 데이트 통장" 이렇게 따로, 내역도 따로).
+  통장·카드에 `pot: true`(설정 → 통장·카드 '따로 보기', 선택 칸이라 migrate 안 건드림). 그 통장의 입출금, 그 카드 결제, 그 통장에서 낸 현금 지출,
+  그 통장·카드의 고정지출은 **내 돈 계산에서 통째로 뺀다** — 홈 숫자·카드값·달력·진단 모두. 따로 보는 통장의 잔액과 이번 달 쓴 돈은 홈에 따로 보인다.
+  기록 자체는 그대로 data에 있다(알림 자동 등록·고치기는 그대로). 보기만 나눈다.
+*/
+export function potIds(d) {
+  const acc = new Set((d.accounts || []).filter((a) => a.pot).map((a) => a.id));
+  const card = new Set((d.cards || []).filter((c) => c.pot).map((c) => c.id));
+  return { acc, card, any: acc.size > 0 || card.size > 0, firstAcc: (d.accounts || [])[0]?.id };
+}
+export function isPotBalance(b, ids) { return ids.acc.has(b.accountId || ids.firstAcc); }
+export function isPotExpense(e, d, ids) {
+  if ((e.paymentMethod || "cash") === "card") return ids.card.has(e.cardId);
+  if (!ids.acc.size || !e.linkedBalanceId) return false;
+  const b = (d.balanceEntries || []).find((x) => x.id === e.linkedBalanceId);
+  return !!b && isPotBalance(b, ids);
+}
+export function isPotFixed(f, ids) {
+  return (f.paymentMethod || "cash") === "card" ? ids.card.has(f.cardId) : ids.acc.has(f.accountId || ids.firstAcc);
+}
+// 내 돈만 남긴 보기 — 계산용(저장하지 않는다). 통장이 안 적힌 입출금은 원래 첫 통장으로 못 박아 두고 거른다(첫 통장이 따로 보는 통장이면 엉뚱한 통장으로 넘어가지 않게)
+export function personalView(d) {
+  const ids = potIds(d);
+  if (!ids.any) return d;
+  const pinBal = (b) => (b.accountId ? b : { ...b, accountId: ids.firstAcc });
+  const pinFixed = (f) => ((f.paymentMethod || "cash") !== "card" && !f.accountId ? { ...f, accountId: ids.firstAcc } : f);
+  return {
+    ...d,
+    accounts: (d.accounts || []).filter((a) => !a.pot),
+    cards: (d.cards || []).filter((c) => !c.pot),
+    balanceEntries: (d.balanceEntries || []).map(pinBal).filter((b) => !isPotBalance(b, ids)),
+    expenses: (d.expenses || []).filter((e) => !isPotExpense(e, d, ids)),
+    fixedExpenses: (d.fixedExpenses || []).map(pinFixed).filter((f) => !isPotFixed(f, ids)),
+  };
+}
+// 따로 보는 통장 요약 — 통장별 잔액(통장 기록 그대로) + 이번 달 쓴 돈(그 카드 결제 + 그 통장 현금 지출)
+export function potSummary(d, curKey) {
+  const ids = potIds(d);
+  if (!ids.any) return null;
+  const accounts = (d.accounts || []).filter((a) => a.pot).map((a) => {
+    const ents = (d.balanceEntries || []).filter((b) => (b.accountId || ids.firstAcc) === a.id);
+    const bal = Number(a.initialBalance || 0) + ents.reduce((s, b) => s + (b.type === "in" ? 1 : -1) * Number(b.amount), 0);
+    return { id: a.id, name: a.name, balance: bal, bankSync: a.bankSync };
+  });
+  const monthExp = (d.expenses || []).filter((e) => !e.isReceivable && String(e.date).slice(0, 7) === curKey && isPotExpense(e, d, ids));
+  return {
+    accounts, cards: (d.cards || []).filter((c) => c.pot).map((c) => ({ id: c.id, name: c.name })),
+    balance: accounts.reduce((s, a) => s + a.balance, 0),
+    spent: monthExp.reduce((s, e) => s + netAmount(e), 0), count: monthExp.length,
+  };
+}
+
+/*
   **이 달(cycleKey) 몫의 월급 입금을 찾는다**(2026-09-14).
 
   사용자의 월급은 말일~다음 달 3일 사이에 들어오고, 그 돈으로 다음 달을 산다(그 달 카드값과

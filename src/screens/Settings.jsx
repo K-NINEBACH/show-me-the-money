@@ -543,6 +543,14 @@ export function SettingsView({ ctx }) {
               <button onClick={() => removeAccount(a.id)} aria-label={`${a.name} 통장 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
             </div>
           ))}
+          {/* 따로 보기(2026-11-22, data.js personalView) — 데이트 통장·모임 통장처럼 내 돈이 아닌 통장. 줄이 좁아 통장 목록 아래에 따로 둔다 */}
+          {(data.accounts || []).length > 1 && (data.accounts || []).map((a) => (
+            <PotToggle key={"pot-" + a.id} T={T} label={a.name} on={!!a.pot}
+              onChange={(on) => {
+                persist({ ...data, accounts: data.accounts.map((x) => (x.id === a.id ? (on ? { ...x, pot: true } : (({ pot, ...rest }) => rest)(x)) : x)) });
+                showToast(on ? `${a.name}: 내 돈 계산에서 빼고 따로 보여요` : `${a.name}: 다시 내 돈으로 세요`);
+              }} />
+          ))}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <input value={newAccountName} onChange={(e) => setNewAccountName(e.target.value)} placeholder="통장 이름 — 예: 국민은행" aria-label="새 통장 이름" style={inputSty(T)} />
@@ -556,7 +564,8 @@ export function SettingsView({ ctx }) {
               {w.bank} 통장이 여러 개예요 — {w.names.join(", ")}에 끝자리를 적어 주세요. 안 적으면 알림이 어느 통장 것인지 몰라 알림함에 남을 수 있어요.
             </div>
           ))}
-          같은 은행 통장이 둘 이상이면 이름을 다르게 짓고(예: 농협 월급, 농협 생활비) '끝자리'에 계좌번호 맨 끝 숫자 3자리를 적어 주세요 — 알림에 찍힌 끝자리로 가려요.
+          같은 은행 통장이 둘 이상이면 이름을 다르게 짓고(예: 농협 월급, 농협 생활비) '끝자리'에 계좌번호 맨 끝 숫자 3자리를 적어 주세요 — 알림에 찍힌 끝자리로 가려요.{" "}
+          데이트 통장처럼 같이 모으는 통장은 '따로 보기'를 켜면 내 돈 계산에서 빠지고 홈·내역에 따로 보여요. 그 통장 카드도 아래 카드 관리에서 '따로 보기'를 켜 주세요.
         </div>
       </Field>
 
@@ -625,6 +634,13 @@ export function SettingsView({ ctx }) {
                     {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
                 </label>
+              )}
+              {(data.accounts || []).some((a) => a.pot) && (
+                <PotToggle T={T} label={c.name} on={!!c.pot} compact
+                  onChange={(on) => {
+                    persist({ ...data, cards: data.cards.map((x) => (x.id === c.id ? (on ? { ...x, pot: true } : (({ pot, ...rest }) => rest)(x)) : x)) });
+                    showToast(on ? `${c.name}: 내 돈 계산에서 빼고 따로 보여요` : `${c.name}: 다시 내 돈으로 세요`);
+                  }} />
               )}
             </div>
           ))}
@@ -787,5 +803,15 @@ export function SettingsView({ ctx }) {
       </div>
       </Group>
     </div>
+  );
+}
+
+// 따로 보기 켜고 끄기 한 줄(통장·카드 공용). 체크 상자는 손가락으로 누르기 좁아서 줄 전체가 눌린다
+function PotToggle({ T, label, on, onChange, compact }) {
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 40, padding: compact ? "2px 0 0" : "4px 8px", color: on ? T.cream : T.muted, fontSize: 13.5, cursor: "pointer" }}>
+      <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked)} style={{ width: 18, height: 18, flexShrink: 0, accentColor: T.gold }} />
+      <span style={{ minWidth: 0, wordBreak: "keep-all" }}>{compact ? "따로 보기(데이트 통장 카드처럼)" : <>{label} — 따로 보기</>}</span>
+    </label>
   );
 }
