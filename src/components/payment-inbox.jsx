@@ -78,8 +78,38 @@ export function PaymentInbox({ ctx, onPick }) {
         marginBottom: 14,
       }}
     >
-      <div style={{ color: T.goldSoft, fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
-        받은 결제 알림 {inbox.length}건
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <div style={{ flex: 1, color: T.goldSoft, fontSize: 14, fontWeight: 700 }}>
+          받은 결제 알림 {inbox.length}건
+        </div>
+        {/*
+          **다시 붙여 보기**(2026-11-22, 여자친구 폰: 통장·카드를 다 넣기 전에 문자 읽기를 먼저 켜서 이번 달 문자가 전부
+          '어느 카드·통장인지 모름'으로 여기 남았다). 한 번 보류한 건 저절로 다시 판단하지 않는 게 원칙이라(엉뚱한 데이터
+          변경에 편승하지 않게), 사람이 누를 때만 보류 표시를 풀어 지금 등록된 통장·카드로 한 번 더 판단한다.
+          그래도 못 붙인 건 다시 여기 남는다.
+        */}
+        {ctx.retryInbox && (
+          <button
+            onClick={ctx.retryInbox}
+            style={{
+              minHeight: 36,
+              padding: "0 10px",
+              borderRadius: 8,
+              border: `1px solid ${T.goldSoft}`,
+              background: "transparent",
+              color: T.goldSoft,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            다시 붙여 보기
+          </button>
+        )}
+      </div>
+      <div style={{ color: T.muted, fontSize: 12.5, marginBottom: 6 }}>
+        통장·카드를 새로 넣었으면 '다시 붙여 보기'로 한 번에 넣어 보세요.
       </div>
 
       {inbox.map((item, i) => {

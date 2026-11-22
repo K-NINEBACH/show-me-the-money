@@ -1031,6 +1031,8 @@ function AppInner() {
     // 번호가 아니라 알림 자체(문구+받은 시각)로 지운다 — 목록은 15초마다 늘고 자동 처리로
     // 줄기도 해서, 누르는 순간 번호가 당겨지면 엉뚱한 알림이 지워질 수 있었다
     inbox, dismissInbox: (item) => setInbox((prev) => prev.filter((p) => !(p.text === item.text && p.at === item.at))),
+    // 사람이 누를 때만 보류 표시를 푼다 → 위의 자동 등록 효과가 지금 통장·카드로 다시 판단한다(payment-inbox '다시 붙여 보기')
+    retryInbox: () => setInbox((prev) => prev.map(({ checked, ...rest }) => rest)),
   };
 
   const S = {
