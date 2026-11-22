@@ -255,9 +255,11 @@ export function repairMisdatedAuto(d, texts = []) {
   고정지출). 그래서 9월 몫 월급 = 9월 25일~10월 5일 사이에 들어온 월급이다.
   월급으로 보는 입금: 적요에 '급여·월급·상여'가 있거나, 적어 둔 월급(pay)과 ±30% 안.
   잔액 맞춤·통장끼리 이체는 뺀다. 여럿이면 가장 큰 것. 없으면 null — 그땐 적어 둔 월급을 쓴다.
+  **20일부터 본다**(2026-11-22, 여자친구 폰: 월급날이 25일이라 주말·공휴일이면 23~24일에 먼저 들어온다 — 12/25 성탄절이면 12/24).
+  예전엔 25일부터라 그런 달은 월급을 못 알아봤다.
 */
 export function findPayDeposit(entries, pay, cycleKey) {
-  const from = `${cycleKey}-25`;
+  const from = `${cycleKey}-20`;
   const to = `${monthKeyOffset(cycleKey, 1)}-05`;
   const hits = (entries || []).filter((b) => b.type === "in" && !b.isAdjustment && !b.transferId
     && b.date >= from && b.date <= to
