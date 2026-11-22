@@ -2,12 +2,12 @@
 import { useState } from "react";
 import { X, ChevronDown } from "lucide-react";
 import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn, card, tone } from "../lib/theme";
-import { fmtWon, migrate, todayISO } from "../lib/data";
+import { fmtWon, migrate, todayISO, usedColors, nextFreeColor } from "../lib/data";
 import { inNativeApp, listBackups, readBackup, hasNotificationAccess, pendingCount, openNotificationSettings, diagnostics, openBatterySettings, requestSmsAccess, widgetState } from "../lib/native";
-import { ALERT_LOG_KEY, PALETTE } from "../lib/constants";
+import { ALERT_LOG_KEY } from "../lib/constants";
 import { dropCode, showCode, dropLog, dropState, resetApplied } from "../lib/drop";
 import { parsePaymentText } from "../lib/data";
-import { Field, SectionLabel, MoneyInput, QuickAmountButtons } from "../components/common";
+import { Field, SectionLabel, MoneyInput, QuickAmountButtons, CategoryColorPicker } from "../components/common";
 import { sameBankWithoutTail } from "../lib/auto-record";
 
 /** "3분 전", "2시간 전", "어제" — 진단 화면용 */
@@ -113,6 +113,8 @@ export function SettingsView({ ctx }) {
   const { data, persist, showToast } = ctx;
   const [newCardName, setNewCardName] = useState("");
   const [newCatName, setNewCatName] = useState("");
+  const [newCatColor, setNewCatColor] = useState(() => nextFreeColor(data.categories));
+  const [colorEditId, setColorEditId] = useState(null);   // 색을 바꾸려고 연 카테고리
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountBalance, setNewAccountBalance] = useState("");
   const [payInput, setPayInput] = useState(String(data.monthlyPay || ""));
@@ -279,13 +281,21 @@ export function SettingsView({ ctx }) {
     persist({ ...data, categories: data.categories.filter((c) => c.id !== id) });
   };
 
-  // 설정에서도 카테고리를 더한다(2026-11-09, 사용자: "설정에서 카테고리 들어가니깐 지우는 것만 되네"). 개수 제한은 없다. 색은 돌아가며
+  // 설정에서도 카테고리를 더한다(2026-11-09, 사용자: "설정에서 카테고리 들어가니깐 지우는 것만 되네"). 개수 제한은 없다.
+  // 색은 고르되 다른 카테고리가 쓰는 색은 막는다(2026-11-23). 예전엔 개수 % 8로 돌아가서 넷째가 '교통'과 같은 색이었다.
   const addCategory = () => {
     const nm = newCatName.trim();
     if (!nm) return;
     if (data.categories.some((c) => c.name === nm)) return showToast(`"${nm}"은 이미 있어요`);
-    persist({ ...data, categories: [...data.categories, { id: "c" + Date.now(), name: nm, color: PALETTE[data.categories.length % PALETTE.length] }] });
-    setNewCatName(""); showToast(`"${nm}" 카테고리를 더했어요`);
+    const color = usedColors(data.categories).has(String(newCatColor).toLowerCase()) ? nextFreeColor(data.categories) : newCatColor;
+    const categories = [...data.categories, { id: "c" + Date.now(), name: nm, color }];
+    persist({ ...data, categories });
+    setNewCatName(""); setNewCatColor(nextFreeColor(categories)); showToast(`"${nm}" 카테고리를 더했어요`);
+  };
+  const setCategoryColor = (id, color) => {
+    if (usedColors(data.categories, id).has(String(color).toLowerCase())) return;
+    persist({ ...data, categories: data.categories.map((c) => (c.id === id ? { ...c, color } : c)) });
+    setColorEditId(null);
   };
 
   const [openSet, setOpenSet] = useState(readOpen);
@@ -754,10 +764,21 @@ export function SettingsView({ ctx }) {
       <div style={{ marginBottom: 12 }}>
         <div style={{ background: T.bg2, borderRadius: 10, padding: 6 }}>
           {data.categories.map((c) => (
-            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", borderBottom: `1px solid ${T.border}` }}>
-              <span style={{ width: 10, height: 10, borderRadius: "50%", background: c.color }} />
-              <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
-              <button onClick={() => removeCategory(c.id)} aria-label={`${c.name} 카테고리 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
+            <div key={c.id} style={{ borderBottom: `1px solid ${T.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 8px" }}>
+                <button onClick={() => setColorEditId(colorEditId === c.id ? null : c.id)} aria-expanded={colorEditId === c.id}
+                  aria-label={`${c.name} 색 바꾸기`}
+                  style={{ width: 40, height: 40, marginInline: -10, background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <span aria-hidden="true" style={{ width: 16, height: 16, borderRadius: "50%", background: c.color, boxShadow: colorEditId === c.id ? `0 0 0 2px ${T.bg2}, 0 0 0 4px ${c.color}` : "none" }} />
+                </button>
+                <span style={{ flex: 1, color: T.cream, fontSize: 16 }}>{c.name}</span>
+                <button onClick={() => removeCategory(c.id)} aria-label={`${c.name} 카테고리 삭제`} style={{ background: "none", border: "none", cursor: "pointer", color: T.danger, width: 40, height: 40, marginInline: -8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, }}><X size={15} aria-hidden="true" /></button>
+              </div>
+              {colorEditId === c.id && (
+                <div style={{ padding: "4px 8px 12px" }}>
+                  <CategoryColorPicker T={T} categories={data.categories} exceptId={c.id} value={c.color} onChange={(col) => setCategoryColor(c.id, col)} />
+                </div>
+              )}
             </div>
           ))}
           {data.categories.length === 0 && <div style={{ color: T.muted, fontSize: 15, textAlign: "center", padding: "10px 0" }}>카테고리가 없어요</div>}
@@ -766,6 +787,11 @@ export function SettingsView({ ctx }) {
           <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCategory()} placeholder="새 카테고리 이름 — 예: 경조사" aria-label="새 카테고리 이름" style={inputSty(T)} />
           <button onClick={addCategory} style={{ ...primaryBtn(T), width: 72 }}>추가</button>
         </div>
+        <div style={{ marginTop: 10 }}>
+          <CategoryColorPicker T={T} categories={data.categories} onChange={setNewCatColor}
+            value={usedColors(data.categories).has(String(newCatColor).toLowerCase()) ? nextFreeColor(data.categories) : newCatColor} />
+        </div>
+        <div style={{ color: T.muted, fontSize: 12, marginTop: 4 }}>이미 있는 카테고리는 왼쪽 색 동그라미를 누르면 색을 바꿔요.</div>
       </div>
       </Group>
       <Group id="data" title="데이터 백업" summary={inNativeApp() ? "매일 휴대폰에 자동 저장 · 되돌리기" : "내보내기 · 가져오기"} open={isOpen("data")} onToggle={toggle}>

@@ -1,8 +1,40 @@
 // Small presentational pieces shared by several screens.
 import { Utensils, Coffee, Bus, Fuel, ShoppingBag, ShoppingCart, Pill, Smartphone, Home, GraduationCap, Film, Receipt, Wallet, Car, Gift } from "lucide-react";
 import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
-import { QUICK_AMOUNTS } from "../lib/constants";
-import { FIXED_SORTS } from "../lib/data";
+import { QUICK_AMOUNTS, PALETTE } from "../lib/constants";
+import { FIXED_SORTS, usedColors } from "../lib/data";
+
+/*
+  카테고리 색 고르기(2026-11-23) — 다른 카테고리가 쓰는 색은 흐리게 막는다(누를 수 없음). 색이 겹치면 달력·내역에서 구분이 안 된다.
+  exceptId: 지금 고치는 카테고리(자기 색은 고를 수 있게). 16색을 다 쓰면 안내 한 줄 — 그땐 nextFreeColor가 새 색을 만든다.
+*/
+export function CategoryColorPicker({ T, categories, value, onChange, exceptId, size = 26 }) {
+  const used = usedColors(categories, exceptId);
+  const allUsed = PALETTE.every((c) => used.has(c.toLowerCase()));
+  return (
+    <div>
+      <div role="radiogroup" aria-label="카테고리 색" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {PALETTE.map((col, i) => {
+          const taken = used.has(col.toLowerCase());
+          const on = !taken && String(value || "").toLowerCase() === col.toLowerCase();
+          return (
+            <button key={col} type="button" role="radio" aria-checked={on} disabled={taken}
+              aria-label={`색 ${i + 1}${taken ? " (다른 카테고리가 써요)" : ""}`}
+              onClick={() => !taken && onChange(col)}
+              style={{ position: "relative", width: size, height: size, borderRadius: "50%", background: col, padding: 0,
+                border: on ? `3px solid ${T.cream}` : "2px solid transparent", boxShadow: on ? `0 0 0 2px ${col}` : "none",
+                opacity: taken ? 0.22 : 1, cursor: taken ? "not-allowed" : "pointer" }}>
+              {taken && <span aria-hidden="true" style={{ position: "absolute", left: "50%", top: -2, bottom: -2, width: 2, background: T.cream, transform: "translateX(-50%) rotate(45deg)" }} />}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ color: T.muted, fontSize: 12, marginTop: 6 }}>
+        {allUsed ? "남은 색이 없어요 — 겹치지 않는 새 색을 알아서 붙여요" : "흐린 색은 다른 카테고리가 쓰고 있어요"}
+      </div>
+    </div>
+  );
+}
 
 export function FixedSortTabs({ sortKey, setSortKey }) {
   const T = useTheme();

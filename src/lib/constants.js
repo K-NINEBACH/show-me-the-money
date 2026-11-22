@@ -19,7 +19,11 @@ export const SEEN_DEAL_KEY = "passbook-seendeal-v1";
 
 // 받은 알림을 어떻게 처리했는지 최근 150줄(진단용). "왜 안 들어왔지"를 설정에서 보게.
 export const ALERT_LOG_KEY = "passbook-alertlog-v1";
-export const PALETTE = ["#C79A46", "#5B8A62", "#B6473F", "#3E6E8E", "#8A5FA0", "#C97C3D", "#4E7A6B", "#A85C7A"];
+// 카테고리 색. 한 색은 한 카테고리만 쓴다(2026-11-23, "색상 중복 막자") — 그래서 8색에서 16색으로 늘렸다. 앞 8색은 예전 그대로(이미 저장된 색).
+export const PALETTE = [
+  "#C79A46", "#5B8A62", "#B6473F", "#3E6E8E", "#8A5FA0", "#C97C3D", "#4E7A6B", "#A85C7A",
+  "#6B7FC4", "#D4B83A", "#7A5A3C", "#3FA3A0", "#9AA13A", "#D46A8C", "#5C5F66", "#4FA3D1",
+];
 // Trimmed from 6 to the 4 actually used often — a full row of 6 buttons was
 // mostly just visual weight on every money input across the app.
 export const QUICK_AMOUNTS = [

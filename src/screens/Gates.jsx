@@ -3,9 +3,8 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { useTheme, THEMES, THEME_ORDER, F, inputSty, primaryBtn } from "../lib/theme";
-import { PALETTE } from "../lib/constants";
-import { monthKey, monthLabel, fixedInfo, fmtWon, netAmount } from "../lib/data";
-import { MoneyInput, QuickAmountButtons, OnboardStep } from "../components/common";
+import { monthKey, monthLabel, fixedInfo, fmtWon, netAmount, usedColors, nextFreeColor } from "../lib/data";
+import { MoneyInput, QuickAmountButtons, OnboardStep, CategoryColorPicker } from "../components/common";
 
 export function Onboarding({ data, persist }) {
   const [step, setStep] = useState(0);
@@ -15,7 +14,7 @@ export function Onboarding({ data, persist }) {
   const [startBalance, setStartBalance] = useState("");
   const [categories, setCategories] = useState(data.categories);
   const [newCatName, setNewCatName] = useState("");
-  const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
+  const [newCatColor, setNewCatColor] = useState(() => nextFreeColor(data.categories));
   const [monthlyPay, setMonthlyPay] = useState("");
   const [themeId, setThemeId] = useState("dark");
   const T = THEMES[themeId] || THEMES.dark;
@@ -24,8 +23,10 @@ export function Onboarding({ data, persist }) {
 
   const addCat = () => {
     if (!newCatName.trim()) return;
-    setCategories([...categories, { id: "c" + Date.now(), name: newCatName.trim(), color: newCatColor }]);
-    setNewCatName("");
+    const color = usedColors(categories).has(String(newCatColor).toLowerCase()) ? nextFreeColor(categories) : newCatColor;
+    const next = [...categories, { id: "c" + Date.now(), name: newCatName.trim(), color }];
+    setCategories(next);
+    setNewCatName(""); setNewCatColor(nextFreeColor(next));
   };
   const removeCat = (id) => setCategories(categories.filter((c) => c.id !== id));
 
@@ -131,12 +132,8 @@ export function Onboarding({ data, persist }) {
                 <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="카테고리 이름 — 예: 보험료" aria-label="새 카테고리 이름" style={inputSty(T)} />
                 <button onClick={addCat} style={{ ...primaryBtn(T), width: 60 }}>추가</button>
               </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {PALETTE.map((col) => (
-                  <button key={col} onClick={() => setNewCatColor(col)}
-                    style={{ width: 22, height: 22, borderRadius: "50%", background: col, border: newCatColor === col ? `2px solid ${T.cream}` : "2px solid transparent", cursor: "pointer" }} />
-                ))}
-              </div>
+              <CategoryColorPicker T={T} categories={categories} value={newCatColor} onChange={setNewCatColor} />
+
             </div>
             <div style={{ display: "flex", gap: 8, width: "100%" }}>
               <button onClick={back} style={navBtnStyle}>이전</button>

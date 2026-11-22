@@ -80,7 +80,7 @@ export function migrate(raw) {
   // truthy 체크였음 — JSON 백업 붙여넣기(가져오기)로 들어오는 값이라 형식이 깨져 있어도
   // (예: categories가 배열이 아닌 문자열) 여기서 막아야 나중에 .map/.filter 하다가
   // 화면이 통째로 죽는 걸 막을 수 있음.
-  d.categories = Array.isArray(raw.categories) && raw.categories.length ? raw.categories : defaultData().categories;
+  d.categories = dedupeCategoryColors(Array.isArray(raw.categories) && raw.categories.length ? raw.categories : defaultData().categories);
   d.expenses = Array.isArray(raw.expenses) ? raw.expenses : [];
   // fixedIncomes: [{ id, name, amount, receivedMonths: {"2026-10": 입금 기록 id} }] — 없던 백업은 빈 목록
   d.fixedIncomes = (Array.isArray(raw.fixedIncomes) ? raw.fixedIncomes : [])
@@ -111,6 +111,51 @@ export function migrate(raw) {
   바뀐 게 없으면 같은 객체를 돌려준다(저장할 때마다 부르므로). migrate와 App의 persist가 부른다.
 */
 const memoKey = (m) => String(m || "").replace(/\s+/g, "").toLowerCase();
+
+/*
+  **카테고리 색은 겹치지 않게**(2026-11-23, 사용자: "카테고리에서 색상 선택하면 다른 카테고리에선 선택 못하게 해서 색상 중복 막자").
+  예전엔 설정에서 더하면 `PALETTE[개수 % 8]`이라 넷째 카테고리가 '교통'과 같은 색이 됐다.
+  - usedColors(cats, exceptId): 다른 카테고리가 쓰는 색(고르기 창에서 막을 것).
+  - nextFreeColor(cats): 아직 안 쓴 첫 색. 16색을 다 쓰면 겹치지 않는 색을 새로 만든다(카테고리 개수 제한은 없어서).
+  - dedupeCategoryColors: 이미 겹쳐 저장된 것은 **먼저 있던 카테고리가 색을 지키고** 뒤의 것만 빈 색으로 바꾼다(migrate).
+*/
+const colorKey = (c) => String(c || "").toLowerCase();
+export function usedColors(cats, exceptId) {
+  return new Set((cats || []).filter((c) => c && c.id !== exceptId).map((c) => colorKey(c.color)));
+}
+function hslHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = (n) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)))).toString(16).padStart(2, "0");
+  return `#${f(0)}${f(8)}${f(4)}`.toUpperCase();
+}
+export function nextFreeColor(cats, exceptId) {
+  const used = usedColors(cats, exceptId);
+  const free = PALETTE.find((c) => !used.has(colorKey(c)));
+  if (free) return free;
+  for (let i = 0; i < 720; i++) {
+    const c = hslHex((i * 137.508) % 360, 42 + (i % 3) * 8, 42 + (i % 2) * 8);
+    if (!used.has(colorKey(c))) return c;
+  }
+  return PALETTE[0];
+}
+export function dedupeCategoryColors(cats) {
+  // 1) 색마다 처음 쓴 카테고리만 그 색을 지킨다  2) 나머지는 지킨 색 + 이미 새로 준 색을 피해 빈 색을 받는다
+  const seen = new Set();
+  const keep = cats.map((c) => {
+    if (!c || typeof c !== "object" || !c.color || seen.has(colorKey(c.color))) return false;
+    seen.add(colorKey(c.color));
+    return true;
+  });
+  if (keep.every((k, i) => k || !cats[i] || typeof cats[i] !== "object")) return cats;
+  const taken = cats.filter((c, i) => keep[i]);
+  return cats.map((c, i) => {
+    if (keep[i] || !c || typeof c !== "object") return c;
+    const color = nextFreeColor(taken);
+    taken.push({ id: `__${i}`, color });
+    return { ...c, color };
+  });
+}
 /*
   **구글 결제는 이름만으로 못 가른다**(2026-11-09, 사용자: "구글 페이먼트코리아는 휴대폰에서 구글 쪽 결제한 건 대부분 이렇게 뜬다.
   9,900원은 유튜브, 30,000원은 클로드 정기결제. 이 두 개는 이름+금액으로 정기결제로 묶어 놔. 나머지는 이름이 같아도 금액이 다르면 미분류로").
@@ -135,7 +180,7 @@ export function autoCategorize(d) {
   const subCat = () => {
     if (!subId) {
       subId = "c" + Date.now();
-      cats = [...cats, { id: subId, name: "정기결제", color: PALETTE[cats.length % PALETTE.length] }];
+      cats = [...cats, { id: subId, name: "정기결제", color: nextFreeColor(cats) }];
     }
     return subId;
   };

@@ -3,10 +3,9 @@
 import { useState, useEffect } from "react";
 import { CreditCard, Wallet, Repeat, ClipboardPaste, Check, Pencil, X } from "lucide-react";
 import { useTheme, F, inputSty, primaryBtn } from "../lib/theme";
-import { PALETTE } from "../lib/constants";
-import { fmtWon, todayISO, parsePaymentText, sortFixedList, fixedInfo, createdTime, changeFixedAmountFrom } from "../lib/data";
+import { fmtWon, todayISO, parsePaymentText, sortFixedList, fixedInfo, createdTime, changeFixedAmountFrom, usedColors, nextFreeColor } from "../lib/data";
 import { PaymentInbox } from "../components/payment-inbox";
-import { Field, MoneyInput, QuickAmountButtons, FixedSortTabs } from "../components/common";
+import { Field, MoneyInput, QuickAmountButtons, FixedSortTabs, CategoryColorPicker } from "../components/common";
 
 // 매번 카드부터, 첫 카테고리부터 다시 고르는 게 기록 속도를 제일 깎아먹는 부분이었음
 // (PROJECT.md PENDING에 있던 "기록 속도 개선"). 데이터 구조를 새로 만들 필요 없이,
@@ -60,7 +59,7 @@ export function AddView({ ctx }) {
   const [accountId, setAccountId] = useState(defaults.accountId);
   const [newCatMode, setNewCatMode] = useState(false);
   const [newCatName, setNewCatName] = useState("");
-  const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
+  const [newCatColor, setNewCatColor] = useState(() => nextFreeColor(data.categories));
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [instMonths, setInstMonths] = useState(""); // 카드 할부 개월(비우면 일시불)
@@ -110,9 +109,12 @@ export function AddView({ ctx }) {
 
   const addCategory = () => {
     if (!newCatName.trim()) return;
-    const cat = { id: "c" + Date.now(), name: newCatName.trim(), color: newCatColor };
-    persist({ ...data, categories: [...data.categories, cat] });
-    setCategoryId(cat.id); setNewCatName(""); setNewCatMode(false);
+    // 고른 색이 그새 다른 카테고리 것이 됐으면(또는 16색을 다 썼으면) 빈 색으로
+    const color = usedColors(data.categories).has(String(newCatColor).toLowerCase()) ? nextFreeColor(data.categories) : newCatColor;
+    const cat = { id: "c" + Date.now(), name: newCatName.trim(), color };
+    const categories = [...data.categories, cat];
+    persist({ ...data, categories });
+    setCategoryId(cat.id); setNewCatName(""); setNewCatMode(false); setNewCatColor(nextFreeColor(categories));
   };
 
   // 대신 내준 돈(대리결제)도 그냥 평범한 지출로 기록하면 됨 — 카드/현금 그대로 반영되고,
@@ -251,7 +253,7 @@ export function AddView({ ctx }) {
               <div style={{ position: "relative" }}>
                 <span aria-hidden="true" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 9, height: 9, borderRadius: "50%", background: data.categories.find((c) => c.id === categoryId)?.color || T.muted, pointerEvents: "none" }} />
                 <select id="add-category" value={categoryId}
-                  onChange={(e) => { if (e.target.value === "__new__") setNewCatMode(true); else { setCategoryId(e.target.value); setNewCatMode(false); } }}
+                  onChange={(e) => { if (e.target.value === "__new__") { setNewCatMode(true); setNewCatColor(nextFreeColor(data.categories)); } else { setCategoryId(e.target.value); setNewCatMode(false); } }}
                   style={{ ...inputSty(T), paddingLeft: 28, appearance: "auto" }}>
                   {data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   <option value="__new__">+ 새 카테고리</option>
@@ -279,11 +281,8 @@ export function AddView({ ctx }) {
           {newCatMode && (
             <div style={{ marginTop: -8, marginBottom: 16, background: T.bg2, borderRadius: 10, padding: 12 }}>
               <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="카테고리 이름 — 예: 보험료" aria-label="새 카테고리 이름" style={{ ...inputSty(T), marginBottom: 8 }} autoFocus />
-              <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                {PALETTE.map((col, i) => (
-                  <button key={col} onClick={() => setNewCatColor(col)} aria-label={`색 ${i + 1}`} aria-pressed={newCatColor === col}
-                    style={{ width: 24, height: 24, borderRadius: "50%", background: col, border: newCatColor === col ? `2px solid ${T.cream}` : "2px solid transparent", cursor: "pointer" }} />
-                ))}
+              <div style={{ marginBottom: 10 }}>
+                <CategoryColorPicker T={T} categories={data.categories} value={newCatColor} onChange={setNewCatColor} />
               </div>
               <button onClick={addCategory} style={primaryBtn(T)}>카테고리 추가</button>
             </div>
