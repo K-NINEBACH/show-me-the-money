@@ -846,6 +846,9 @@ function AppInner() {
   const prevNormalSpentToDate = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") !== "card" && Number(e.date.slice(8, 10)) <= prevCutoff).reduce((s, e) => s + netAmount(e), 0);
   const prevCardSpentToDate = prevMonthExpenses.filter((e) => (e.paymentMethod || "cash") === "card" && !e.isCardAdjustment && Number(e.date.slice(8, 10)) <= prevCutoff).reduce((s, e) => s + netAmount(e), 0);
   const prevTotalSpentToDate = prevNormalSpentToDate + prevCardSpentToDate + prevFixedSum;
+  // 홈 '이번 달 쓴 돈' 보기(homeFocus = spent)의 비교 — recordedSpent(기록한 지출 전부, 카드반영 포함)와 **같은 기준**으로 지난달 1~같은 날까지.
+  // prevTotalSpentToDate는 지난달 고정지출 한 달치를 통째로 더해서 이번 달 '나간 고정만'과 견주면 기준이 어긋난다(라벨-계산 어긋남 병)
+  const prevRecordedToDate = prevMonthExpenses.filter((e) => Number(e.date.slice(8, 10)) <= prevCutoff).reduce((s, e) => s + netAmount(e), 0);
 
   const spent = normalSpent + fixedSum + cardBillTotal - cardReimbursedThisCycle;
   const spendingGoal = pdata.spendingGoal || 0;
@@ -1026,7 +1029,7 @@ function AppInner() {
 
   const ctx = {
     data, pdata, pot, persist, showToast, today, todayStr, curKey, prevKey, cycleLen, dayIntoCycle,
-    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSkipped, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, recordedSpent, fixedPaidSum, prevTotalSpent, prevTotalSpentToDate, reimbursedThisCycle,
+    cycleExpenses, normalSpent, fixedActive, fixedCardActive, fixedSkipped, fixedCardInstallment, fixedCardRecurring, fixedSum, fixedSumAll, cards, cardTotals, cardBillTotal, totalSpentThisMonth, recordedSpent, fixedPaidSum, prevTotalSpent, prevTotalSpentToDate, prevRecordedToDate, reimbursedThisCycle,
     nextKey, monthlyPay, payIn, nextPay, nextFixedCash, nextFixedCard, cardSpentThisCycle, cardInstallThisMonth, cardRecurThisMonth, cardThisMonth, payLeft, payPending,
     bankLeft, canSpend, cashNow, cashCan, cardDueBeforePay, unpaidFixedCashSum, cashByAccount, cashCardUnknown, cashIncoming, daysLeft, perDay, bankKnown, hasPay, incomes, incomePending, incomePendingSum, incomeNextSum,
     spent, remaining, budgetRatio, receivables, accounts, accountTotals, accountBalance, spendingGoal, hasGoal, unpaidFixed, unpaidFixedSum, processedSpent, realRemaining, realBudgetRatio, todaySpent,

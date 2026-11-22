@@ -731,6 +731,24 @@ export function SettingsView({ ctx }) {
           })}
         </div>
       </div>
+      {/*
+        **홈 맨 위에 무엇을 크게**(2026-11-22, 여자친구: "이번 달에 얼마를 더 써도 되는지가 아니라 이번 달에 얼마를 썼는지가 제일 중요").
+        폰마다 따로라 설정 칸으로 둔다(`homeFocus`: 없음 = 더 써도 되는 돈, "spent" = 이번 달 쓴 돈). 선택 칸이라 migrate 안 건드림.
+      */}
+      <div style={{ color: T.muted, fontSize: 13.5, fontWeight: 700, marginBottom: 6 }}>홈 맨 위에 크게</div>
+      <div role="group" aria-label="홈 맨 위에 크게" style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        {[["", "더 써도 되는 돈"], ["spent", "이번 달 쓴 돈"]].map(([k, l]) => {
+          const on = (data.homeFocus || "") === k;
+          return (
+            <button key={k || "left"} aria-pressed={on}
+              onClick={() => { persist({ ...data, homeFocus: k || undefined }); showToast(`홈 맨 위에 '${l}'을 크게 보여요`); }}
+              style={{ flex: 1, minHeight: 40, borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer",
+                border: on ? "none" : `1px solid ${T.border}`, background: on ? T.gold : T.bg2, color: on ? T.onGold : T.muted }}>
+              {l}
+            </button>
+          );
+        })}
+      </div>
       </Group>
       <Group id="cat" title="카테고리" summary={`${data.categories.length}개`} open={isOpen("cat")} onToggle={toggle}>
       <div style={{ marginBottom: 12 }}>

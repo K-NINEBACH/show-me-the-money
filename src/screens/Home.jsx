@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { HandCoins, Wallet, ArrowDownCircle, ArrowUpCircle, Repeat, ClipboardPaste, ChevronRight, Check, Landmark, ShieldCheck, Sprout, AlertCircle, Plus, Minus, Equal } from "lucide-react";
 import { useTheme, F, inputSty, primaryBtn, tone, card } from "../lib/theme";
-import { fmtWon, monthLabel, todayISO, parsePaymentText, sortFixedList, fixedInfo, nextDayOfMonth, monthKeyOffset } from "../lib/data";
+import { fmtWon, monthLabel, todayISO, parsePaymentText, sortFixedList, fixedInfo, nextDayOfMonth, monthKeyOffset, netAmount } from "../lib/data";
 import { MoneyInput, QuickAmountButtons } from "../components/common";
 import { syncMoment } from "../lib/auto-record";
 import { parseStatement, reconcileStatement } from "../lib/statement";
@@ -35,6 +35,8 @@ export function HomeView({ ctx }) {
   */
   // 식은 App.jsx의 ctx에 있다 — 위젯·아침 알림이 같은 숫자를 쓰기 위해서다(2026-09-17)
   const left = ctx.bankLeft;
+  // 홈 맨 위를 '이번 달 쓴 돈'으로(설정 → 화면 테마, 폰마다 따로 — 2026-11-22 여자친구 폰)
+  const spentFocus = ctx.data.homeFocus === "spent";
   const short = left < 0;
   const bankKnown = ctx.bankKnown;
   const daysLeft = ctx.daysLeft;
@@ -102,14 +104,27 @@ export function HomeView({ ctx }) {
           {monthLabel(curKey)} · {dayIntoCycle}일차
         </h1>
         {/* '오늘'은 아래 막대로 옮겼다(2026-09-21) — 같은 숫자가 두 군데 있으면 눈이 어디를 봐야 할지 모른다 */}
+        {spentFocus ? (
+          // 쓴 돈을 크게 보는 폰은 오른쪽 위에 '더 써도 되는 돈'을 작게(자리 맞바꿈)
+          hasPay && bankKnown && (
+            <div style={{ textAlign: "right", lineHeight: 1.3 }}>
+              <div style={{ color: T.muted, fontSize: 11.5 }}>더 써도 되는 돈</div>
+              <div style={{ color: ctx.canSpend < 0 ? tone(T, "danger").text : T.cream, fontFamily: F.mono, fontSize: 14, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtWon(ctx.canSpend)}</div>
+              {ctx.canSpend > 0 && <div style={{ color: T.muted, fontSize: 10.5 }}>하루 {fmtWon(ctx.perDay)}</div>}
+            </div>
+          )
+        ) : (
         <div style={{ textAlign: "right", lineHeight: 1.3 }}>
           <div style={{ color: T.muted, fontSize: 11.5 }}>이번 달 쓴 돈</div>
           <div style={{ color: T.cream, fontFamily: F.mono, fontSize: 14, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtWon(ctx.totalSpentThisMonth)}</div>
           {ctx.fixedPaidSum > 0 && <div style={{ color: T.muted, fontSize: 10.5 }}>기록 {fmtWon(ctx.recordedSpent)} + 나간 고정 {fmtWon(ctx.fixedPaidSum)}</div>}
         </div>
+        )}
       </div>
 
-      <Hero T={T} ctx={ctx} top={top} hasPay={hasPay} bankKnown={bankKnown} left={left} daysLeft={daysLeft} />
+      {spentFocus
+        ? <SpentHero T={T} ctx={ctx} />
+        : <Hero T={T} ctx={ctx} top={top} hasPay={hasPay} bankKnown={bankKnown} left={left} daysLeft={daysLeft} />}
 
       <SyncNudge T={T} ctx={ctx} cardTotals={cardTotals} onOpen={() => openPanel("card")} />
 
@@ -216,6 +231,69 @@ const cardTitle = (T) => ({ color: T.goldSoft, fontSize: 13.5, fontWeight: 700, 
     ① 제목 + 하루 몫(오른쪽 작게) ② 아주 큰 숫자 ③ 오늘 쓴 돈 / 하루 몫 + 막대
     ④ 상태 한 줄(아이콘 동그라미) ⑤ 선 아래 비교 두 칸(월급만으로 · 지금 통장으로 다 내면)
 */
+/*
+  **이번 달 쓴 돈을 크게**(2026-11-22, 여자친구: "이번 달에 얼마를 더 써도 되는지가 아니라 얼마를 썼는지가 제일 중요").
+  큰 숫자 = 위 오른쪽에 있던 그 숫자(totalSpentThisMonth = 기록한 지출 + 이번 달 실제로 나간 고정지출 — 달력·내역과 같은 기준).
+  그 아래 어디서 나갔나(카드 · 현금·이체 · 나간 고정지출 — 셋을 더하면 큰 숫자), 지난달 같은 날까지와 비교(**기록한 지출끼리만** —
+  고정지출은 나가는 날이 달마다 달라 날짜로 자르면 어긋난다), 오늘 쓴 돈, 많이 쓴 카테고리 셋. 데이트 통장은 안 들어간다(pdata).
+*/
+function SpentHero({ T, ctx }) {
+  const num = { fontFamily: F.mono, fontVariantNumeric: "tabular-nums" };
+  const total = ctx.totalSpentThisMonth;
+  const card = ctx.recordedSpent - ctx.normalSpent;
+  const cash = ctx.normalSpent;
+  const fixedOut = ctx.fixedPaidSum;
+  const diff = ctx.recordedSpent - ctx.prevRecordedToDate;
+  const showDiff = ctx.dayIntoCycle >= 3 && ctx.prevRecordedToDate > 0;
+  const up = tone(T, "danger"), down = tone(T, "good");
+  const catMap = Object.fromEntries((ctx.data.categories || []).map((c) => [c.id, c]));
+  const byCat = {};
+  for (const e of ctx.cycleExpenses) {
+    const k = catMap[e.categoryId] ? e.categoryId : "none";
+    byCat[k] = (byCat[k] || 0) + netAmount(e);
+  }
+  const topCats = Object.entries(byCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3)
+    .map(([k, v]) => ({ name: k === "none" ? "미분류" : catMap[k].name, color: k === "none" ? T.muted : catMap[k].color, amount: v }));
+  const parts = [["카드", card], ["현금·이체", cash], ["나간 고정지출", fixedOut]].filter(([, v]) => v > 0);
+  return (
+    <section aria-label="이번 달 쓴 돈" style={{ padding: "4px 2px 0" }}>
+      <div style={{ color: T.muted, fontSize: 15, fontWeight: 500 }}>이번 달 쓴 돈</div>
+      <div style={{ ...num, color: T.cream, fontSize: 46, fontWeight: 700, letterSpacing: -1.6, lineHeight: 1.15, marginTop: 2 }}>
+        {fmtWon(total).replace(/원$/, "")}<span style={{ fontSize: 22, fontWeight: 600, marginLeft: 4, color: T.muted, fontFamily: F.body }}>원</span>
+      </div>
+      {parts.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", marginTop: 6, color: T.muted, fontSize: 13 }}>
+          {parts.map(([l, v]) => <span key={l}>{l} <b style={{ ...num, color: T.cream, fontWeight: 600 }}>{fmtWon(v)}</b></span>)}
+        </div>
+      )}
+      {showDiff && (
+        <div style={{ marginTop: 10 }}>
+          <span style={{ background: (diff > 0 ? up : down).tint, color: (diff > 0 ? up : down).text, borderRadius: 99, padding: "4px 10px", fontWeight: 700, fontSize: 13 }}>
+            지난달 같은 날보다 <span style={num}>{fmtWon(Math.abs(diff))}</span> {diff > 0 ? "더 씀" : diff < 0 ? "덜 씀" : "같음"}
+          </span>
+          <div style={{ color: T.muted, fontSize: 11.5, marginTop: 4 }}>기록한 지출끼리 1~{ctx.dayIntoCycle}일 비교(고정지출 뺌)</div>
+        </div>
+      )}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12, color: T.muted, fontSize: 12.5 }}>
+        <span>오늘 <b style={{ ...num, color: T.cream, fontWeight: 600 }}>{fmtWon(ctx.todaySpent || 0)}</b> 씀</span>
+        {ctx.dayIntoCycle >= 1 && <span>하루 평균(고정 뺌) <b style={{ ...num, color: T.cream, fontWeight: 600 }}>{fmtWon(Math.round(ctx.recordedSpent / ctx.dayIntoCycle))}</b></span>}
+      </div>
+      {topCats.length > 0 && (
+        <div style={{ marginTop: 12, background: T.bg2, borderRadius: 12, padding: "10px 12px" }}>
+          <div style={{ color: T.muted, fontSize: 12, marginBottom: 4 }}>많이 쓴 곳</div>
+          {topCats.map((c) => (
+            <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+              <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: "50%", background: c.color, flexShrink: 0 }} />
+              <span style={{ flex: 1, minWidth: 0, color: T.cream, fontSize: 14 }}>{c.name}</span>
+              <span style={{ ...num, color: T.cream, fontSize: 14, fontWeight: 600 }}>{fmtWon(c.amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function Hero({ T, ctx, top, hasPay, bankKnown, daysLeft }) {
   const v = top.value;
   const short = hasPay && v < 0;
