@@ -175,18 +175,31 @@ function ReceivableRow({ ctx, e, cat, onDelete, dateNode }) {
   이 줄은 그걸 안 그려서, 지출과 달리 무엇이 자동으로 들어왔는지 안 보였다.
   통장이 여럿이라 어느 통장인지도 같이 적는다.
 */
-function BalanceRow({ b, accountName, onDelete, onEdit, dateNode }) {
+function BalanceRow({ b, accountName, onDelete, onEdit, dateNode, cat, categories, onPickCat }) {
   const T = useTheme();
   const kind = b.isAdjustment ? "잔액 맞춤" : b.transferId ? "이체" : b.type === "in" ? "입금" : "출금";
   // 지출 줄과 같은 모양 — 적요가 제목, 종류·통장·자동은 흐린 한 줄. 입금은 초록 +, 출금은 − (2026-09-26)
-  const tags = [b.memo && b.memo !== kind ? kind : null, accountName, b.auto ? "자동" : null].filter(Boolean).join(" · ");
+  const tags = [cat ? cat.name : null, b.memo && b.memo !== kind ? kind : null, accountName, b.auto ? "자동" : null].filter(Boolean).join(" · ");
   const inflow = b.type === "in";
   const color = b.isAdjustment ? T.inkMuted : inflow ? T.good : T.danger;
   // 지출 줄처럼 줄을 누르면 고치기(2026-11-16) — 잔액 맞춤은 거래가 아니라 고칠 게 없다(지우기만)
   const Body = onEdit ? "button" : "div";
+  // **입출금에도 카테고리**(2026-11-26, "내역에서 입출금 한 것도 카테고리 넣을 수 있게") — 지출 줄처럼 아이콘을 누르면 고르기.
+  // 이름표일 뿐이다: 통장 입출금은 쓴 돈 합계·많이 쓴 곳에 원래 안 들어가고, 카테고리를 붙여도 그대로다.
+  const badge = cat ? <CatBadge name={cat.name} color={cat.color} /> : <CatBadge name={kind} color={color} icon={b.isAdjustment ? Scale : inflow ? ArrowDownLeft : ArrowUpRight} />;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: `1px solid ${T.paperLine}` }}>
-      <CatBadge name={kind} color={color} icon={b.isAdjustment ? Scale : inflow ? ArrowDownLeft : ArrowUpRight} />
+      {onPickCat ? (
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          {badge}
+          <select value={cat?.id || ""} aria-label={`${b.memo || kind} 카테고리 바꾸기 (지금 ${cat ? cat.name : "없음"})`}
+            onChange={(ev) => onPickCat(ev.target.value)}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", fontSize: 16 }}>
+            <option value="">카테고리 없음</option>
+            {(categories || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      ) : badge}
       <Body {...(onEdit ? { onClick: onEdit, "aria-label": `${kind} ${b.memo || ""} ${fmtWon(b.amount)} 고치기` } : {})}
         style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: onEdit ? "pointer" : "default", fontFamily: "inherit", color: "inherit" }}>
         <div style={{ color: T.ink, fontSize: 15, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.memo || kind}</div>
@@ -245,6 +258,12 @@ export function LedgerView({ ctx }) {
     persist({ ...data, expenses: data.expenses.map((e) => (e.id === item.id ? { ...e, categoryId: c ? c.id : null, catTried: true } : e)) });
     showToast(c ? `'${c.name}'(으)로 정했어요` : "미분류로 뒀어요");
   };
+  const setBalCat = (b, id) => {
+    const c = data.categories.find((x) => x.id === id) || null;
+    persist({ ...data, balanceEntries: (data.balanceEntries || []).map((x) => (x.id === b.id ? { ...x, categoryId: c ? c.id : undefined } : x)) });
+    showToast(c ? `'${c.name}'(으)로 정했어요` : "카테고리를 뺐어요");
+  };
+  const [showSmallIn, setShowSmallIn] = useState(false);
   const searchLower = search.trim().toLowerCase();
   const matchesSearch = (e) => {
     if (!searchLower) return true;
@@ -323,6 +342,23 @@ export function LedgerView({ ctx }) {
 
   // 최신순(날짜순)일 때만 날짜로 묶는다 — 금액순은 날짜가 섞여서 묶을 수가 없다
   const grouped = amountSort !== "amountDesc" && amountSort !== "amountAsc";
+
+  /*
+    **50원 이하 입금(이자 등)은 한 줄로 묶는다**(2026-11-26, 여자친구 폰 — "이자로 받는 1~50원은 일일이 적지 말고 한 번에").
+    날짜순일 때 둘 이상이면 가장 최근 날짜 자리에 '작은 입금 N건 +합계' 한 줄, 누르면 펼친다. 합계·잔액 계산은 그대로.
+  */
+  const isSmallIn = (b) => b.type === "in" && !b.isAdjustment && !b.transferId && Number(b.amount) > 0 && Number(b.amount) <= 50;
+  const feed = useMemo(() => {
+    if (!grouped) return combined;
+    const smalls = combined.filter((x) => x.kind === "balance" && isSmallIn(x.item));
+    if (smalls.length < 2) return combined;
+    const rest = combined.filter((x) => !(x.kind === "balance" && isSmallIn(x.item)));
+    const date = smalls[0].item.date;
+    const at = rest.findIndex((x) => x.item.date < date);
+    const group = { kind: "smallin", item: { id: "smallin", date, rows: smalls.map((x) => x.item) } };
+    rest.splice(at < 0 ? rest.length : at, 0, group);
+    return rest;
+  }, [combined, grouped]);
   const dayTotals = useMemo(() => {
     const m = {};
     for (const { kind, item } of combined) {
@@ -859,17 +895,43 @@ export function LedgerView({ ctx }) {
             똑같이 몇 줄씩 반복돼서, 눈이 날짜를 읽느라 정작 무엇을 썼는지를 못 봤다. 날짜로 묶고
             그날 지출 합계를 옆에 적는다. 금액순으로 볼 땐 날짜가 섞이므로 예전처럼 줄마다 적는다.
           */}
-          {combined.map(({ kind, item }, i) => {
-            const newDay = grouped && (i === 0 || combined[i - 1].item.date !== item.date);
+          {feed.map(({ kind, item }, i) => {
+            const newDay = grouped && (i === 0 || feed[i - 1].item.date !== item.date);
             const head = newDay ? <DayHead T={T} date={item.date} total={dayTotals[item.date] || 0} first={i === 0} /> : null;
             const dateNode = grouped ? null : <div style={rowDate(T)}>{item.date}</div>;
+            const balRow = (b, dn) => (
+              <div key={b.id}>
+                <BalanceRow b={b} dateNode={dn} accountName={data.accounts.length > 1 ? data.accounts.find((a) => a.id === (b.accountId || data.accounts[0]?.id))?.name : null} onDelete={() => removeBalance(b.id)}
+                  onEdit={b.isAdjustment ? null : () => (balEditId === b.id ? setBalEditId(null) : startBalEdit(b))}
+                  cat={catMap[b.categoryId]} categories={data.categories} onPickCat={b.isAdjustment ? null : (id) => setBalCat(b, id)} />
+                {balEditId === b.id && renderBalEditForm(b)}
+              </div>
+            );
+            if (kind === "smallin") {
+              const sum = item.rows.reduce((s, b) => s + Number(b.amount), 0);
+              const first = item.rows[item.rows.length - 1].date, last = item.rows[0].date;
+              const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
+              return (
+                <div key="smallin">
+                  {head}
+                  <button onClick={() => setShowSmallIn(!showSmallIn)} aria-expanded={showSmallIn}
+                    style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 0", background: "none", border: "none", borderBottom: `1px solid ${T.paperLine}`, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "inherit" }}>
+                    <CatBadge name="이자" color={T.good} icon={ArrowDownLeft} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ color: T.ink, fontSize: 15, fontWeight: 700 }}>작은 입금 {item.rows.length}건 (이자 등)</div>
+                      <div style={{ color: T.inkMuted, fontSize: 12, marginTop: 2 }}>50원 이하 · {first === last ? md(last) : `${md(first)}~${md(last)}`} · {showSmallIn ? "접기" : "눌러서 펼치기"}</div>
+                    </div>
+                    <div style={{ color: T.good, fontFamily: F.mono, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap" }}>+{fmtWon(sum)}</div>
+                  </button>
+                  {showSmallIn && <div style={{ paddingLeft: 12 }}>{item.rows.map((b) => balRow(b, <div style={rowDate(T)}>{b.date}</div>))}</div>}
+                </div>
+              );
+            }
             if (kind === "balance") {
               return (
                 <div key={item.id}>
                   {head}
-                  <BalanceRow b={item} dateNode={dateNode} accountName={data.accounts.length > 1 ? data.accounts.find((a) => a.id === (item.accountId || data.accounts[0]?.id))?.name : null} onDelete={() => removeBalance(item.id)}
-                    onEdit={item.isAdjustment ? null : () => (balEditId === item.id ? setBalEditId(null) : startBalEdit(item))} />
-                  {balEditId === item.id && renderBalEditForm(item)}
+                  {balRow(item, dateNode)}
                 </div>
               );
             }
