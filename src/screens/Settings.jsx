@@ -1,5 +1,5 @@
 // Settings tab: theme, monthly goal, accounts/cards, categories, backup/restore.
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, ChevronDown } from "lucide-react";
 import { useTheme, F, THEMES, THEME_ORDER, inputSty, primaryBtn, card, tone } from "../lib/theme";
 import { fmtWon, migrate, todayISO, usedColors, nextFreeColor } from "../lib/data";
@@ -854,6 +854,40 @@ export function SettingsView({ ctx }) {
         )}
       </div>
       </Group>
+      <AppVersion T={T} version={noti.diag?.version} />
+    </div>
+  );
+}
+
+/*
+  앱(껍데기) 버전 — 2026-11-26 "여자친구 폰 업데이트가 안 돼 있다".
+  껍데기는 앱을 열 때 3시간에 한 번 새 버전을 받아 두고 벗어날 때 깐다(Updater.kt). 처음 한 번은
+  '이 출처 허용'·'업데이트할까요?'를 사람이 눌러야 해서, 거기서 멈추면 아무 표시 없이 옛 버전에 남는다.
+  그래서 지금 버전과 배포된 버전을 나란히 보이고, 늦으면 덮어 까는 길을 적는다.
+*/
+function AppVersion({ T, version }) {
+  const [latest, setLatest] = useState(null);
+  useEffect(() => {
+    if (!version) return;
+    fetch("/apk/latest.json", { cache: "no-store" }).then((r) => r.json()).then(setLatest).catch(() => {});
+  }, [version]);
+  if (!version) return null;
+  const behind = latest?.versionName && latest.versionName !== version && Number(latest.versionCode) > 0;
+  return (
+    <div style={{ marginTop: 16, padding: "10px 12px", borderRadius: 10, background: T.bg2 || "transparent", border: `1px solid ${T.border}`, fontSize: 14, color: T.muted, lineHeight: 1.6, overflowWrap: "anywhere" }}>
+      <div>
+        앱 버전 <b style={{ color: T.cream }}>{version}</b>
+        {latest?.versionName && (behind
+          ? <span style={{ color: tone(T, "warn").text, fontWeight: 700 }}> · 새 버전 {latest.versionName} 있어요</span>
+          : <span style={{ color: tone(T, "good").text, fontWeight: 700 }}> · 최신</span>)}
+      </div>
+      {behind && (
+        <div style={{ marginTop: 4 }}>
+          앱을 닫았다 다시 열면 받아 둬요. '업데이트할까요?'나 '이 출처 허용' 창이 뜨면 허용해 주세요.
+          그래도 안 바뀌면 인터넷 앱에서 아래 주소를 열어 받은 파일을 그대로 깔면 돼요 — 기록은 그대로 남아요.
+          <div style={{ marginTop: 4, fontFamily: F.mono, fontSize: 12.5, userSelect: "all" }}>{latest.url}</div>
+        </div>
+      )}
     </div>
   );
 }
