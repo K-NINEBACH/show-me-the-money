@@ -54,6 +54,22 @@ export const THEMES = {
     goodTint: "#E8F1E3", warnTint: "#FAEFDC", dangerTint: "#FAE8E4",
     shadow: "none",
   },
+  /*
+    2026-11-26 분홍(여자친구 폰 요청 — "분홍테마는 추가해봐봐"). 흰색 테마(새 디자인)와 같은 틀에 색만 분홍.
+    상태 색(초록·주황·빨강)은 흰색 테마 그대로 — 분홍 강조와 빨강 경고가 헷갈리지 않게 강조는 자주빛 분홍.
+    대비(흰 / 상자): 강조 #B83A69 5.5 / 4.9, 흐린 글자 #7A5A66 6.0 / 5.4, 입력칸 테두리 #A47888 3.6 / 3.2.
+  */
+  pink: {
+    id: "pink", label: "분홍", swatch: "#E68AAA", mode: "light",
+    bg: "#FFFFFF", bg2: "#FCEFF3", navBg: "rgba(255,255,255,0.97)",
+    paper: "#FCEFF3", paperLine: "#F3D9E2", ink: "#33232A", cream: "#33232A",
+    gold: "#B83A69", goldSoft: "#962E55", good: "#2E7D52", warn: "#A35A00",
+    danger: "#B83F37", muted: "#7A5A66", border: "#F3D9E2",
+    onGold: "#FFFFFF", field: "#A47888", inkMuted: "#7A5A66",
+    goodFill: "#2E7D52", warnFill: "#E0962B", dangerFill: "#D0564C",
+    goodTint: "#E8F1E3", warnTint: "#FAEFDC", dangerTint: "#FAE8E4",
+    shadow: "none",
+  },
   teal: {
     id: "teal", label: "청록", swatch: "#2E7D6E", mode: "light",
     bg: "#DCEEEA", bg2: "#E9F5F2", navBg: "rgba(220,238,234,0.95)",
@@ -79,7 +95,7 @@ export const THEMES = {
     onGold: "#FFFFFF", field: "#6B899C", inkMuted: "#3F5A6B",
   },
 };
-export const THEME_ORDER = ["dark", "beige", "white", "teal", "blue", "green"];
+export const THEME_ORDER = ["dark", "beige", "white", "pink", "teal", "blue", "green"];
 export const DARK = THEMES.dark;
 export const ThemeContext = createContext(DARK);
 export const useTheme = () => useContext(ThemeContext);
